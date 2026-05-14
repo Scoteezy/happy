@@ -21,7 +21,7 @@ export class EncryptionCache {
     // Configuration
     private readonly maxAgentStates = 1000;
     private readonly maxMetadata = 1000;
-    private readonly maxMessages = 1000;
+    private readonly maxMessages = 500;
     private readonly maxMachineMetadata = 500;
     private readonly maxDaemonStates = 500;
 

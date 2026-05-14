@@ -280,6 +280,9 @@ class Sync {
 
 
     onSessionVisible = (sessionId: string) => {
+        // Track LRU access — may evict oldest inactive sessions' heavy data
+        storage.getState().trackSessionAccess(sessionId);
+
         this.getMessagesSync(sessionId).invalidate();
 
         // Also invalidate git status sync for this session

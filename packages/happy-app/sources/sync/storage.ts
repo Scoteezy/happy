@@ -161,6 +161,7 @@ interface StorageState {
     pathGitStatusFiles: Record<string, GitStatusFiles | null>; // keyed by "machineId:path"
     pathProjectFiles: Record<string, ProjectFilesList | null>;  // keyed by "machineId:path"
     sessionFileCache: Record<string, Record<string, { content: string | null; diff: string | null; isBinary: boolean; cachedAt: number }>>;
+    sessionAccessOrder: string[];  // LRU tracking: most-recently-accessed session first
     machines: Record<string, Machine>;
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
     friends: Record<string, UserProfile>;  // All relationships (friends, pending, requested, etc.)
@@ -239,6 +240,9 @@ interface StorageState {
     markSessionRead: (sessionId: string) => void;
     markSessionUnread: (sessionId: string) => void;
     setCurrentViewingSession: (sessionId: string | null) => void;
+    // LRU session memory management
+    trackSessionAccess: (sessionId: string) => void;
+    unloadSessionData: (sessionId: string) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -371,6 +375,7 @@ export const storage = create<StorageState>()((set, get) => {
         pathGitStatusFiles: {},
         pathProjectFiles: {},
         sessionFileCache: {},
+        sessionAccessOrder: [],
         realtimeStatus: 'disconnected',
         realtimeMode: 'idle',
         voiceSessionGeneration: 0,
@@ -1398,6 +1403,65 @@ export const storage = create<StorageState>()((set, get) => {
                 ...(next !== state.unreadSessionIds ? {
                     sessionListViewData: buildSessionListViewData(state.sessions, next),
                 } : {}),
+            };
+        }),
+
+        // LRU session memory management — keeps at most MAX_CACHED_SESSIONS
+        // sessions' heavy data (messages + file cache) in memory. Active sessions
+        // (agent running) are never evicted.
+        trackSessionAccess: (sessionId: string) => set((state) => {
+            const MAX_CACHED_SESSIONS = 5;
+
+            // Move sessionId to front of access order
+            const order = [sessionId, ...state.sessionAccessOrder.filter(id => id !== sessionId)];
+
+            // Find sessions to evict (beyond limit, not active)
+            const toEvict: string[] = [];
+            let kept = 0;
+            for (const id of order) {
+                if (kept >= MAX_CACHED_SESSIONS) {
+                    const session = state.sessions[id];
+                    // Never evict active sessions or sessions with no loaded data
+                    if (session?.active || !state.sessionMessages[id]) {
+                        continue;
+                    }
+                    toEvict.push(id);
+                } else {
+                    // Only count toward limit if the session actually has data loaded
+                    if (state.sessionMessages[id]) {
+                        kept++;
+                    }
+                }
+            }
+
+            if (toEvict.length === 0) {
+                return { ...state, sessionAccessOrder: order };
+            }
+
+            // Evict heavy data for old sessions
+            const sessionMessages = { ...state.sessionMessages };
+            const sessionFileCache = { ...state.sessionFileCache };
+            for (const id of toEvict) {
+                delete sessionMessages[id];
+                delete sessionFileCache[id];
+            }
+
+            return {
+                ...state,
+                sessionAccessOrder: order.filter(id => !toEvict.includes(id)),
+                sessionMessages,
+                sessionFileCache,
+            };
+        }),
+
+        unloadSessionData: (sessionId: string) => set((state) => {
+            const { [sessionId]: _msgs, ...remainingMessages } = state.sessionMessages;
+            const { [sessionId]: _files, ...remainingFileCache } = state.sessionFileCache;
+            return {
+                ...state,
+                sessionMessages: remainingMessages,
+                sessionFileCache: remainingFileCache,
+                sessionAccessOrder: state.sessionAccessOrder.filter(id => id !== sessionId),
             };
         }),
     }
