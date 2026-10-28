@@ -488,8 +488,7 @@ Entry points other screens call (all in `ui/onboarding` and `ui/connect`):
   the row calls `link.scan()`, subtitle `common_scanning` and disabled while
   `link.isLoading`. Both flows show their own alerts while composed.
 - **Deep links**: MainActivity offers every launching and new intent to
-  `DeepLinks.offer(intent)`; `DeepLinkEffect(nav, signedIn, onOpenSession)`
-  in HappyApp opens them once signed in. `onOpenSession` is the chat's.
+  `DeepLinks.offer(intent)`; `ui/AppCoordinator` takes them (below).
 
 ### QR codes
 
@@ -512,25 +511,20 @@ decodes the drawn pixels back to the link.
 
 ### Deep links
 
-`happy://` links route as expo-router routes them for happy-app (the host
-is the first path segment), and so do `https://app.happy.engineering/<path>`
-links. Every app path maps to its Compose route (`parseDeepLink` in
-`ui/connect/DeepLinks.kt`): `terminal?<key>` opens the confirm screen,
-`/terminal/connect` explains that the web link needs a browser,
-`/session/<id>` goes to `onOpenSession`, and `/session/<id>/info|changes|
-file?path=<btoa>|message/<mid>`, `/machine/<id>`, `/new`, `/settings/*`,
-`/server`, `/restore[/manual]`, `/troubleshoot`, `/changelog` and
-`/onboarding/settings` open their screens. Paths with no Android screen
-(excluded features, `session/recent`, the files browser) open Home. The
-release build adds app.config.js's production intent filter for
-`https://app.happy.engineering` (`src/release/AndroidManifest.xml`), with
-`autoVerify`. The site's `assetlinks.json` (happy-app's
-`public/.well-known/assetlinks.json`) already lists `com.ex3ndr.happy` with
-one fingerprint, presumably Play's app-signing key that the React Native app
-verifies with, so a Play-distributed build should verify as it does; a build
-signed with only the upload key won't. Signed out, only the screens that need
-no account (server, restore, troubleshoot, changelog, onboarding settings)
-open; other links are dropped rather than pushed onto empty signed-in screens.
+As happy-ios (`SceneDelegate`, `AppCoordinator.open`): the `happy` scheme
+carries the two pairing links and nothing else. `happy://terminal?<key>`
+asks "Authenticate Terminal" and `happy:///account?<key>` "Link New
+Device", each with Continue, then runs `PairingFlow` and reports as a scan
+would; signed out, "Failed to connect terminal". Any other link is not the
+app's (`parseDeepLink` returns null) and opens nothing. A terminal that
+only speaks auth v1 is refused with "update Happy", never handed the
+secret (`TerminalNeedsUpdateException`, iOS `PairingError`). The release
+build keeps app.config.js's verified App Link for
+`https://app.happy.engineering` (`src/release/AndroidManifest.xml`,
+`autoVerify`; `verifyReleaseKeeps` fails the build without it), so a
+Play-signed build verifies as the React Native app does; such a link opens
+the app at home. iOS reads only its `/bot/invite/<token>` guest
+invitations there (HappyGuest), not ported yet.
 
 ## Push
 
@@ -560,8 +554,9 @@ What happy-app does with expo-notifications, without Expo:
   uses), vibration 0/250/250/250, light #FF231F7C.
 - **Tapping** opens MainActivity with `ACTION_OPEN_PUSH` and the session id
   from notificationRouting.ts's rules (a `/session/<id>` url, else
-  `sessionId`); `DeepLinks.offer` turns it into `DeepLink.Session`, which
-  `DeepLinkEffect` hands to `onOpenSession` (the chat's).
+  `sessionId`); `DeepLinks.offer` turns it into `DeepLink.Session`, and
+  `AppCoordinator` makes the stack home then that chat (nothing when the
+  chat is already on top; dropped when signed out; waits for a home root).
 - **Background sends** (sync.ts's watchdog notifications,
   `push/BackgroundSendNotifications.kt`): MessageSender's watchdog fails
   rows unsent 30 s into the background; this observer of the store's

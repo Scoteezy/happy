@@ -37,7 +37,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- app.config.js scheme: happy://terminal?<key> (ui/connect/DeepLinks.kt) -->
+            <!-- happy://terminal?<key> and happy:///account?<key> pairing links (connect/DeepLinks.kt) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
