@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.chat
 
+import com.slopus.happy.attachments.AttachmentServices
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -178,6 +179,13 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     override fun createView(): View = root
 
     override fun viewCreated(view: View) {
+        // The session's pictures, for the attachments in the list, kept with the account's.
+        val attachments = AttachmentServices.of(graph)
+        attachments.pictures?.let { pictures ->
+            view.setTag(R.id.chat_attachments, ChatAttachmentImages(pictures, sessionId) { ref ->
+                runCatching { attachments.transfers?.load(sessionId, ref) }.getOrNull()
+            })
+        }
         header.backButton.setOnClickListener { pop() }
         header.titleControl.setOnClickListener { openInfo() }
         header.avatarControl.setOnClickListener { openInfo() }

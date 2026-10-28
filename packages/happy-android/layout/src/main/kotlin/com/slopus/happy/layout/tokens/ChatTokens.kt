@@ -115,6 +115,9 @@ object ChatTextStyles {
     val terminalCommand = TextStyle(FontFace.Menlo, 14, 20)
 
     // PermissionFooter.tsx
+    // FileView
+    val attachmentName = TextStyle(FontFace.SystemMedium, 13)
+
     val permissionButton = TextStyle(FontFace.SystemMedium, 14, 18)
     val permissionButtonSettled = TextStyle(FontFace.System, 14, 18)
 

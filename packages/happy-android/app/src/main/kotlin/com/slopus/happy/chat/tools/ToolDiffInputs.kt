@@ -1,6 +1,7 @@
 package com.slopus.happy.chat.tools
 
 import com.slopus.happy.chat.arr
+import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.prettyJson
 import com.slopus.happy.chat.str
@@ -100,5 +101,36 @@ object ToolDiffInputs {
             else -> value.doubleOrNull?.let { it != 0.0 && !it.isNaN() } ?: false
         }
         is JsonObject, is JsonArray -> true
+    }
+}
+
+/**
+ * FileView's input: the picture a person attached, read the way its zod
+ * schema reads it. Null when it doesn't parse, and FileView draws nothing.
+ */
+data class ToolFileInput(
+    /** The encrypted blob, under the session's attachments. */
+    val ref: String,
+    val name: String,
+    /** The picture's size, when the sender reported it. */
+    val imageWidth: Double? = null,
+    val imageHeight: Double? = null,
+    /** Shown until the picture itself arrives. */
+    val thumbhash: String? = null,
+) {
+    companion object {
+        fun of(input: JsonElement?): ToolFileInput? {
+            val o = input.obj ?: return null
+            val ref = o["ref"].str ?: return null
+            val name = o["name"].str ?: return null
+            if (o.containsKey("size") && o["size"].num == null) return null
+            if (!o.containsKey("image")) return ToolFileInput(ref, name)
+            // image: { width: number, height: number, thumbhash?: string }
+            val image = o["image"].obj ?: return null
+            val width = image["width"].num ?: return null
+            val height = image["height"].num ?: return null
+            val thumbhash = if (image.containsKey("thumbhash")) image["thumbhash"].str ?: return null else null
+            return ToolFileInput(ref, name, width, height, thumbhash)
+        }
     }
 }

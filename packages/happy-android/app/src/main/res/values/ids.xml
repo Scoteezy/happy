@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The chat's ChatAttachmentImages, on the chat screen's view. -->
+    <item name="chat_attachments" type="id" />
+</resources>

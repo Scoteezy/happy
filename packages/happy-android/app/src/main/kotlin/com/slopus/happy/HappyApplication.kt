@@ -1,6 +1,8 @@
 package com.slopus.happy
 
 import android.app.Application
+import android.content.ComponentCallbacks2
+import com.slopus.happy.attachments.AttachmentServices
 import com.slopus.happy.push.PushServices
 
 class HappyApplication : Application() {
@@ -10,5 +12,12 @@ class HappyApplication : Application() {
             clientId = "android/${BuildConfig.VERSION_NAME}",
             defaultServerUrl = BuildConfig.DEFAULT_SERVER_URL,
         ).also { PushServices.unregisterOnLogout(this, it) }
+    }
+
+    /** iOS's memory warning: decoded attachment pictures go first. */
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW && level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) AttachmentServices.of(graph).trimMemory()
     }
 }

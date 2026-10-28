@@ -17,6 +17,7 @@ import com.slopus.happy.chat.markdown.SyntaxTokenType
 import com.slopus.happy.chat.markdown.tokenizeCode
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
+import com.slopus.happy.chat.tools.ToolFileInput
 import com.slopus.happy.chat.tools.ToolIcon
 import com.slopus.happy.chat.tools.ToolStatusIcon
 import com.slopus.happy.chat.tools.ToolText
@@ -55,6 +56,7 @@ import com.slopus.happy.layout.chat.AgentTextLayout
 import com.slopus.happy.layout.chat.ChatAccessoryRowLayout
 import com.slopus.happy.layout.chat.ChatEventLayout
 import com.slopus.happy.layout.chat.ChatFooterLayout
+import com.slopus.happy.layout.chat.FileViewLayout
 import com.slopus.happy.layout.chat.CompactToolRowLayout
 import com.slopus.happy.layout.chat.MarkdownLayout
 import com.slopus.happy.layout.chat.PermissionFooterLayout
@@ -453,10 +455,25 @@ class ChatRowRenderer(private val resources: Resources) {
             ToolViewKind.Bash -> bashView(tool.input.obj?.get("command"), tool.state, tool.result, env)
             ToolViewKind.CodexBash -> codexBashView(message, style)
             ToolViewKind.GeminiExecute -> geminiExecuteView(tool.input.obj?.get("toolCall").obj?.get("title").str, env)
-            // Patches, unified diffs and attachments still show their raw input.
-            ToolViewKind.CodexPatch, ToolViewKind.CodexDiff, ToolViewKind.File ->
+            ToolViewKind.File -> fileView(tool.input, env)
+            // Patches and unified diffs still show their raw input.
+            ToolViewKind.CodexPatch, ToolViewKind.CodexDiff ->
                 if (truthy(tool.input)) section(resources.getString(R.string.tool_view_input), codeView(pretty(tool.input), env), env) else null
         }
+    }
+
+    /** FileView: the picture a person attached, at its own shape, then its name on one line. Nothing when the input doesn't read as one. */
+    private fun fileView(input: JsonElement?, env: ChatTextEnv): ChatStackEntry? {
+        val file = ToolFileInput.of(input) ?: return null
+        val name = MeasuredText(ChatStrings.string(file.name, Palette.textSecondary), ChatTextStyles.attachmentName, env, maxLines = 1)
+        val attachment = ChatAttachment(file.ref, file.thumbhash)
+        fun layout(width: Double) = FileViewLayout(width, file.imageWidth, file.imageHeight, name.measurable)
+        return ChatStackEntry(ChatPiece(Measurable { layout(it).size }) { frame ->
+            val layout = layout(frame.width)
+            val image = layout.image.offsetBy(frame.minX, frame.minY)
+            val nameFrame = layout.name.offsetBy(frame.minX, frame.minY)
+            listOf(ChatDrawItem.Attachment(attachment, image), ChatDrawItem.Text(name.layout(nameFrame), nameFrame)) to emptyList()
+        })
     }
 
     private fun bashView(command: JsonElement?, state: ToolState, result: JsonElement?, env: ChatTextEnv): ChatStackEntry? {

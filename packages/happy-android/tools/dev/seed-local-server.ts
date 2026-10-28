@@ -39,6 +39,7 @@ import {
 import { deriveKey } from '../../../happy-cli/src/utils/deriveKey'
 import { createHash } from 'node:crypto'
 import { deflateSync } from 'node:zlib'
+import { rgbaToThumbHash } from 'thumbhash'
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -196,6 +197,8 @@ const sessions: SessionSeed[] = [
             `![Banner gradient](data:image/png;base64,${gradientPng()})`,
         ].join('\n')],
     },
+    // A screenshot the person attached, uploaded encrypted, then their question about it.
+    { tag: 'photo-demo', summary: 'Fix the clipped header', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 9 },
     // TodoWrite, a sub-agent, an MCP call and a plan: the tools' own views.
     { tag: 'tools-demo', summary: 'Plan the reconnect fix', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 10 },
     { tag: 'dark-mode', summary: 'Add dark mode to settings', path: `${home}/code/happy/.dev/worktree/dark-mode`, flavor: 'claude', minutesAgo: 12 },
@@ -286,7 +289,7 @@ async function main() {
     const created: { id: string; seed: SessionSeed; key: Uint8Array; agentStateVersion: number }[] = []
     // --reset-chat / --reset-permission: the sessions holding those transcripts
     // is deleted and made again, so it is written afresh.
-    const stales = [...(resetChat ? ['fix-login', 'tools-demo'] : []), ...(resetPermission ? sessions.filter(({ agentState }) => agentState).map(({ tag }) => tag) : [])]
+    const stales = [...(resetChat ? ['fix-login', 'tools-demo', 'photo-demo'] : []), ...(resetPermission ? sessions.filter(({ agentState }) => agentState).map(({ tag }) => tag) : [])]
     for (const tag of stales) {
         const stale = await axios.post(`${server}/v1/sessions`, {
             tag,
@@ -325,6 +328,32 @@ async function main() {
     // The transcripts, each written once: the finished turn, and the ones waiting on the person.
     await writeTranscript(created.find(({ seed }) => seed.tag === 'fix-login')!, transcript())
     await writeTranscript(created.find(({ seed }) => seed.tag === 'tools-demo')!, toolsTranscript())
+    await writeTranscript(created.find(({ seed }) => seed.tag === 'photo-demo')!, await photoTranscript(created.find(({ seed }) => seed.tag === 'photo-demo')!))
+
+    /** The photo-demo chat: the screenshot sealed with the session's blob key and uploaded, as a phone sends it, then the prompt and a reply. */
+    async function photoTranscript(chat: { id: string; key: Uint8Array }): Promise<unknown[]> {
+        const existing = await axios.get(`${server}/v3/sessions/${chat.id}/messages?after_seq=0&limit=1`, { headers })
+        if ((existing.data.messages ?? []).length > 0) return []
+        const picture = mockupPicture()
+        const blobKey = await deriveKey(chat.key, 'Happy Blobs', ['session'])
+        const nonce = getRandomBytes(tweetnacl.secretbox.nonceLength)
+        const sealed = Buffer.concat([Buffer.from(nonce), Buffer.from(tweetnacl.secretbox(new Uint8Array(picture.bytes), nonce, blobKey))])
+        const name = 'header-clipped.png'
+        const upload = await axios.post(`${server}/v1/sessions/${chat.id}/attachments/request-upload`, { filename: name, size: sealed.length }, { headers })
+        await axios.put(upload.data.uploadUrl, sealed, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' } })
+        const prompt = 'The header gets cut off on this screen. Can you see why?'
+        return [
+            {
+                role: 'session', meta: { sentFrom: 'ios' },
+                content: {
+                    id: randomUUID(), time: Date.now(), role: 'user',
+                    ev: { t: 'file', ref: upload.data.ref, name, size: picture.bytes.length, image: { width: picture.width, height: picture.height, thumbhash: picture.thumbhash } },
+                },
+            },
+            { role: 'user', content: { type: 'text', text: prompt }, meta: { sentFrom: 'ios' } },
+            ...reply(prompt, 'Yes: the header sits under the status bar because the screen ignores the top safe-area inset. Padding the header by the inset fixes it.'),
+        ]
+    }
     for (const [tag, turn] of Object.entries(turns)) {
         await writeTranscript(created.find(({ seed }) => seed.tag === tag)!, turn.transcript())
     }
@@ -736,13 +765,48 @@ type PermissionReply = {
 
 /** A small left-to-right gradient as a PNG, for a markdown image the seed can show without the network. */
 function gradientPng(width = 64, height = 32): string {
+    return png(width, height, (x, y) => [Math.round(80 + (150 * x) / width), Math.round(60 + (120 * y) / height), 200]).toString('base64')
+}
+
+/** A made-up phone screenshot: a dark header, three cards and a button on a pale sky, as RGB. */
+function mockupPixel(width: number, height: number) {
+    return (x: number, y: number): [number, number, number] => {
+        const u = x / width
+        const v = y / height
+        if (v < 0.12) return [28, 32, 52]
+        const card = [0.18, 0.4, 0.62].findIndex((top) => v >= top && v < top + 0.18)
+        if (card >= 0 && u > 0.06 && u < 0.94) {
+            const tint = [[255, 255, 255], [255, 244, 228], [232, 246, 255]][card]
+            return v < [0.18, 0.4, 0.62][card] + 0.035 && u < 0.5 ? [90, 96, 120] : tint as [number, number, number]
+        }
+        if (v > 0.86 && v < 0.94 && u > 0.2 && u < 0.8) return [92, 84, 230]
+        return [Math.round(200 + 40 * v), Math.round(214 + 20 * v), 245]
+    }
+}
+
+/** The mockup as a PNG and its thumbhash (from a 100-pixel-tall copy), as a phone would attach it. */
+function mockupPicture(width = 600, height = 900) {
+    const pixel = mockupPixel(width, height)
+    const tw = Math.round((100 * width) / height)
+    const th = 100
+    const rgba = new Uint8Array(tw * th * 4)
+    for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+        const [r, g, b] = pixel((x + 0.5) * width / tw, (y + 0.5) * height / th)
+        rgba.set([r, g, b, 255], (y * tw + x) * 4)
+    }
+    return { bytes: png(width, height, pixel), width, height, thumbhash: Buffer.from(rgbaToThumbHash(tw, th, rgba)).toString('base64') }
+}
+
+/** An RGB PNG of [width]x[height], [pixel] by pixel. */
+function png(width: number, height: number, pixel: (x: number, y: number) => [number, number, number] | number[]): Buffer {
     const rows = Buffer.alloc((width * 3 + 1) * height)
     for (let y = 0; y < height; y++) {
         const at = y * (width * 3 + 1)
         for (let x = 0; x < width; x++) {
-            rows[at + 1 + x * 3] = Math.round(80 + (150 * x) / width)
-            rows[at + 2 + x * 3] = Math.round(60 + (120 * y) / height)
-            rows[at + 3 + x * 3] = 200
+            const [r, g, b] = pixel(x, y)
+            rows[at + 1 + x * 3] = r
+            rows[at + 2 + x * 3] = g
+            rows[at + 3 + x * 3] = b
         }
     }
     const crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -770,7 +834,7 @@ function gradientPng(width = 64, height = 32): string {
     return Buffer.concat([
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
         chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0)),
-    ]).toString('base64')
+    ])
 }
 
 function protocolState(): ClaudeSessionProtocolState {

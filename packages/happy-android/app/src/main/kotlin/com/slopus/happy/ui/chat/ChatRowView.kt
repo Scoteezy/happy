@@ -88,7 +88,7 @@ internal class ChatPlanPainter {
                     val eased = (1 - kotlin.math.cos(Math.PI * p)) / 2
                     drawBox(canvas, item.box.copy(alpha = 0.18 + (0.52 - 0.18) * eased), d)
                 }
-                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff, is ChatDrawItem.Mermaid, is ChatDrawItem.WebImage -> Unit
+                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff, is ChatDrawItem.Mermaid, is ChatDrawItem.WebImage, is ChatDrawItem.Attachment -> Unit
             }
         }
     }
@@ -164,6 +164,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     private val diffs = ArrayList<Pair<DiffChunkView, ChatDrawItem.Diff>>()
     private val mermaids = ArrayList<Pair<ChatMermaidView, ChatDrawItem.Mermaid>>()
     private val images = ArrayList<Pair<ChatWebImageView, ChatDrawItem.WebImage>>()
+    private val attachments = ArrayList<Pair<ChatAttachmentView, ChatDrawItem.Attachment>>()
     private var ticking = false
     /** A pulse redraws every frame; a timer every 100ms. */
     private var pulsing = false
@@ -213,6 +214,8 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         mermaids.clear()
         val spareImages = images.map { it.first }.toMutableList()
         images.clear()
+        val spareAttachments = attachments.map { it.first }.toMutableList()
+        attachments.clear()
         for (item in plan.items) {
             when (item) {
                 is ChatDrawItem.Scroller -> {
@@ -259,6 +262,12 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
                     view.apply(item.url, item.label)
                     images += view to item
                 }
+                is ChatDrawItem.Attachment -> {
+                    val view = spareAttachments.firstOrNull { it.attachment == item.attachment }?.also { spareAttachments.remove(it) }
+                        ?: (if (spareAttachments.isNotEmpty()) spareAttachments.removeAt(0) else ChatAttachmentView(context).also { addView(it) })
+                    view.apply(item.attachment)
+                    attachments += view to item
+                }
                 else -> Unit
             }
         }
@@ -266,6 +275,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         for (view in spareDiffs) removeView(view)
         for (view in spareMermaids) removeView(view)
         for (view in spareImages) removeView(view)
+        for (view in spareAttachments) removeView(view)
         ticking = pulsing || painter.hasElapsed(plan.items)
         requestLayout()
         invalidate()
@@ -294,6 +304,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         for ((view, item) in diffs) view.setFrame(item.frame)
         for ((view, item) in mermaids) view.setFrame(item.frame)
         for ((view, item) in images) view.setFrame(item.frame)
+        for ((view, item) in attachments) view.setFrame(item.frame)
         for ((view, item) in spinners) {
             // The platform's spinner at 0.8 of the glyph's box, as iOS scales its own.
             val f = item.frame
@@ -312,6 +323,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         for ((view, item) in spinners) view.indeterminateTintList = ColorStateList.valueOf(Theme.color(item.tint))
         for ((view, _) in diffs) view.applyTheme()
         for ((view, _) in mermaids) view.applyTheme()
+        for ((view, _) in attachments) view.applyTheme()
         invalidate()
         for ((view, _) in scrollers) view.getChildAt(0)?.invalidate()
     }

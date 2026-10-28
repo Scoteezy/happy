@@ -170,4 +170,15 @@ class ToolLogicTest {
         val t = tool("TodoWrite", """{"todos":[{"content":"a","status":"pending"}]}""", result = """{"newTodos":[{"content":"b","status":"completed"}]}""")
         assertEquals(listOf(TodoItem("b", "completed", null)), todoItems(message(t)))
     }
+
+    @Test
+    fun theAttachmentReadsLikeItsSchema() {
+        val input = ToolFileInput.of(json("""{"ref":"r1","name":"photo.png","size":1200,"image":{"width":640,"height":480,"thumbhash":"abc"}}"""))
+        assertEquals(ToolFileInput("r1", "photo.png", 640.0, 480.0, "abc"), input)
+        assertNull("no size given", ToolFileInput.of(json("""{"ref":"r1","name":"a.png"}"""))?.imageWidth)
+        assertNull("no ref", ToolFileInput.of(json("""{"name":"a.png"}""")))
+        assertNull(ToolFileInput.of(json("""{"ref":"r1","name":"a.png","size":"big"}""")))
+        assertNull("an image without its height", ToolFileInput.of(json("""{"ref":"r1","name":"a.png","image":{"width":1}}""")))
+        assertNull(ToolFileInput.of(json("""{"ref":"r1","name":"a.png","image":null}""")))
+    }
 }

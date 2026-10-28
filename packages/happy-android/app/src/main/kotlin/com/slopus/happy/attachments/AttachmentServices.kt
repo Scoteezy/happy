@@ -19,18 +19,29 @@ class AttachmentServices private constructor(private val graph: AppGraph) {
         .build()
     val api = AttachmentApi(client, serverUrl = { graph.serverConfig.url.value })
 
-    private var account: Pair<AuthState.SignedIn, AttachmentTransfers>? = null
+    private class Account(val state: AuthState.SignedIn, val transfers: AttachmentTransfers, val pictures: AttachmentPictures)
+
+    private var account: Account? = null
 
     /** The signed-in account's transfers, or null when signed out. */
-    val transfers: AttachmentTransfers?
-        @Synchronized get() {
-            val signedIn = graph.auth.state.value as? AuthState.SignedIn ?: return null.also { account = null }
-            account?.let { (state, transfers) -> if (state == signedIn) return transfers }
-            val blobKeys = SessionBlobKeys(graph.store, signedIn.encryption)
-            val transfers = AttachmentTransfers(api, blobKeys::blobKey, token = { signedIn.credentials.token })
-            account = signedIn to transfers
-            return transfers
-        }
+    val transfers: AttachmentTransfers? get() = current()?.transfers
+
+    /** The signed-in account's decoded pictures, or null when signed out. */
+    val pictures: AttachmentPictures? get() = current()?.pictures
+
+    @Synchronized
+    private fun current(): Account? {
+        val signedIn = graph.auth.state.value as? AuthState.SignedIn ?: return null.also { account = null }
+        account?.let { if (it.state == signedIn) return it }
+        val blobKeys = SessionBlobKeys(graph.store, signedIn.encryption)
+        val transfers = AttachmentTransfers(api, blobKeys::blobKey, token = { signedIn.credentials.token })
+        return Account(signedIn, transfers, AttachmentPictures()).also { account = it }
+    }
+
+    /** Lets the account's decoded pictures go (memory pressure). */
+    fun trimMemory() {
+        synchronized(this) { account }?.pictures?.removeAll()
+    }
 
     companion object {
         private val instances = WeakHashMap<AppGraph, AttachmentServices>()

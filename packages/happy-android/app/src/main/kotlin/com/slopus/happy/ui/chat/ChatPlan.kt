@@ -43,7 +43,12 @@ sealed interface ChatDrawItem {
     class WebImage(val url: String, val frame: Rect, val label: String) : ChatDrawItem
     /** A mermaid diagram, drawn by its own page; the page reports how tall it is with [ChatRowAction.MermaidHeight]. */
     class Mermaid(val diagram: ChatMermaid, val frame: Rect) : ChatDrawItem
+    /** A picture the person attached, loaded once it is on screen, its thumbhash until then. */
+    class Attachment(val attachment: ChatAttachment, val frame: Rect) : ChatDrawItem
 }
+
+/** A picture the person attached: [ref] under the session's attachments, and its thumbhash, shown until the picture arrives. */
+data class ChatAttachment(val ref: String, val thumbhash: String?)
 
 /**
  * A diagram in a row: [index] is its place among the row's diagrams, so it
