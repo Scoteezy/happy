@@ -4,7 +4,10 @@
  * stopped, so the Android and iOS apps can be compared screen by screen on
  * the same data without a real account or a real agent. The computer also
  * answers the daemon's start: a session asked for from the app is made,
- * kept online, and answers each prompt with one short turn.
+ * kept online, and answers each prompt with one short turn. Sessions waiting
+ * on a permission, a question form and an unknown request, one with a goal,
+ * and inactive ones (one it resumes, one only a terminal can) cover the bars
+ * above the composer; their answers land as a CLI's would.
  *
  * Run from packages/happy-cli, against `pnpm --filter happy-server standalone:dev`
  * (--reset-chat writes the transcript again):
@@ -59,8 +62,14 @@ type SessionSeed = {
     archived?: boolean
     /** Minutes ago the session last did anything. */
     minutesAgo: number
-    /** The agent state it is created with (a pending permission request). */
+    /** The agent state it is created with (a pending permission request, a form, a goal). */
     agentState?: object
+    /** More metadata: the agent's own session id, which resume needs. */
+    metadata?: object
+    /** The computer it ran on, when not the seeded one. */
+    machine?: string
+    /** A one-turn transcript: the person's prompt and the agent's answer. */
+    chat?: [string, string]
 }
 
 const home = '/Users/sam'
@@ -101,12 +110,75 @@ const sessions: SessionSeed[] = [
             completedRequests: {},
         },
     },
+    {
+        // A form the chat can't show inline (a written answer): the banner and the answer sheet.
+        tag: 'form-demo', summary: 'Name the release', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 4,
+        chat: ['Cut the release once the tests pass.', 'The tests pass. Before I tag it, I need a name for the release and where to announce it.'],
+        agentState: {
+            controlledByUser: false, requests: {}, completedRequests: {},
+            communications: {
+                comm_release: {
+                    kind: 'form', createdAt: Date.now(),
+                    form: {
+                        questions: [
+                            { id: 'name', header: 'Release', question: 'What should the release be called?' },
+                            {
+                                id: 'channels', header: 'Channels', question: 'Where should it be announced?', multiSelect: true, required: false,
+                                options: [
+                                    { label: 'Discord', description: 'The #announcements channel' },
+                                    { label: 'Blog' },
+                                    { label: 'Changelog', description: 'In the app, under What’s new' },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+            completedCommunications: {},
+        },
+    },
+    {
+        // A kind this build can't show: the banner offers Dismiss only.
+        tag: 'notice-demo', summary: 'Review the deploy plan', path: `${home}/code/happy-server`, flavor: 'claude', minutesAgo: 6,
+        chat: ['Plan the deploy of the new sync server.', 'I wrote the deploy plan and sent it to you for review.'],
+        agentState: {
+            controlledByUser: false, requests: {}, completedRequests: {},
+            communications: { comm_review: { kind: 'plan-review', title: 'Review the deploy plan', createdAt: Date.now() } },
+            completedCommunications: {},
+        },
+    },
+    {
+        // The agent's goal, set by this very Claude session: the goal bar with its three actions.
+        tag: 'goal-demo', summary: 'Get the sync tests green', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 8,
+        chat: ['/goal Get the sync tests green on CI before the release', 'Working on it: three sync tests fail on CI only. I am starting with the reconnect one.'],
+        metadata: { claudeSessionId: 'claude-goal-1' },
+        agentState: {
+            controlledByUser: false, requests: {}, completedRequests: {},
+            agentGoalStatus: {
+                status: 'active', source: 'claude', sourceSessionId: 'claude-goal-1',
+                text: 'Get the sync tests green on CI before the release',
+                capabilities: { edit: true, stop: true, clear: true },
+            },
+        },
+    },
     { tag: 'dark-mode', summary: 'Add dark mode to settings', path: `${home}/code/happy/.dev/worktree/dark-mode`, flavor: 'claude', minutesAgo: 12 },
     { tag: 'api-docs', summary: 'Write API docs for sessions', path: `${home}/code/happy-server`, flavor: 'codex', minutesAgo: 47 },
     { tag: 'flaky-tests', summary: 'Investigate flaky sync tests', path: `${home}/code/happy/.dev/worktree/flaky-tests`, flavor: 'claude', minutesAgo: 95 },
     { tag: 'landing', summary: 'Landing page copy pass', path: `${home}/code/website`, flavor: 'claude', minutesAgo: 60 * 5 },
     { tag: 'old-migration', summary: 'Migrate settings to v2', path: `${home}/code/happy`, flavor: 'claude', archived: true, minutesAgo: 60 * 26 },
     { tag: 'old-icons', summary: 'Regenerate the icon font', path: `${home}/code/happy`, flavor: 'codex', archived: true, minutesAgo: 60 * 24 * 3 },
+    // Inactive with the agent's id: Resume on the seeded computer, which answers it.
+    {
+        tag: 'resume-demo', summary: 'Tidy the release notes', path: `${home}/code/happy`, flavor: 'claude', archived: true, minutesAgo: 60 * 3,
+        chat: ['Tidy the release notes.', 'Done: grouped by area, and the typos are fixed.'],
+        metadata: { claudeSessionId: 'claude-resume-1' },
+    },
+    // Inactive on a computer this account no longer has: the commands that resume it from a terminal.
+    {
+        tag: 'old-laptop', summary: 'Port the CLI to Windows', path: `${home}/code/happy-cli`, flavor: 'claude', archived: true, minutesAgo: 60 * 30,
+        chat: ['Port the CLI to Windows.', 'The paths and the shell calls now work on Windows. The daemon still needs a service wrapper.'],
+        metadata: { claudeSessionId: 'claude-old-1' }, machine: 'seed-old-laptop',
+    },
 ]
 
 async function main() {
@@ -131,17 +203,20 @@ async function main() {
     }
 
     const machineKey = getRandomBytes(32)
+    // The daemon publishes that it takes resume-happy-session.
+    const machineMetadata = {
+        host: 'MacBook Pro',
+        platform: 'darwin',
+        happyCliVersion: '1.0.0',
+        homeDir: home,
+        happyHomeDir: `${home}/.happy`,
+        happyLibDir: `${home}/.happy/lib`,
+        cliAvailability: { claude: true, codex: true, gemini: false, openclaw: false, agy: false, detectedAt: Date.now() },
+        resumeSupport: { rpcAvailable: true, requiresSameMachine: true, detectedAt: Date.now() },
+    }
     const registered = await axios.post(`${server}/v1/machines`, {
         id: machineId,
-        metadata: encodeBase64(encryptWithDataKey({
-            host: 'MacBook Pro',
-            platform: 'darwin',
-            happyCliVersion: '1.0.0',
-            homeDir: home,
-            happyHomeDir: `${home}/.happy`,
-            happyLibDir: `${home}/.happy/lib`,
-            cliAvailability: { claude: true, codex: true, gemini: false, openclaw: false, agy: false, detectedAt: Date.now() },
-        }, machineKey)),
+        metadata: encodeBase64(encryptWithDataKey(machineMetadata, machineKey)),
         daemonState: encodeBase64(encryptWithDataKey({ status: 'running', pid: 4242, startedAt: Date.now() }, machineKey)),
         dataEncryptionKey: seal(machineKey),
     }, { headers })
@@ -162,7 +237,7 @@ async function main() {
     const created: { id: string; seed: SessionSeed; key: Uint8Array; agentStateVersion: number }[] = []
     // --reset-chat / --reset-permission: the session holding that transcript
     // is deleted and made again, so it is written afresh.
-    const stales = [...(resetChat ? ['fix-login'] : []), ...(resetPermission ? Object.keys(turns) : [])]
+    const stales = [...(resetChat ? ['fix-login'] : []), ...(resetPermission ? sessions.filter(({ agentState }) => agentState).map(({ tag }) => tag) : [])]
     for (const tag of stales) {
         const stale = await axios.post(`${server}/v1/sessions`, {
             tag,
@@ -183,9 +258,10 @@ async function main() {
                 homeDir: home,
                 happyHomeDir: `${home}/.happy`,
                 happyLibDir: `${home}/.happy/lib`,
-                machineId,
+                machineId: seed.machine ?? machineId,
                 flavor: seed.flavor,
                 summary: { text: seed.summary, updatedAt: Date.now() - seed.minutesAgo * 60_000 },
+                ...seed.metadata,
             }, key)),
             agentState: seed.agentState ? encodeBase64(encryptWithDataKey(seed.agentState, key)) : null,
             dataEncryptionKey: seal(key),
@@ -201,6 +277,10 @@ async function main() {
     await writeTranscript(created.find(({ seed }) => seed.tag === 'fix-login')!, transcript())
     for (const [tag, turn] of Object.entries(turns)) {
         await writeTranscript(created.find(({ seed }) => seed.tag === tag)!, turn.transcript())
+    }
+    for (const session of created.filter(({ seed }) => seed.chat)) {
+        const [prompt, text] = session.seed.chat!
+        await writeTranscript(session, [{ role: 'user', content: { type: 'text', text: prompt }, meta: { sentFrom: 'ios' } }, ...reply(prompt, text)])
     }
 
     /** Writes [records]; unless [append], only into a session that has none yet. */
@@ -246,9 +326,23 @@ async function main() {
             live[index].volatile.emit('session-alive', { sid: id, time: Date.now(), thinking: false, mode: 'remote' })
         })
     }
+    // A computer registered on an earlier run keeps its old metadata; it is
+    // written again so it says it takes resume.
+    let machineMetadataVersion: number = registered.data.machine?.metadataVersion ?? 0
+    const writeMachineMetadata = (retry = true) => machine.emit('machine-update-metadata', {
+        machineId,
+        metadata: encodeBase64(encryptWithDataKey(machineMetadata, machineDataKey)),
+        expectedVersion: machineMetadataVersion,
+    }, (answer: { result: string; version?: number }) => {
+        if (answer.version !== undefined) machineMetadataVersion = answer.version
+        if (answer.result === 'version-mismatch' && retry) writeMachineMetadata(false)
+    })
     machine.on('connect', () => {
         beat()
-        for (const method of ['spawn-happy-session', 'bash', 'stop-session']) machine.emit('rpc-register', { method: `${machineId}:${method}` })
+        writeMachineMetadata()
+        for (const method of ['spawn-happy-session', 'resume-happy-session', 'bash', 'stop-session']) {
+            machine.emit('rpc-register', { method: `${machineId}:${method}` })
+        }
     })
     // The daemon's side of a start: a session is made where it was asked
     // for, kept online, and answers each prompt with one short turn.
@@ -261,6 +355,16 @@ async function main() {
         if (method === 'spawn-happy-session') {
             await new Promise((resolve) => setTimeout(resolve, 1200))
             answer = { type: 'success', sessionId: await spawn(String(params.directory ?? home), String(params.agent ?? 'claude')) }
+        } else if (method === 'resume-happy-session') {
+            // The agent comes back under the same session, which goes online again.
+            const session = created.find(({ id }) => id === params.sessionId)
+            await new Promise((resolve) => setTimeout(resolve, 1500))
+            if (session) {
+                answerPrompts(session)
+                answer = { type: 'success', sessionId: session.id }
+            } else {
+                answer = { type: 'error', errorMessage: 'This computer has no record of that session' }
+            }
         } else if (method === 'bash') {
             answer = { success: false, stdout: '', stderr: 'fatal: not a git repository', exitCode: 128 }
         } else {
@@ -281,7 +385,14 @@ async function main() {
             dataEncryptionKey: seal(key),
         }, { headers })
         const id: string = response.data.session.id
-        const chat = { id, key: unseal(response.data.session.dataEncryptionKey) }
+        answerPrompts({ id, key: unseal(response.data.session.dataEncryptionKey) })
+        console.error('spawned', id, directory, agent)
+        return id
+    }
+
+    /** Keeps a started or resumed session online, answering each prompt with one short turn. */
+    function answerPrompts(chat: { id: string; key: Uint8Array }) {
+        const id = chat.id
         const socket = io(ws, {
             transports: ['websocket'],
             path: '/v1/updates',
@@ -300,18 +411,23 @@ async function main() {
             await writeTranscript(chat, reply(record.content.text ?? ''), true)
             alive(false)
         })
-        console.error('spawned', id, directory, agent)
-        return id
     }
+
     // The server takes no agent state when a session is made: a session with
     // one sets it over its own socket, once (or again with --reset-permission),
     // and answers the app's permission RPC as the CLI does: the request moves
-    // to completedRequests and, approved, the command "runs".
+    // to completedRequests and, approved, the command "runs". A form's answer
+    // or dismissal moves it to completedCommunications; a goal action edits or
+    // clears the goal.
     created.filter(({ seed }) => !seed.archived).forEach((session, index) => {
         if (!session.seed.agentState) return
         const socket = live[index]
         let version = session.agentStateVersion
-        let agentState = session.seed.agentState as { requests: Record<string, object>; completedRequests: Record<string, object> }
+        let agentState = session.seed.agentState as {
+            requests: Record<string, object>; completedRequests: Record<string, object>
+            communications?: Record<string, object>; completedCommunications?: Record<string, object>
+            agentGoalStatus?: { text: string; status: string }
+        }
         const writeState = () => new Promise<void>((resolve) => {
             socket.emit('update-state', {
                 sid: session.id,
@@ -324,7 +440,7 @@ async function main() {
             })
         })
         socket.on('connect', () => {
-            socket.emit('rpc-register', { method: `${session.id}:permission` })
+            for (const method of ['permission', 'communication', 'goal-action']) socket.emit('rpc-register', { method: `${session.id}:${method}` })
             if (version === 0 || resetPermission) {
                 agentState = {
                     ...agentState,
@@ -334,6 +450,42 @@ async function main() {
             }
         })
         socket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
+            const method = data.method.slice(session.id.length + 1)
+            if (method === 'communication') {
+                const response = decryptWithDataKey(decodeBase64(data.params), session.key) as { id: string; status: string; answers?: object }
+                console.error('communication', JSON.stringify(response))
+                await new Promise((resolve) => setTimeout(resolve, 1200))
+                const communication = agentState.communications?.[response.id]
+                if (communication) {
+                    const communications = { ...agentState.communications }
+                    delete communications[response.id]
+                    agentState = {
+                        ...agentState,
+                        communications,
+                        completedCommunications: {
+                            ...agentState.completedCommunications,
+                            [response.id]: { ...communication, status: response.status, completedAt: Date.now(), answers: response.answers },
+                        },
+                    }
+                    await writeState()
+                    if (response.status === 'answered') {
+                        await writeTranscript(session, reply('', `Thanks, that is what I needed: ${summarize(response.answers)}.`), true)
+                    }
+                }
+                callback(encodeBase64(encryptWithDataKey({ ok: true }, session.key)))
+                return
+            }
+            if (method === 'goal-action') {
+                const request = decryptWithDataKey(decodeBase64(data.params), session.key) as { action: string; objective?: string }
+                console.error('goal action', JSON.stringify(request))
+                await new Promise((resolve) => setTimeout(resolve, 1200))
+                const goal = agentState.agentGoalStatus
+                if (goal && request.action === 'clear') agentState = { ...agentState, agentGoalStatus: { ...goal, status: 'inactive' } }
+                if (goal && request.action === 'edit' && request.objective) agentState = { ...agentState, agentGoalStatus: { ...goal, text: request.objective } }
+                await writeState()
+                callback(encodeBase64(encryptWithDataKey({ ok: true }, session.key)))
+                return
+            }
             const answer = decryptWithDataKey(decodeBase64(data.params), session.key) as PermissionReply
             console.error('permission answer', JSON.stringify(answer))
             // A CLI takes a moment to answer; the tapped button pulses meanwhile.
@@ -449,17 +601,25 @@ function transcript(): unknown[] {
 }
 
 /** The spawned sessions' answer to a prompt: one Claude turn that says what it got. */
-function reply(prompt: string): unknown[] {
+function reply(prompt: string, text = `Got it: “${prompt}”. This computer is the seed script, so nothing will run, but the session is real.`): unknown[] {
     const state = protocolState()
     const records: unknown[] = []
     const mapped = mapClaudeLogMessageToSessionEnvelopes({
         uuid: randomUUID(), type: 'assistant',
-        message: { role: 'assistant', model: 'claude-sonnet-4-5', content: [{ type: 'text', text: `Got it: “${prompt}”. This computer is the seed script, so nothing will run, but the session is real.` }] },
+        message: { role: 'assistant', model: 'claude-sonnet-4-5', content: [{ type: 'text', text }] },
     } as never, state)
     state.currentTurnId = mapped.currentTurnId
     mapped.envelopes.forEach((content: unknown) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
     closeClaudeTurnWithStatus(state, 'completed').envelopes.forEach((content: unknown) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
     return records
+}
+
+/** A form's answers in a line: each question's picks and written answer. */
+function summarize(answers: object | undefined): string {
+    return Object.values((answers ?? {}) as Record<string, { options?: string[]; custom?: string }>)
+        .map((answer) => [...(answer.options ?? []), answer.custom].filter(Boolean).join(', '))
+        .filter(Boolean)
+        .join('; ')
 }
 
 /** What the app answers a permission with (the CLI's `PermissionResponse`). */
