@@ -22,6 +22,13 @@ import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatMessagesSource
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.ChatState
+import com.slopus.happy.chat.AgentWorkGroup
+import com.slopus.happy.chat.ChatListItem
+import com.slopus.happy.chat.WorkGroupExpansion
+import com.slopus.happy.chat.WorkHeaderPlacement
+import com.slopus.happy.chat.chatListItems
+import com.slopus.happy.chat.groupChatRowsForDisplay
+import com.slopus.happy.chat.isCurrentTurnComplete
 import com.slopus.happy.chat.InactiveSessionHint
 import com.slopus.happy.chat.InlineQuestionForm
 import com.slopus.happy.chat.PendingAgentCommunication
@@ -128,6 +135,10 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private var resuming = false
     private var goalInFlight: AgentGoalAction? = null
     private var questionSheet: AgentQuestionSheetScreen? = null
+    /** Which folded turns are open, and the turns seen running. */
+    private var workGroups = WorkGroupExpansion()
+    /** The work groups on screen, by id, for a header's tap. */
+    private var shownGroups = mapOf<String, AgentWorkGroup>()
     private var loadingOlder = false
     private var listWidth = 0.0
     private val planRequests = MutableStateFlow<PlanRequest?>(null)
@@ -135,10 +146,17 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private val plans = HashMap<String, Pair<PlanKey, ChatRowPlan>>()
     private val planner = Dispatchers.Default.limitedParallelism(1)
 
-    private data class PlanKey(val input: ChatRowInput, val width: Double)
+    /** A row's [ChatRowInput], or a work header's [HeaderInput], at a width. */
+    private data class PlanKey(val input: Any, val width: Double)
+
+    private data class HeaderInput(val group: AgentWorkGroup, val placement: WorkHeaderPlacement, val expanded: Boolean, val style: ChatRowStyle)
 
     private data class PlanRequest(
         val rows: List<ChatRow>,
+        /** `groupToolCalls`: a finished turn's work folds under "Worked …". */
+        val groupWork: Boolean,
+        val currentTurnComplete: Boolean,
+        val groups: WorkGroupExpansion,
         val expanded: Set<String>,
         val copied: String?,
         val permissionBusy: Map<String, PermissionChoice>,
@@ -150,7 +168,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         val pinning: String? = null,
     )
 
-    private class Planned(val footer: ChatRowPlan, val rows: List<ChatRowPlan>, val pinning: String?)
+    private class Planned(val footer: ChatRowPlan, val rows: List<ChatRowPlan>, val pinning: String?, val groups: Map<String, AgentWorkGroup>)
 
     override fun createView(): View = root
 
@@ -191,7 +209,10 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             planRequests.filterNotNull()
                 .map { request -> plan(request) }
                 .flowOn(planner)
-                .collect { list.submit(it.footer, it.rows, it.pinning) }
+                .collect {
+                    shownGroups = it.groups
+                    list.submit(it.footer, it.rows, it.pinning)
+                }
         }
     }
 
@@ -352,24 +373,49 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
 
     private fun requestPlans(pinning: String? = null) {
         if (listWidth <= 0) return
-        planRequests.value = PlanRequest(state.snapshot.rows, expandedTools, copiedMessageId, permissionBusy, diffExpanded, questionStates(), style(), listWidth, pinning)
+        val rows = state.snapshot.rows
+        val currentTurnComplete = isCurrentTurnComplete(state.thinking, state.session?.agentState)
+        workGroups = workGroups.observed(sessionId, foreground = true, rows, currentTurnComplete)
+        planRequests.value = PlanRequest(
+            rows, settings.groupToolCalls, currentTurnComplete, workGroups,
+            expandedTools, copiedMessageId, permissionBusy, diffExpanded, questionStates(), style(), listWidth, pinning,
+        )
     }
 
-    /** On [planner]: every row's plan, made again only where its input or the width changed. */
+    /**
+     * On [planner]: a finished turn's work folded under its header (when
+     * `groupToolCalls` is on), then every row's plan, made again only where
+     * its input or the width changed.
+     */
     private fun plan(request: PlanRequest): Planned {
-        val seen = HashSet<String>(request.rows.size)
-        val rows = request.rows.map { row ->
-            val input = ChatRowInput(
-                row, expanded = row.key in request.expanded, copied = row.key == request.copied,
-                permissionBusy = request.permissionBusy[row.key], diffExpanded = request.diffExpanded[row.key].orEmpty(),
-                question = request.questions[row.key], style = request.style,
-            )
+        val display = groupChatRowsForDisplay(request.rows, request.groupWork, collapseCurrentTurn = request.currentTurnComplete)
+        val items = chatListItems(display, request.groups::isExpanded)
+        val seen = HashSet<String>(items.size)
+        val groups = HashMap<String, AgentWorkGroup>()
+        val rows = items.map { item ->
+            seen += item.key
+            val input: Any = when (item) {
+                is ChatListItem.Row -> {
+                    val row = item.row
+                    ChatRowInput(
+                        row, expanded = row.key in request.expanded, copied = row.key == request.copied,
+                        permissionBusy = request.permissionBusy[row.key], diffExpanded = request.diffExpanded[row.key].orEmpty(),
+                        question = request.questions[row.key], style = request.style,
+                    )
+                }
+                is ChatListItem.WorkHeader -> {
+                    groups[item.group.id] = item.group
+                    HeaderInput(item.group, item.placement, request.groups.isExpanded(item.group), request.style)
+                }
+            }
             val key = PlanKey(input, request.width)
-            seen += row.key
-            plans[row.key]?.takeIf { it.first == key }?.second ?: renderer.plan(input, request.width).also { plans[row.key] = key to it }
+            plans[item.key]?.takeIf { it.first == key }?.second ?: when (input) {
+                is HeaderInput -> renderer.workHeader(item.key, input.group, input.placement, input.expanded, request.width, input.style)
+                else -> renderer.plan(input as ChatRowInput, request.width)
+            }.also { plans[item.key] = key to it }
         }
         plans.keys.retainAll(seen)
-        return Planned(renderer.footer(request.width), rows, request.pinning)
+        return Planned(renderer.footer(request.width), rows, request.pinning, groups)
     }
 
     // List
@@ -413,7 +459,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
                 requestPlans(pinning = action.id)
             }
             is ChatRowAction.ToggleGroup -> {
-                expandedTools = if (action.id in expandedTools) expandedTools - action.id else expandedTools + action.id
+                val group = shownGroups[action.id] ?: return
+                workGroups = workGroups.toggled(group)
                 requestPlans(pinning = action.id)
             }
             is ChatRowAction.OpenLink -> open(action.url)

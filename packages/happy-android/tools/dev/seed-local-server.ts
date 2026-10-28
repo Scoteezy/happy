@@ -12,7 +12,7 @@
  * Run from packages/happy-cli, against `pnpm --filter happy-server standalone:dev`
  * (--reset-chat writes the transcript again):
  *
- *     npx tsx ../happy-android/tools/dev/seed-local-server.ts --server http://localhost:3005 [--secret <base64url>] [--offline] [--reset-chat] [--reset-permission]
+ *     npx tsx ../happy-android/tools/dev/seed-local-server.ts --server http://localhost:3005 [--secret <base64url>] [--offline] [--reset-chat] [--reset-permission] [--setting key=value]
  *
  * It prints the account's secret key; sign in on a device with "Restore with
  * secret key". Pass the same --secret again to reuse the account. --offline
@@ -28,7 +28,9 @@ import {
     decodeBase64,
     encodeBase64,
     encodeBase64Url,
+    decryptLegacy,
     decryptWithDataKey,
+    encryptLegacy,
     encryptWithDataKey,
     getRandomBytes,
     libsodiumEncryptForPublicKey,
@@ -51,6 +53,14 @@ const server = option('server') ?? 'http://localhost:3005'
 const offline = args.includes('--offline')
 const resetChat = args.includes('--reset-chat')
 const resetPermission = args.includes('--reset-permission')
+/** --setting key=value (repeatable): account settings written before seeding, as JSON values (`groupToolCalls=true`). */
+const settingOverrides = args.flatMap((arg, index) => arg === '--setting' && args[index + 1] ? [args[index + 1]] : []).map((pair) => {
+    const at = pair.indexOf('=')
+    const raw = pair.slice(at + 1)
+    let value: unknown = raw
+    try { value = JSON.parse(raw) } catch { /* a bare string */ }
+    return [pair.slice(0, at), value] as const
+})
 const secret = option('secret') ? decodeBase64(option('secret')!, 'base64url') : getRandomBytes(32)
 const client = { 'X-Happy-Client': 'cli/seed-local-server' }
 
@@ -190,6 +200,18 @@ async function main() {
     }, { headers: client })
     const token: string = auth.data.token
     const headers = { ...client, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+
+    // Account settings are sealed with the secret itself, as the apps write them.
+    if (settingOverrides.length > 0) {
+        const current = await axios.get(`${server}/v1/account/settings`, { headers })
+        const stored = current.data.settings ? decryptLegacy(decodeBase64(current.data.settings), secret) ?? {} : {}
+        const settings = { ...stored, ...Object.fromEntries(settingOverrides) }
+        const written = await axios.post(`${server}/v1/account/settings`, {
+            settings: encodeBase64(encryptLegacy(settings, secret)),
+            expectedVersion: current.data.settingsVersion,
+        }, { headers })
+        console.error('settings', JSON.stringify(Object.fromEntries(settingOverrides)), written.data.success ? 'written' : written.data.error)
+    }
 
     // The account's content key: records carry a data key sealed to it, as
     // the app and the CLI write them.

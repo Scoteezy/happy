@@ -4,6 +4,9 @@ import android.content.res.Resources
 import android.text.Layout
 import com.slopus.happy.R
 import com.slopus.happy.chat.AgentEvent
+import com.slopus.happy.chat.AgentWorkGroup
+import com.slopus.happy.chat.WorkHeaderPlacement
+import com.slopus.happy.chat.formatWorkDuration
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.PermissionStatus
@@ -57,6 +60,7 @@ import com.slopus.happy.layout.chat.MarkdownLayout
 import com.slopus.happy.layout.chat.PermissionFooterLayout
 import com.slopus.happy.layout.chat.ToolCardLayout
 import com.slopus.happy.layout.chat.UserMessageLayout
+import com.slopus.happy.layout.chat.WorkGroupHeaderLayout
 import com.slopus.happy.layout.syntaxBracket1
 import com.slopus.happy.layout.syntaxBracket2
 import com.slopus.happy.layout.syntaxBracket3
@@ -130,6 +134,32 @@ class ChatRowRenderer(private val resources: Resources) {
         is ChatRow.AgentText -> agentText(row, input.copied, width, input.style)
         is ChatRow.Tool -> toolCall(row.message, input, width)
         is ChatRow.Event -> agentEvent(row.message, width, input.style)
+    }
+
+    /**
+     * AgentWorkGroupHeader: "Worked 2m3s ›" over a folded turn; "Hide ⌃"
+     * under an open one, where a tap folds it again.
+     */
+    fun workHeader(id: String, group: AgentWorkGroup, placement: WorkHeaderPlacement, expanded: Boolean, width: Double, style: ChatRowStyle): ChatRowPlan {
+        val trailing = placement == WorkHeaderPlacement.Trailing
+        val duration = (group.completedAt ?: group.startedAt) - group.startedAt
+        val label = if (trailing) {
+            resources.getString(R.string.tool_group_hide)
+        } else {
+            resources.getString(R.string.tool_group_worked_for, formatWorkDuration(duration))
+        }
+        val text = MeasuredText(ChatStrings.string(label, Palette.textSecondary), ChatTextStyles.workGroup, style.env, maxLines = 1)
+        val layout = WorkGroupHeaderLayout(width, style.maxContentWidth, text.measurable)
+        val chevron = Icon.ionicons(if (trailing || expanded) "chevron-up" else "chevron-forward")
+        return ChatRowPlan(
+            id, layout.size,
+            listOf(
+                ChatDrawItem.Text(text.layout(layout.label), layout.label),
+                ChatDrawItem.Glyph(chevron, WorkGroupHeaderLayout.Metrics.chevronSize, layout.chevron, Palette.textSecondary),
+            ),
+            hits = listOf(ChatHit(layout.header, ChatRowAction.ToggleGroup(group.id))),
+            accessibilityLabel = label,
+        )
     }
 
     /** ChatFooter, just past the newest message: padding only, or the "terminal has control" box. */
