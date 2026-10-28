@@ -273,6 +273,7 @@ class AppGraph(
             parent = scope.coroutineContext[Job]!!,
             foreground = foreground,
             outboxFiles = java.io.File(appContext.filesDir, "outbox"),
+            fileCacheDirectory = withContext(Dispatchers.IO) { LocalCaches.prepareFileCache(appContext, state.encryption.anonId) },
         )
         accountState.value = account
         account.start()

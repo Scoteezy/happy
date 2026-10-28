@@ -47,7 +47,9 @@ import kotlin.math.min
  *
  * The session's root is read off the main thread. Until it is, the file is
  * resolved against the root it had when one of its files was last shown,
- * which is where its cached copy is.
+ * which is where its cached copy is. A copy kept on disk (after a
+ * relaunch) is read off the main thread too, before the computer is asked;
+ * offline, it stays on screen under the error alert.
  *
  * Follows the person's text size: the lines are measured at it off the main
  * thread, and a new size measures them again with the line at the top of
@@ -101,7 +103,7 @@ class SessionFileScreen(
         val known = cache?.root(sessionId)
         sessionPath = known?.path
         target = FileViewer.Target(rawPath, known?.path)
-        val cached = if (known == null) null else cache.file(sessionId, target.filePath)?.let(FileViewer::snapshot)
+        val cached = if (known == null) null else cache.get(sessionId, target.filePath)
         content = cached?.content
         diff = cached?.diff
         isLoading = cached == null
@@ -172,7 +174,10 @@ class SessionFileScreen(
             if (graph.account.value !== account) return@launch
             val cache = account.fileCache
             resolve(root, cache)
-            val result = FileViewer.load(target, sessionPath, SyncSessionFileOps(account), sessionId, cache)
+            // A copy kept on disk (after a relaunch), read off the main thread before the computer is asked; offline, it stays.
+            val read = target
+            if (content == null) cache.snapshot(sessionId, read.filePath)?.let { showKept(it, read) }
+            val result = FileViewer.load(read, sessionPath, SyncSessionFileOps(account), sessionId, cache)
             if (graph.account.value !== account) return@launch
             apply(result)
         }
@@ -186,13 +191,24 @@ class SessionFileScreen(
         val resolved = FileViewer.Target(rawPath, root)
         if (resolved == target) return
         target = resolved
-        val cached = cache.file(sessionId, resolved.filePath)?.let(FileViewer::snapshot)
+        val cached = cache.get(sessionId, resolved.filePath)
         content = cached?.content
         diff = cached?.diff
         isLoading = cached == null
         plans = emptyList()
         cancelPlan()
         showTarget()
+        updateMode()
+        render()
+    }
+
+    /** The copy kept on disk, while nothing else shows. */
+    private fun showKept(kept: FileViewer.Snapshot, read: FileViewer.Target) {
+        if (graph.account.value !== account || read != target || content != null || error != null) return
+        content = kept.content
+        if (kept.diff != null && diff == null) diff = kept.diff
+        isLoading = false
+        scrollsToLine = true
         updateMode()
         render()
     }

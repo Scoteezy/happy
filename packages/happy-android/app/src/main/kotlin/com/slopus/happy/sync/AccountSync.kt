@@ -59,6 +59,8 @@ class AccountSync(
     reconnectDelayMs: (Int) -> Long = { socketIoBackoff(it) },
     /** Where pictures wait in the outbox until they are uploaded; null takes none. */
     outboxFiles: java.io.File? = null,
+    /** Where the file viewer keeps its reads across launches (`SessionFileCache.directory`, made ready); null keeps them in memory. */
+    fileCacheDirectory: java.io.File? = null,
 ) {
     private val job = SupervisorJob(parent)
     private val scope = CoroutineScope(job + io)
@@ -86,9 +88,9 @@ class AccountSync(
     )
 
     /** The file viewer's and changes screen's last reads, shown while they fetch again. */
-    val fileCache = SessionFileCache()
+    val fileCache = SessionFileCache(fileCacheDirectory)
 
-    val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate, onSessionDeleted = fileCache::forgetSession)
+    val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate, onSessionDeleted = fileCache::removeSession)
 
     private val rpc = RpcClient(socket, store, decoder, io)
 
@@ -206,6 +208,8 @@ class AccountSync(
     suspend fun stop() {
         socket.disconnect()
         job.cancelAndJoin()
+        // What waits is written; then nothing more, so the account's files can go.
+        fileCache.close()
     }
 
     private val viewingRefreshes = MutableSharedFlow<Set<String>>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)

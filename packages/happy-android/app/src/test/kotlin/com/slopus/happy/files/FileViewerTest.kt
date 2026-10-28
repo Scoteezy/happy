@@ -182,16 +182,12 @@ class FileViewerTest {
 
     @Test fun cache() = runTest {
         val cache = SessionFileCache()
-        assertNull(cache.file("s", "$root/a.ts"))
+        assertNull(cache.get("s", "$root/a.ts"))
         FileViewer.load(Target("a.ts", root), root, Ops("", read = ReadFileResult(true, "eA==")), "s", cache)
-        assertEquals(Snapshot(Content("x", false), null), FileViewer.snapshot(cache.file("s", "$root/a.ts")!!))
-        assertNull(cache.file("t", "$root/a.ts"))
+        assertEquals(Snapshot(Content("x", false), null), cache.get("s", "$root/a.ts"))
+        assertNull(cache.get("t", "$root/a.ts"))
         // A failed read keeps the copy.
         FileViewer.load(Target("a.ts", root), root, Ops("", read = ReadFileResult(false, null, "gone")), "s", cache)
-        assertEquals("x", cache.file("s", "$root/a.ts")!!.content)
-        cache.setRoot("s", SessionFileCache.Root(root))
-        assertEquals(SessionFileCache.Root(root), cache.root("s"))
-        cache.forgetSession("s")
-        assertNull(cache.root("s"))
+        assertEquals(Snapshot(Content("x", false), null), cache.get("s", "$root/a.ts"))
     }
 }

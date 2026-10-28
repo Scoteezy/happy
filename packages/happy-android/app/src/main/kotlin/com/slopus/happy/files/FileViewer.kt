@@ -163,15 +163,9 @@ object FileViewer {
      */
     suspend fun load(target: Target, sessionPath: String?, ops: SessionFileOps, sessionId: String, cache: SessionFileCache): LoadResult {
         val result = load(target, sessionPath, ops, sessionId)
-        if (result is LoadResult.Loaded) {
-            val snapshot = result.snapshot
-            cache.putFile(sessionId, target.filePath, snapshot.content.content, snapshot.diff, snapshot.content.isBinary)
-        }
+        if (result is LoadResult.Loaded) cache.set(sessionId, target.filePath, result.snapshot)
         return result
     }
-
-    /** A cached read as a snapshot. */
-    fun snapshot(file: SessionFileCache.File) = Snapshot(Content(file.content.orEmpty(), file.isBinary), file.diff)
 
     /**
      * The view the screen opens on: the file when a line was asked for,
