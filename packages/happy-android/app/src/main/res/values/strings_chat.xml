@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Chat strings with no happy-app catalog key (literals in its source), in
+  English only. strings.xml is generated from the catalogs; this file is not.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- AgentInput.tsx accessibilityLabel literals -->
+    <string name="composer_add_photo">Add photo</string>
+    <string name="composer_stop">Stop</string>
+    <string name="composer_send">Send</string>
+</resources>

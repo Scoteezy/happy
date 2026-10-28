@@ -85,7 +85,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 
 - [~] Home header: account glyph (dev/preview) or logo, "Sessions" + connection status, filter menu as a `PopupMenu` (Grouping, Flat List / Group by Project, Appearance Settings), settings. Evidence: `home/compare-list.png`, `home/compare-filter.png`, `home/10-filter-menu-*.png`. Settings opens the onboarding settings until Settings is ported; Appearance says not available yet; the account picture is not loaded yet (glyph only)
 - [~] Home states: loading, link, offline, no sessions, list, cross-faded in 250 ms; the link state keeps the onboarding bar, the rest float the header over the content (`home/home-restore.mp4`: restore → list). No sessions and the offline checklist are built but not yet exercised on the emulator
-- [~] Flat session list (live rows, archive toggle, archived by day), rows with status, draft glyph, line counts, generated avatars, faded rows when the computer is offline. Evidence: `home/compare-list.png` (vs `ios-ref/20-home-list.png`), `home/compare-offline-list.png`, `home/home-interact.mp4`, `home/home-offline.mp4`. Opening a chat waits for the chat stage
+- [~] Flat session list (live rows, archive toggle, archived by day), rows with status, draft glyph, line counts, generated avatars, faded rows when the computer is offline. Evidence: `home/compare-list.png` (vs `ios-ref/20-home-list.png`), `home/compare-offline-list.png`, `home/home-interact.mp4`, `home/home-offline.mp4`. A tap opens the chat
 - [x] Project grouping (computer header, Projects, worktrees, archived chats at 0.6), expanded projects in local settings. Evidence: `home/compare-grouped.png`, `home/compare-dark-grouped.png`, `home/07-grouped.png`
 - [ ] Archive by swipe and long press; the "Session" actions (details, resume, fork, duplicate, archive)
 - [ ] Tasks and bots rows
@@ -95,14 +95,14 @@ Rules carried over from iOS (see `AGENTS.md`):
 
 ### Chat
 
-- [ ] Session screen shell: header (title capsule, avatar, status, git status), back, info, CLI-outdated pill, inactive hint
-- [ ] Inverted list engine: off-main measured rows, manual frames, animated arrival/growth, scroll position keeping, older pages
-- [ ] Keyboard: composer rides the IME (`WindowInsetsAnimation`), interactive dismiss, list insets
-- [ ] Messages: user bubbles + delivery status, agent text, events, unsupported placeholder
-- [ ] Markdown: blocks, spans, links, lists, tables, code with syntax highlighting, mermaid, copy
+- [~] Session screen shell: header (back circle with Material's arrow, title capsule with subtitle and line changes, avatar circle grey while offline) over the strong scrim at 0.80/0.96, the dock fade, `ChatScreenLayout` placing it all (`ui/chat/ChatScreen.kt`, `ChatHeaderView.kt`). Evidence: `chat/a03-chat-*.png` vs `ios-ref/30-chat.png`, `chat/a07-top-*.png` vs `ios-ref/32-chat-top.png`, dark `chat/a21-dark-*.png`. Info opens a not-ported alert; the CLI-outdated pill, inactive hint and git status (live branch/lines over RPC) are to do
+- [~] Inverted list engine: rows planned off main (one planner thread, plans cached per row and width), drawn from their plans in a reverse-layout RecyclerView; newest edge follows within 200dp, the reader's row holds otherwise, an opened or closed tool keeps its top (pinning), the next page loads within a screen of the oldest row, jump-to-newest button past 300dp, status row hysteresis 48/16 (`ChatListView.kt`). Evidence: `chat/chat-keyboard-send.mp4`, `chat/chat-tool-expand.mp4`. iOS's single-block follow slide (`ChatFollowMotion`) is the item animator's per-row moves here
+- [~] Keyboard: the dock rides the IME frame by frame (`ScreenStack`'s `WindowInsetsAnimation` into `ChatScreenLayout.keyboardTop`), and the newest edge stays put as the inset changes (`visibleMinYAfterNewestInsetChange`). Evidence: `chat/a09-kb-*.png`, `chat/chat-keyboard-send.mp4`. Interactive dismiss by dragging the list is to do
+- [~] Messages: user bubbles (bubble colour setting, pending at 0.45, failed + retry), agent text with copy and the copied tick, events. Evidence: `chat/a03-chat-*.png`
+- [~] Markdown: headers, paragraphs, bold/italic/code spans, links, numbered and bulleted lists, tables and code blocks scrolling sideways, syntax highlighting, options (`MarkdownLayout` with its iOS tests). Evidence: `chat/a06-top-*.png`, `chat/and-chat-ab.png`. Mermaid draws as a code block and images as a placeholder box for now
 - [ ] Text selection screen, long-press copy
-- [ ] Tool calls collapsed by default; headers, sections, errors, full view
-- [ ] Tool views: Bash, Edit, MultiEdit, Write, Todo, Task, MCP, Codex, Gemini, file, exit plan, questions
+- [~] Tool calls: compact rows (eye/terminal glyphs, grey), Edit card, tap to open/close (pinned), Bash terminal panel, raw Input/Output sections, errors, running spinner and timer. Evidence: `chat/a19-bash-open-*.png`, `chat/a20-edit-open-*.png`, `chat/chat-tool-expand.mp4`. The full tool view screen is to do
+- [ ] Tool views: Bash (terminal panel done), Edit, MultiEdit, Write (diff views not ported: they show raw Input/Output), Todo, Task, MCP, Codex, Gemini, file, exit plan, questions
 - [ ] Permission prompts
 - [ ] Agent questions: banner, sheet with footer above the keyboard, inline form
 - [ ] Image and file messages
@@ -110,7 +110,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [ ] Goal bar, work group headers, rig activity bar
 - [ ] Empty and pending states
 - [ ] Worktree tab strip
-- [ ] Composer: growing input, send/stop, drafts, chips (permission, model, effort), status rows
+- [~] Composer: status row (online / thinking word / permission / last seen, pulsing dot), growing input (`AgentInputCardLayout`), send / stop / blocked / voice primary, permission, model and effort chips opening the platform's popup menu with the current pick checked, picks shown at once and written through `SessionComposer`, drafts synced, shake on refusal (`ui/composer/`). Evidence: `chat/a10-typed-*.png`, `chat/a11-sent-*.png`, `chat/a15-perm-menu-*.png`, `chat/a16-model-menu-*.png`, `chat/a12-model-menu-*.png`. The usage row, the full-screen editor, voice and attachments are to do
 - [ ] Autocomplete: slash commands, file mentions
 - [ ] Attachments: paste, photo picker, strip, limits and alerts
 

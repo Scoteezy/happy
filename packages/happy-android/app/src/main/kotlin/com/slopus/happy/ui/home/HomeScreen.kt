@@ -34,6 +34,7 @@ import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.ui.components.Alerts
 import com.slopus.happy.ui.components.AvatarStyle
 import com.slopus.happy.ui.components.RoundButton
+import com.slopus.happy.ui.chat.ChatScreen
 import com.slopus.happy.layout.RoundButtonDisplay
 import com.slopus.happy.layout.RoundButtonSize
 import com.slopus.happy.ui.nav.NavigationBar
@@ -276,7 +277,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
 
     // HomeListActions. The chat, the session actions and new workspaces are later stages of the port.
 
-    override fun openSession(id: String) = notPorted(context.getString(R.string.tabs_sessions))
+    override fun openSession(id: String) = push(ChatScreen(context, graph, id))
 
     override fun toggleArchive(hidden: Boolean) = graph.settings.change { it.copy(hideInactiveSessions = !hidden) }
 
