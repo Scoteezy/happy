@@ -34,5 +34,7 @@ rootProject.name = "happy-android"
 
 include(":app")
 include(":crypto")
+include(":layout")
+include(":icons")
 include(":elevenlabs")
 project(":elevenlabs").projectDir = file("vendor/elevenlabs")
