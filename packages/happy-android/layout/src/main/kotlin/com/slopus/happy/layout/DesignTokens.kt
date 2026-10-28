@@ -165,6 +165,21 @@ enum class FontFace(val resourceName: String) {
     MonoItalic("ibm_plex_mono_italic"),
     MonoSemiBold("ibm_plex_mono_semibold"),
     Logo("bricolage_grotesque_bold"),
+
+    // React Native's default font, which happy-app's plain <Text>s draw in
+    // (San Francisco on iOS): the platform's sans-serif here.
+    System("sans-serif"),
+    SystemMedium("sans-serif-medium"),
+    SystemSemiBold("sans-serif-medium"),
+    SystemBold("sans-serif"),
+    SystemItalic("sans-serif"),
+    // Platform.select({ ios: 'Menlo' }): the platform's monospace here.
+    Menlo("monospace"),
+    MenloBold("monospace"),
+    MenloItalic("monospace"),
+    ;
+
+    val isMonospaced get() = this == Mono || this == MonoItalic || this == MonoSemiBold || this == Menlo || this == MenloBold || this == MenloItalic
 }
 
 data class TextStyle(

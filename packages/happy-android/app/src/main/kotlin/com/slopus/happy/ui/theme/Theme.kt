@@ -100,6 +100,7 @@ object Fonts {
     fun load(context: Context) {
         if (faces.isNotEmpty()) return
         faces = FontFace.entries.associateWith { face ->
+            system(face)?.let { return@associateWith it }
             val id = when (face) {
                 FontFace.Regular -> R.font.ibm_plex_sans_regular
                 FontFace.Italic -> R.font.ibm_plex_sans_italic
@@ -108,10 +109,29 @@ object Fonts {
                 FontFace.MonoItalic -> R.font.ibm_plex_mono_italic
                 FontFace.MonoSemiBold -> R.font.ibm_plex_mono_semibold
                 FontFace.Logo -> R.font.bricolage_grotesque_bold
+                else -> error("not bundled")
             }
             ResourcesCompat.getFont(context, id) ?: Typeface.DEFAULT
         }
     }
 
     fun typeface(face: FontFace): Typeface = faces[face] ?: Typeface.DEFAULT
+
+    /** The platform's own faces, for text happy-app draws in the system font or Menlo. */
+    private fun system(face: FontFace): Typeface? = when (face) {
+        FontFace.System -> Typeface.create("sans-serif", Typeface.NORMAL)
+        FontFace.SystemMedium -> weighted(500, "sans-serif-medium")
+        FontFace.SystemSemiBold -> weighted(600, "sans-serif-medium")
+        FontFace.SystemBold -> weighted(700, "sans-serif")
+        FontFace.SystemItalic -> Typeface.create("sans-serif", Typeface.ITALIC)
+        FontFace.Menlo -> Typeface.MONOSPACE
+        FontFace.MenloBold -> Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        FontFace.MenloItalic -> Typeface.create(Typeface.MONOSPACE, Typeface.ITALIC)
+        else -> null
+    }
+
+    /** A CSS weight of the platform's sans-serif; before API 28, the nearest named family. */
+    private fun weighted(weight: Int, family: String): Typeface =
+        if (android.os.Build.VERSION.SDK_INT >= 28) Typeface.create(Typeface.SANS_SERIF, weight, false)
+        else Typeface.create(family, if (weight >= 700) Typeface.BOLD else Typeface.NORMAL)
 }
