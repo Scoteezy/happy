@@ -7,6 +7,7 @@ import android.text.InputType
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -54,12 +55,17 @@ class TextField(
                 onChange?.invoke(s?.toString().orEmpty())
             }
         })
-        setOnEditorActionListener { _, action, _ ->
-            if (action == EditorInfo.IME_ACTION_DONE || action == EditorInfo.IME_ACTION_GO) {
-                onReturn?.invoke() ?: dismissKeyboard()
-                true
-            } else {
-                false
+        setOnEditorActionListener { _, action, event ->
+            // A hardware keyboard's Return comes as IME_NULL with its key event, down then up;
+            // in a multi-line field it is a new line.
+            val hardwareReturn = !multiline && action == EditorInfo.IME_NULL && event?.keyCode == KeyEvent.KEYCODE_ENTER
+            when {
+                hardwareReturn && event?.action != KeyEvent.ACTION_DOWN -> true
+                hardwareReturn || action == EditorInfo.IME_ACTION_DONE || action == EditorInfo.IME_ACTION_GO -> {
+                    onReturn?.invoke() ?: dismissKeyboard()
+                    true
+                }
+                else -> false
             }
         }
         applyStyle()
