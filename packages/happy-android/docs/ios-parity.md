@@ -74,9 +74,9 @@ Rules carried over from iOS (see `AGENTS.md`):
 ### Onboarding and sign-in
 
 - [~] Welcome: wordmark, title, value props, Create account, Restore, Get help, Relay | Direct switch (dev/preview). Evidence: `onboarding/01-stem-link-relay.png`, `02-stem-link-direct.png` (vs `ios-ref/04-welcome.png`). Production Welcome's "Pair computer" bar button waits for Direct pairing
-- [ ] Create account
-- [ ] Restore with QR (shows the code), restore with the secret key
-- [~] Custom server screen (`onboarding/03-server.png`); onboarding settings to do (the link screen's gear opens the server meanwhile)
+- [x] Create account (against the local `happy-server standalone:dev`; `onboarding/onboarding-flow.mp4`, `09-signed-in-home.png`)
+- [~] Restore with QR (shows the code, `06-restore-qr.png`), restore with the secret key (`07-restore-key.png`, bad key `08-restore-invalid.png`). Approval from a second device not exercised yet
+- [~] Custom server screen (`onboarding/03-server.png`, confirm `04-server-confirm.png`, custom `05-server-custom.png`, in `onboarding-flow.mp4`); onboarding settings to do (the link screen's gear opens the server meanwhile)
 - [ ] Link Your Computer, offline checklist, troubleshoot (selectable terminal lines)
 - [ ] Connect a terminal by QR or URL; `happy://terminal` deep links
 - [ ] Server confirmation for imported accounts

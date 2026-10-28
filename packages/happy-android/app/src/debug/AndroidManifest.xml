@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Development builds talk to a local server over plain HTTP
+  (`happy-server standalone:dev` on http://10.0.2.2:3005 from the emulator),
+  as happy-app's Expo development client and happy-ios's dev build allow.
+  Preview and release builds keep the platform's default: HTTPS only.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:usesCleartextTraffic="true"
+        tools:replace="android:usesCleartextTraffic" />
+</manifest>

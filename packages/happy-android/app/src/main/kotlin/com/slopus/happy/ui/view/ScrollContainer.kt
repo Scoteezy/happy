@@ -27,10 +27,17 @@ class ScrollContainer(context: Context) : ScrollView(context) {
 
     /** Sets the content's size and its children's frames, in the content's coordinates. */
     fun place(contentSize: Size, frames: Map<View, Rect?>) {
-        content.contentSize = contentSize
         content.frames.clear()
         content.frames.putAll(frames)
-        content.requestLayout()
+        content.contentSize = contentSize
+        // Applied now, in the caller's layout pass, as UIScrollView takes a
+        // new contentSize: asking for another pass from inside this one
+        // would loop.
+        content.setFrame(Rect(0.0, 0.0, contentSize.width, contentSize.height))
+        // A layout() at the same size skips onLayout; the frames may still be new.
+        content.layoutSubviews(contentSize.width, contentSize.height)
+        val maxScroll = (dp(contentSize.height) - height).toInt().coerceAtLeast(0)
+        if (scrollY > maxScroll) scrollTo(0, maxScroll)
     }
 }
 
