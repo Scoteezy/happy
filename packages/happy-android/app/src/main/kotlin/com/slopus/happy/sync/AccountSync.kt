@@ -95,7 +95,7 @@ class AccountSync(
     private val rpc = RpcClient(socket, store, decoder, io)
 
     /** Abort, permissions, kill, archive, delete, files and shell for one session (ops.ts). */
-    val sessionOps = SessionOps(rpc, api, store, io)
+    val sessionOps = SessionOps(rpc, api, store, io, onDeleted = live::deleteSession)
 
     /** Spawn, resume, stop, fork and the daemon's shell (ops.ts). */
     val machineOps = MachineOps(rpc, api, store, decoder, refreshSessions = ::syncNow, io = io)

@@ -39,6 +39,8 @@ class SessionOps internal constructor(
     private val api: SyncApi,
     private val store: HappyStore,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Drops a session this device deleted from the store; the server's update may come later or not at all. */
+    private val onDeleted: (String) -> Unit = {},
 ) {
     /** ops.ts `sessionAbort`: stop the current turn. */
     suspend fun abort(sessionId: String) {
@@ -164,6 +166,7 @@ class SessionOps internal constructor(
         }
         return try {
             api.deleteSession(sessionId)
+            withContext(io) { onDeleted(sessionId) }
             OpResult(true)
         } catch (e: HttpStatusException) {
             OpResult(false, e.body.ifEmpty { "Failed to delete session" })

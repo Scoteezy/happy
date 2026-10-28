@@ -169,7 +169,8 @@ class LiveUpdates(
         }
     }
 
-    private fun deleteSession(sessionId: String) {
+    /** The session is gone: its row, presence and messages. Also called once this device has deleted it. */
+    fun deleteSession(sessionId: String) {
         store.deleteSessions(listOf(sessionId))
         presence.removeSession(sessionId)
         messages.forget(sessionId)
