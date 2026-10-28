@@ -542,8 +542,8 @@ What happy-app does with expo-notifications, without Expo:
 - **Registration** (`PushRegistrar`, pushRegistration.ts): register with
   `POST /v1/push-tokens`, remember it, drop the previously registered token
   if it changed; all happy-server calls retry like apiPush.ts's `backoff`.
-  `PushRegistrationEffect` in HappyApp runs it on sign-in and every return
-  to the foreground. It shows the POST_NOTIFICATIONS prompt only while the
+  `startPushRegistration`, started by MainActivity, runs it on sign-in and
+  every return to the foreground. It shows the POST_NOTIFICATIONS prompt only while the
   system would still show it, never opens settings by itself, and forgets
   the registration on sign-out. `HappyMessagingService.onNewToken`
   re-registers a rotated FCM token.
@@ -565,8 +565,8 @@ What happy-app does with expo-notifications, without Expo:
   with unsent rows, cancels it on return or once they are sent, and posts
   "Message failed" when rows fail with `MessageSender.BACKGROUND_FAILURE`.
   Both go on the `default` channel and open the app.
-- **Settings › Account's push rows** use `rememberPushRegistration(graph)`,
-  Settings' `PushRegistration` over the same registrar and permission
+- **Settings › Account's push rows** use `pushRegistration(context, graph,
+  permission)` (`push/PushSettings.kt`), Settings' `PushRegistration` over the same registrar and permission
   (pushRegistration.ts's getPushPermissionInfo,
   requestPushPermissionOrOpenSettings, getCurrentExpoPushToken,
   syncCurrentPushToken, removePushToken).
