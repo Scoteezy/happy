@@ -8,4 +8,10 @@
     <string name="composer_add_photo">Add photo</string>
     <string name="composer_stop">Stop</string>
     <string name="composer_send">Send</string>
+    <!-- RigActivityBar.tsx: "2 +1 queued agents" -->
+    <string name="chat_rig_activity_count_queued">%1$d +%2$d queued</string>
+    <string name="chat_rig_activity_agents">%1$s agents</string>
+    <string name="chat_rig_activity_workflows">%1$s workflows</string>
+    <string name="chat_rig_activity_processes">%1$s processes</string>
+    <string name="chat_rig_activity_tasks">%1$s tasks</string>
 </resources>

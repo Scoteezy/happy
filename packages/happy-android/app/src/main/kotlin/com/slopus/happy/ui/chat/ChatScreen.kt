@@ -22,7 +22,20 @@ import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatMessagesSource
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.ChatState
+import com.slopus.happy.chat.InactiveSessionHint
 import com.slopus.happy.chat.InlineQuestionForm
+import com.slopus.happy.chat.PendingAgentCommunication
+import com.slopus.happy.chat.goalDispatch
+import com.slopus.happy.chat.shouldUseAgentQuestionFallback
+import com.slopus.happy.home.HomeServices
+import com.slopus.happy.model.AgentGoalAction
+import com.slopus.happy.model.Machine
+import com.slopus.happy.model.rigActivityIndicators
+import com.slopus.happy.model.visibleAgentGoal
+import com.slopus.happy.resume.ChatResumeOps
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.SessionResumer
+import com.slopus.happy.resume.resumeTexts
 import com.slopus.happy.chat.PermissionAnswer
 import com.slopus.happy.chat.PermissionDecision
 import com.slopus.happy.chat.NoLivePresence
@@ -91,6 +104,10 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private val composer = ChatComposerView(context, sessionId, actions, scope)
     private val scrollButton = ScrollButton(context)
     private val spinner = ProgressBar(context)
+    private val inactiveHint = ChatInactiveHintView(context, scope)
+    private val goalBar = ChatGoalBarView(context)
+    private val questionBanner = ChatQuestionBannerView(context)
+    private val rigActivity = ChatRigActivityView(context)
     private val renderer = ChatRowRenderer(context.resources)
     private val root = Root(context)
 
@@ -106,6 +123,11 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     /** Question forms the reader has touched, by tool: picks, and answers on their way. */
     private var questionDrafts = mapOf<String, ChatQuestionState>()
     private var dockDetailsVisible = true
+    private var mirror = ComposerMirror()
+    private var machine: Machine? = null
+    private var resuming = false
+    private var goalInFlight: AgentGoalAction? = null
+    private var questionSheet: AgentQuestionSheetScreen? = null
     private var loadingOlder = false
     private var listWidth = 0.0
     private val planRequests = MutableStateFlow<PlanRequest?>(null)
@@ -143,6 +165,11 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         scrollButton.setOnClickListener { list.scrollToNewest(animated = true) }
         scrollButton.alpha = 0f
         scrollButton.visibility = View.GONE
+        questionBanner.onOpen = ::openQuestionSheet
+        questionBanner.onDismiss = ::dismissUnsupportedRequest
+        inactiveHint.onResume = ::resume
+        goalBar.onAction = ::performGoalAction
+        for (bar in dockBarViews) bar.visibility = View.GONE
 
         val feed = graph.account.flatMapLatest { account ->
             val presence = account?.let { SyncChatPresenceSource(it.presence) } ?: NoLivePresence
@@ -152,6 +179,13 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         scope.launch {
             combine(feed, graph.settings.settings, mirror) { state, settings, mirror -> Triple(state, settings, mirror) }
                 .collect { (state, settings, mirror) -> apply(state, settings, mirror) }
+        }
+        scope.launch {
+            HomeServices.of(graph).snapshots.map { it?.machines }.collect { machines ->
+                val id = state.session?.metadata?.machineId
+                machine = machines?.find { it.id == id }
+                updateDockBars()
+            }
         }
         scope.launch {
             planRequests.filterNotNull()
@@ -164,12 +198,122 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private fun apply(state: ChatState, settings: Settings, mirror: ComposerMirror) {
         this.state = state
         this.settings = settings
+        this.mirror = mirror
+        val machineId = state.session?.metadata?.machineId
+        if (machine?.id != machineId) machine = HomeServices.of(graph).machine(machineId)
         list.isLoadingOlder = state.snapshot.isLoadingOlder
         updateHeader()
         composer.update(state, mirror, settings.agentDefaultOverrides)
         spinner.visibility = if (!state.snapshot.loaded && state.snapshot.rows.isEmpty()) View.VISIBLE else View.GONE
         requestPlans()
+        updateDockBars()
         root.requestLayout()
+    }
+
+    private val dockBarViews: List<View> get() = listOf(inactiveHint, goalBar, questionBanner, rigActivity)
+
+    /** The bars shown above the composer, in order: inset in the composer's column, RigActivityBar full width. */
+    private val dockBars: List<Pair<View, ChatScreenLayout.Accessory>>
+        get() = dockBarViews.filter { it.visibility != View.GONE }.map { view ->
+            val measurable = (view as ChatDockBar).measurable
+            view to if (view === rigActivity) ChatScreenLayout.Accessory.fullWidth(measurable) else ChatScreenLayout.Accessory.inset(measurable)
+        }
+
+    /**
+     * SessionView's input stack: InactiveArchivedHint, AgentGoalBar,
+     * AgentQuestionBanner and RigActivityBar. While the reader is scrolled
+     * back they stay faded.
+     */
+    private fun updateDockBars() {
+        val session = state.session
+        val hint = InactiveSessionHint.of(session?.session, state.online, machine)
+        hint?.let { inactiveHint.show(it, resuming) }
+        inactiveHint.visibility = if (hint == null) View.GONE else View.VISIBLE
+        val goal = visibleAgentGoal(session?.agentState?.agentGoal, state.online, session?.metadata)
+        goal?.let { goalBar.show(it, goalInFlight) }
+        goalBar.visibility = if (goal == null) View.GONE else View.VISIBLE
+        updateQuestionBanner()
+        val indicators = session?.metadata.rigActivityIndicators()
+        rigActivity.show(indicators)
+        rigActivity.visibility = if (indicators.isEmpty()) View.GONE else View.VISIBLE
+        root.requestLayout()
+    }
+
+    /** AgentQuestionBanner: the first request the chat can't show inline. An answer from another device closes the sheet here too. */
+    private fun updateQuestionBanner() {
+        val pending = state.pendingCommunications
+        val fallback = pending.firstOrNull(::shouldUseAgentQuestionFallback)
+        questionSheet?.let { sheet -> if (pending.none { it.id == sheet.pending.id }) sheet.close() }
+        fallback?.let(questionBanner::show)
+        questionBanner.visibility = if (fallback == null) View.GONE else View.VISIBLE
+    }
+
+    private fun openQuestionSheet() {
+        val pending = questionBanner.pending as? PendingAgentCommunication.Form ?: return
+        if (questionSheet?.stack != null) return
+        val sheet = AgentQuestionSheetScreen(
+            context,
+            pending,
+            submit = { answers -> actions.answerQuestion(sessionId, pending.id, answers, FORM_KIND) },
+            // The agent asks again if the dismissal never lands.
+            cancel = { scope.launch { runCatching { actions.cancelQuestion(sessionId, pending.id, FORM_KIND) } } },
+        )
+        questionSheet = sheet
+        push(sheet)
+    }
+
+    private fun dismissUnsupportedRequest() {
+        val pending = questionBanner.pending as? PendingAgentCommunication.Unsupported ?: return
+        scope.launch { runCatching { actions.cancelQuestion(sessionId, pending.id, pending.rawKind) } }
+    }
+
+    /** agentGoalActionHandler.ts: Edit asks for the new goal first; the button spins until the request is done. */
+    private fun performGoalAction(action: AgentGoalAction) {
+        val current = goalBar.goal?.text ?: return
+        if (goalInFlight != null) return
+        scope.launch {
+            val edited = if (action == AgentGoalAction.Edit) {
+                Alerts.prompt(
+                    context,
+                    context.getString(R.string.components_agent_goal_bar_edit_goal),
+                    placeholder = context.getString(R.string.components_agent_goal_bar_current_goal),
+                    confirmTitle = context.getString(R.string.common_save),
+                    initial = current,
+                )
+            } else {
+                null
+            }
+            val dispatch = goalDispatch(action, current, edited) ?: return@launch
+            goalInFlight = action
+            updateDockBars()
+            // Failures are only logged in happy-app; the bar stays as it was.
+            runCatching { actions.goalAction(sessionId, dispatch.first.wire, dispatch.second) }
+            goalInFlight = null
+            updateDockBars()
+        }
+    }
+
+    /**
+     * useSessionQuickActions' performResume: one at a time, spinning until it
+     * is done; a failure is an alert. The session reconnects under its own
+     * id, so the hint just goes once it is back.
+     */
+    private fun resume() {
+        val session = state.session ?: return
+        val machineId = session.metadata?.machineId ?: return
+        if (resuming) return
+        resuming = true
+        updateDockBars()
+        scope.launch {
+            val ops = ChatResumeOps(actions, { mirror }, { settings.agentDefaultOverrides })
+            when (val outcome = SessionResumer.of(graph).resume(ops, sessionId, machineId, session.metadata, resumeTexts(context.resources))) {
+                is ResumeOutcome.Resumed -> if (outcome.sessionId != sessionId) push(ChatScreen(context, graph, outcome.sessionId))
+                is ResumeOutcome.Failed -> Alerts.show(context, context.getString(R.string.common_error), outcome.message)
+                ResumeOutcome.InFlight -> Unit
+            }
+            resuming = false
+            updateDockBars()
+        }
     }
 
     private fun updateHeader() {
@@ -236,6 +380,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         if (visible != dockDetailsVisible) {
             dockDetailsVisible = visible
             composer.setDetailsVisible(visible, animated = true)
+            for (bar in dockBarViews) bar.animate().alpha(if (visible) 1f else 0f).setDuration(DETAILS_FADE_MS).start()
         }
         scrollButton.shown = ChatScreenLayout.showsScrollButton(distanceFromNewest)
         // The next page of history goes on once the oldest row is within a screen.
@@ -407,6 +552,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             addView(spinner)
             addView(scrim)
             addView(header)
+            for (bar in dockBarViews) addView(bar)
             addView(composer)
             addView(scrollButton)
             applyTheme()
@@ -420,11 +566,13 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         override fun layoutSubviews(width: Double, height: Double) {
             header.safeTop = safeArea.top
             val keyboard = keyboard
+            val bars = dockBars
             val layout = ChatScreenLayout(
                 ChatScreenLayout.Input(
                     size = Size(width, height),
                     safeArea = LayoutInsets(header.headerBottom, safeArea.left, safeArea.bottom, safeArea.right),
                     keyboardTop = if (keyboard > 0) height - safeArea.bottom - keyboard else null,
+                    accessories = bars.map { it.second },
                     composerHeight = composer.composerHeight(width),
                     composerCardOffset = composer.cardOffset(width),
                 ),
@@ -435,6 +583,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             header.setFrame(Rect(0.0, 0.0, width, header.headerBottom))
             scrim.setFrame(layout.scrim)
             composer.setFrame(layout.composer.offsetBy(layout.dock.minX, layout.dock.minY))
+            for ((bar, frame) in bars.zip(layout.accessories)) bar.first.setFrame(frame.offsetBy(layout.dock.minX, layout.dock.minY))
             scrollButton.setFrame(layout.scrollButton)
             val s = 32.0
             spinner.setFrame(Rect(layout.placeholder.midX - s / 2, layout.placeholder.midY - s / 2, s, s))
@@ -527,6 +676,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         /** USER_MESSAGE_BUBBLE_COLORS, in [BubblePalette.All]'s order. */
         val BUBBLE_KEYS = listOf("gray", "blue", "green", "purple", "rose", "sand")
         const val COPIED_MS = 2000L
+        const val DETAILS_FADE_MS = 200L
+        const val FORM_KIND = "form"
         const val NOT_PORTED = "Not available in this Android build yet."
     }
 }

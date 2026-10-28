@@ -27,7 +27,8 @@ import kotlin.math.max
  * The system back gesture drives an interactive pop (predictive back), the
  * screen following the finger as UIKit's edge swipe does, and back pressed
  * pops at once. It hands every screen the window's insets in dp, the IME's
- * frame by frame as it animates.
+ * frame by frame as it animates. A modal screen ([Screen.isModal]) rises
+ * from the bottom instead, and the one below stays put.
  */
 class ScreenStack(context: Context) : FrameLayout(context) {
     private val screens = mutableListOf<Screen>()
@@ -280,9 +281,14 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     private fun applyProgress() {
         val top = screens.lastOrNull() ?: return
         val below = screens.getOrNull(screens.size - 2)
-        val w = width.toFloat()
-        top.view.translationX = w * popProgress
-        below?.view?.translationX = -w * PARALLAX * (1f - popProgress)
+        if (top.isModal) {
+            top.view.translationY = height.toFloat() * popProgress
+            below?.view?.translationX = 0f
+        } else {
+            val w = width.toFloat()
+            top.view.translationX = w * popProgress
+            below?.view?.translationX = -w * PARALLAX * (1f - popProgress)
+        }
         invalidate()
     }
 

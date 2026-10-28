@@ -51,6 +51,13 @@ abstract class Screen(val context: Context) {
     /** Whether the system back gesture may pop this screen. */
     open val canPop: Boolean get() = true
 
+    /**
+     * A full-screen modal (UIKit's `.fullScreen` presentation): it rises from
+     * the bottom over the screen below, which stays in place, and drops back
+     * down when it goes.
+     */
+    open val isModal: Boolean get() = false
+
     internal fun destroy() {
         onDestroy()
         scope.cancel()

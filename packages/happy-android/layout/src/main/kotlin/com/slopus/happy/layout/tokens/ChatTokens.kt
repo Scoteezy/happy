@@ -10,6 +10,8 @@ val Palette.userMessageText get() = ColorToken("#000000", "#FFFFFF")
 val Palette.agentEventText get() = ColorToken("#666666", "#8E8E93")
 /** Marks on an accent fill (a checked checkbox). */
 val Palette.onAccent get() = ColorToken("#FFFFFF")
+/** AgentQuestionModal's dot beside a question still to answer. */
+val Palette.requiredDot get() = ColorToken("#FF9500")
 /** theme.colors.warning: the tool error glyph. */
 val Palette.warning get() = ColorToken("#8E8E93")
 val Palette.boxWarningBackground get() = ColorToken(RGBA.hex("#FFF8F0")!!, RGBA(1.0, 159 / 255.0, 10 / 255.0, 0.15))
@@ -113,6 +115,32 @@ object ChatTextStyles {
 
     // AgentWorkGroupHeader.tsx
     val workGroup = TextStyle(FontFace.System, 13, 20)
+
+    // AgentQuestionBanner.tsx
+    val bannerTitle = TextStyle(FontFace.SemiBold, 14)
+    val bannerSubtitle = TextStyle(FontFace.Regular, 13)
+    val bannerDismiss = TextStyle(FontFace.SemiBold, 14)
+
+    // AgentGoalBar.tsx
+    val goalLabel = TextStyle(FontFace.SystemSemiBold, 12, 16)
+    val goalText = TextStyle(FontFace.System, 14, 19)
+
+    // RigActivityBar.tsx
+    val rigActivity = TextStyle(FontFace.Regular, 11)
+
+    // AgentQuestionModal.tsx
+    val sheetAction = TextStyle(FontFace.Regular, 16)
+    val sheetTitle = TextStyle(FontFace.SemiBold, 16)
+    val sheetChip = TextStyle(FontFace.SemiBold, 12, uppercase = true)
+    val sheetQuestion = TextStyle(FontFace.SemiBold, 17)
+    val sheetHint = TextStyle(FontFace.Regular, 13)
+    val sheetOptionLabel = TextStyle(FontFace.SemiBold, 15)
+    val sheetOptionDescription = TextStyle(FontFace.Regular, 13)
+    val sheetCustomLabel = TextStyle(FontFace.SemiBold, 13)
+    /** A TextInput with no font family: the system font. */
+    val sheetInput = TextStyle(FontFace.System, 15)
+    val sheetError = TextStyle(FontFace.Regular, 14)
+    val sheetSubmit = TextStyle(FontFace.SemiBold, 16)
 
     // ChatFooter.tsx
     val chatFooterWarning = TextStyle(FontFace.Regular, 12)

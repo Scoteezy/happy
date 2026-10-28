@@ -133,6 +133,9 @@ interface ChatActions {
 
     /** sync.refreshSessions: the account's sessions fetched again, as after a resume. */
     suspend fun refreshSessions() = Unit
+
+    /** ops.ts sessionGoalAction: clear, stop or edit the agent's goal ([objective] for edit). */
+    suspend fun goalAction(sessionId: String, action: String, objective: String?) = Unit
 }
 
 /**
@@ -225,6 +228,8 @@ class SyncChatActions(private val account: () -> AccountSync?) : ChatActions {
     }
 
     override suspend fun abort(sessionId: String) = ops().abort(sessionId)
+
+    override suspend fun goalAction(sessionId: String, action: String, objective: String?) = ops().goalAction(sessionId, action, objective)
 
     override suspend fun answerPermission(sessionId: String, answer: PermissionAnswer) {
         val decision = answer.decision?.let { d -> SyncPermissionDecision.entries.first { it.wire == d.wire } }
