@@ -20,6 +20,15 @@ object DiffPalette {
     val hunkText = ColorToken("#005CC5", "#58A6FF")
     val sectionText = ColorToken("#6E7781", "#8B949E")
 
+    // Traditional colours (file.tsx DiffDisplay).
+    val addedBackground = ColorToken("#E6FFED", "#0D2E1F")
+    val addedBorder = ColorToken("#34D058", "#3FB950")
+    val addedText = ColorToken("#24292E", "#C9D1D9")
+    val removedBackground = ColorToken("#FFEEF0", "#3F1B23")
+    val removedBorder = ColorToken("#D73A49", "#F85149")
+    val removedText = ColorToken("#24292E", "#C9D1D9")
+    val contextText = ColorToken("#586069", "#8B949E")
+
     /** diff.syntax, by span kind. */
     object Syntax {
         val plain = ColorToken("#1F2328", "#E6EDF3")

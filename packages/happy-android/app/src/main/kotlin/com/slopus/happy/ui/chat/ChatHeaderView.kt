@@ -110,9 +110,10 @@ class ChatHeaderView(context: Context) : ManualLayout(context), ThemeAware {
     private fun changesText(changes: VisibleGitChanges): CharSequence {
         val builder = android.text.SpannableStringBuilder()
         if (changes.approximate) builder.append("≈ ")
-        builder.append(ChatStrings.string("+${changes.insertions}", Palette.gitAddedText))
-        builder.append(" ")
-        builder.append(ChatStrings.string("−${changes.deletions}", Palette.gitRemovedText))
+        // Each side only when it has lines, counted compactly (999, 1.2k, 12k), as GitChangesView draws them.
+        if (changes.insertions > 0) builder.append(ChatStrings.string("+" + com.slopus.happy.model.compactCount(changes.insertions), Palette.gitAddedText))
+        if (changes.insertions > 0 && changes.deletions > 0) builder.append(" ")
+        if (changes.deletions > 0) builder.append(ChatStrings.string("-" + com.slopus.happy.model.compactCount(changes.deletions), Palette.gitRemovedText))
         return builder
     }
 

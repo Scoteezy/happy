@@ -121,13 +121,15 @@ class DetailChangesAccessoryView(context: Context, presentation: GitPresentation
 
 /**
  * A screen's centred message on the grouped background: an optional icon
- * over lines of text ([CenteredStackLayout]).
+ * (or spinner) over lines of text ([CenteredStackLayout]).
  */
 class DetailMessageView(
     context: Context,
-    private val lead: IconView?,
+    private val lead: View?,
     private val lines: List<Line>,
     private val padding: Double = 0.0,
+    /** The lead's box when it isn't an icon (a spinner). */
+    private val leadSize: Size = Size.Zero,
 ) : ManualLayout(context), ThemeAware {
     class Line(
         val text: String,
@@ -152,7 +154,7 @@ class DetailMessageView(
 
     override fun layoutSubviews(width: Double, height: Double) {
         val items = buildList {
-            lead?.let { add(CenteredStackLayout.Item(Measurable.fixed(it.intrinsicSize()))) }
+            lead?.let { add(CenteredStackLayout.Item(Measurable.fixed((it as? IconView)?.intrinsicSize() ?: leadSize))) }
             lines.zip(labels).forEach { (line, label) -> add(CenteredStackLayout.Item(label.measurable, line.spacingBefore, line.horizontalPadding)) }
         }
         val views: List<View> = listOfNotNull(lead) + labels

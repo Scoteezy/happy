@@ -324,8 +324,10 @@ class ChatRowRenderer(private val resources: Resources) {
             else -> emptyList()
         }.map { it.entry }.takeIf { it.isNotEmpty() }?.let { ChatPiece.stack(it) }
         val expandable = !awaitingDecision && full.isNotEmpty()
-        // The header opens and closes the body. With nothing to open, or while a decision holds it open, it opens the tool's own screen.
-        val open = ChatRowAction.OpenMessage(message.id)
+        // The header opens and closes the body. With nothing to open, or while a decision holds it open, it opens the tool's own
+        // screen: an edit's file (Edit, MultiEdit, Write), else the tool's message.
+        val filePath = if (tool.name in FILE_EDIT_TOOLS) tool.input.obj?.get("file_path").str else null
+        val open: ChatRowAction = filePath?.let(ChatRowAction::OpenFile) ?: ChatRowAction.OpenMessage(message.id)
         val tap: ChatRowAction = if (expandable) ChatRowAction.ToggleTool(message.id) else open
         val footer = if (tool.permission != null && tool.name != "AskUserQuestion") permissionFooter(message, busy, style) else null
         val glyphSize = ToolCardLayout.Metrics.statusIconSize
@@ -787,6 +789,8 @@ class ChatRowRenderer(private val resources: Resources) {
 
     companion object {
         const val FOOTER_ID = "chat-footer"
+        /** ChatToolPresentation's `fileEditNames`: tools whose tap opens their file. */
+        val FILE_EDIT_TOOLS = setOf("Edit", "MultiEdit", "Write")
 
         fun union(a: Rect, b: Rect): Rect {
             val minX = minOf(a.minX, b.minX)

@@ -39,6 +39,9 @@ import com.slopus.happy.chat.PendingAgentCommunication
 import com.slopus.happy.chat.goalDispatch
 import com.slopus.happy.chat.shouldUseAgentQuestionFallback
 import com.slopus.happy.home.HomeServices
+import com.slopus.happy.model.GitStatus
+import com.slopus.happy.model.gitStatusKey
+import com.slopus.happy.projects.GitStatusServices
 import com.slopus.happy.model.AgentGoalAction
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.rigActivityIndicators
@@ -224,6 +227,15 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
                 .collect(composer::updateFailedAttachments)
         }
         scope.launch {
+            // The header's branch and line counts: this chat's checkout, asked now that it is open.
+            val git = GitStatusServices.of(graph)
+            git.sessionVisible(sessionId)
+            git.statuses.collect { statuses ->
+                gitStatuses = statuses
+                updateHeader()
+            }
+        }
+        scope.launch {
             HomeServices.of(graph).snapshots.map { it?.machines }.collect { machines ->
                 val id = state.session?.metadata?.machineId
                 machine = machines?.find { it.id == id }
@@ -362,6 +374,9 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         }
     }
 
+    /** Every checkout's git status, by `machineId:path`. */
+    private var gitStatuses: Map<String, GitStatus> = emptyMap()
+
     private fun updateHeader() {
         val session = state.session
         val title = when {
@@ -369,7 +384,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             session == null -> context.getString(R.string.errors_session_deleted)
             else -> session.title ?: context.getString(R.string.session_new_chat)
         }
-        val git = resolveChatHeaderGit(session?.metadata, null)
+        val metadata = session?.metadata
+        val git = resolveChatHeaderGit(metadata, gitStatusKey(metadata?.machineId, metadata?.path)?.let(gitStatuses::get))
         val avatar = session?.let {
             val metadata = it.metadata
             AvatarView.Content(
@@ -513,6 +529,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
                 requestPlans()
             }
             is ChatRowAction.OpenMessage -> push(MessageDetailScreen(context, graph, sessionId, action.id))
+            is ChatRowAction.OpenFile -> push(com.slopus.happy.ui.details.SessionFileScreen(context, graph, sessionId, action.path))
         }
     }
 

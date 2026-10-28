@@ -770,6 +770,28 @@ function changesFixture(): string {
         if (n === 104) return variant === 'before' ? 'export function reconnect() { connect() }' : 'export function reconnect(delay = RECONNECT_DELAY_MS) {\n    setTimeout(connect, Math.min(delay, RECONNECT_MAX_DELAY_MS))\n}'
         return n % 10 === 0 ? '' : `// socket.ts line ${n}: keeps the session's updates flowing`
     }).join('\n') + '\n'
+    const guard = (check: string) => [
+        "import { redirect } from './redirect'",
+        "import type { Session } from './session'",
+        '',
+        '/** Sends a signed-out visitor to /login, remembering where they were going. */',
+        'export function guard(session: Session | null, path: string) {',
+        '    if (!session || session.expired) {',
+        '        return redirect(`/login?redirectTo=${encodeURIComponent(path)}`)',
+        '    }',
+        '    return null',
+        '}',
+        '',
+        '/** /login: a visitor who is already signed in goes back where they came from. */',
+        "export function login(session: Session | null, redirectTo = '/') {",
+        '    ' + check,
+        '        return redirect(redirectTo)',
+        '    }',
+        '    return null',
+        '}',
+        ...Array.from({ length: 60 }, (_, i) => i % 6 === 5 ? '' : `// guard.ts note ${i + 1}: every redirect is logged with the route it came from and where it went next`),
+        '',
+    ].join('\n')
     const schema = (variant: string) => JSON.stringify({ fields: Array.from({ length: 1100 }, (_, i) => `${variant}-field-${i}`) }, null, 0).replace(/,/g, ',\n') + '\n'
     execSync('git init -q', { cwd: (mkdirSync(root, { recursive: true }), root) })
     write('sources/sync/socket.ts', socket('before'))
@@ -778,6 +800,8 @@ function changesFixture(): string {
     write('sources/old/legacy.ts', 'export const legacy = true\n')
     write('assets/icon.png', png(96, 96, (x, y) => (x - 48) ** 2 + (y - 48) ** 2 < 900 ? [255, 255, 255] : [0x2b, 0xac, 0xcc]))
     write('sources/generated/schema.json', schema('old'))
+    // The chat's Edit (transcript()) opens this file: the guard before and after it.
+    write('src/auth/guard.ts', guard('if (session) {'))
     git('add -A')
     git('commit -q -m initial')
     write('sources/sync/socket.ts', socket('after'))
@@ -786,6 +810,7 @@ function changesFixture(): string {
     rmSync(resolve(root, 'sources/old/legacy.ts'))
     write('assets/icon.png', png(96, 96, (x, y) => Math.abs(x - 48) + Math.abs(y - 48) < 36 ? [255, 255, 255] : [0xf5, 0x9e, 0x0b]))
     write('sources/generated/schema.json', schema('new'))
+    write('src/auth/guard.ts', guard('if (session && !session.expired) {'))
     write('sources/sync/reconnect.ts', [
         '/** Backoff for socket reconnects: doubles from 500 ms, up to 30 s. */',
         'export function backoff(attempt: number): number {',

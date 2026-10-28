@@ -18,10 +18,21 @@ class SessionFileCache {
     /** A checkout's last answer; [files] is null when `git status` failed. */
     data class StatusFiles(val files: GitStatusFiles?)
 
+    /** A session's root as it was when one of its files was last shown; [path] null when it had none. */
+    data class Root(val path: String?)
+
     private val files = ConcurrentHashMap<String, ConcurrentHashMap<String, File>>()
+    private val roots = ConcurrentHashMap<String, Root>()
     private val statusFiles = ConcurrentHashMap<String, StatusFiles>()
 
     fun file(sessionId: String, filePath: String): File? = files[sessionId]?.get(filePath)
+
+    /** The session's root when a file of it was last shown, so a revisit finds its cached copy before the store is read; null if none was. */
+    fun root(sessionId: String): Root? = roots[sessionId]
+
+    fun setRoot(sessionId: String, root: Root) {
+        roots[sessionId] = root
+    }
 
     /** storage.ts `applyFileCache`. */
     fun putFile(sessionId: String, filePath: String, content: String?, diff: String?, isBinary: Boolean, now: Long = System.currentTimeMillis()) {
@@ -38,5 +49,6 @@ class SessionFileCache {
 
     fun forgetSession(sessionId: String) {
         files.remove(sessionId)
+        roots.remove(sessionId)
     }
 }

@@ -67,6 +67,8 @@ sealed interface ChatRowAction {
     data class CopyMenu(val text: String) : ChatRowAction
     data class ToggleTool(val id: String) : ChatRowAction
     data class OpenMessage(val id: String) : ChatRowAction
+    /** An edit tool's file, in the file viewer. */
+    data class OpenFile(val path: String) : ChatRowAction
     data class OpenLink(val url: String) : ChatRowAction
     /** An `<option>` the agent offered: sent as the next message. */
     data class Option(val text: String) : ChatRowAction
