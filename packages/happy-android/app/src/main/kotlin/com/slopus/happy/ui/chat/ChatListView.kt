@@ -122,7 +122,9 @@ class ChatListView(context: Context) : RecyclerView(context), ThemeAware {
         newestInset = newest
         oldestInset = oldest
         val bottom = dp(newest).roundToInt()
-        if (childCount > 0 && scrollState != SCROLL_STATE_DRAGGING) pendingShift += bottom - paddingBottom
+        // The layout manager keeps each row's distance from the newest padded edge (its anchor takes in the
+        // space change), which is iOS's rule away from the finger. Under the finger the rows stay where they are.
+        if (childCount > 0 && scrollState == SCROLL_STATE_DRAGGING) pendingShift += bottom - paddingBottom
         setPadding(0, dp(oldest).roundToInt(), 0, bottom)
     }
 
