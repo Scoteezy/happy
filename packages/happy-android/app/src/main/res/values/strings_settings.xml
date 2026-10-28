@@ -69,4 +69,6 @@
     <string name="push_this_device">This device</string>
     <string name="push_reregister_subtitle">Fetches the current Expo token and registers it again.</string>
     <string name="push_reregister_current">Current token %1$s</string>
+    <!-- Strings.Modals.terminalNeedsUpdate: a v1 terminal is refused (PairingService). -->
+    <string name="modals_terminal_needs_update">This terminal runs an old version of Happy. Update Happy on your computer, then scan again.</string>
 </resources>

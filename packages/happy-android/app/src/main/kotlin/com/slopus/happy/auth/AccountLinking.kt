@@ -62,6 +62,9 @@ class AccountLinkRequest(
 /** A scanned or pasted link that is not the kind the flow expects. */
 class InvalidLinkException(message: String) : IllegalArgumentException(message)
 
+/** A terminal that only speaks auth v1, which hands over the account secret (happy-ios `PairingError.terminalNeedsUpdate`). */
+class TerminalNeedsUpdateException : Exception("The terminal needs a newer Happy")
+
 /**
  * The existing phone's side (useConnectAccount.ts processAuthUrl with
  * authAccountApprove.ts): seals this account's secret to the key in a
@@ -88,14 +91,16 @@ const val TERMINAL_URL_PREFIX = "happy://terminal?"
 
 /**
  * Connecting a terminal (useConnectTerminal.ts processAuthUrl with
- * authApprove.ts). The terminal waits with a box key pair; this phone seals
- * two answers to it: v1 is the account secret, v2 is `0x00 || the content
- * public key` (`sync.encryption.contentDataKey`), which lets a v2 terminal
- * work without the secret. The server says which one the terminal takes. A
- * request that is already answered or gone needs nothing, and counts as done.
+ * authApprove.ts, happy-ios `PairingService`). The terminal waits with a box
+ * key pair; this phone seals `0x00 || the content public key`
+ * (`sync.encryption.contentDataKey`) to it, which lets the terminal work
+ * without the account secret. A terminal that only speaks v1 would take the
+ * secret itself, so as on iOS it is refused and must update. A request that is
+ * already answered or gone needs nothing, and counts as done.
  *
- * Throws [InvalidLinkException] when [url] is not a terminal link, and any
- * other exception when the key is malformed or a request fails.
+ * Throws [InvalidLinkException] when [url] is not a terminal link,
+ * [TerminalNeedsUpdateException] for a v1 terminal, and any other exception
+ * when the key is malformed or a request fails.
  */
 suspend fun approveTerminal(
     api: AuthApi,
@@ -106,10 +111,8 @@ suspend fun approveTerminal(
 ) {
     if (!url.startsWith(TERMINAL_URL_PREFIX)) throw InvalidLinkException("Not a terminal link")
     val publicKey = decodeBase64(url.substring(TERMINAL_URL_PREFIX.length), Base64Variant.Url)
-    val responseV1 = encryptBox(credentials.secretBytes(), publicKey, random)
-    val responseV2 = encryptBox(byteArrayOf(0) + encryption.contentPublicKey, publicKey, random)
     val status = api.terminalAuthStatus(publicKey)
-    if (status.status == "pending") {
-        api.approveTerminal(credentials.token, publicKey, if (status.supportsV2) responseV2 else responseV1)
-    }
+    if (status.status != "pending") return
+    if (!status.supportsV2) throw TerminalNeedsUpdateException()
+    api.approveTerminal(credentials.token, publicKey, encryptBox(byteArrayOf(0) + encryption.contentPublicKey, publicKey, random))
 }

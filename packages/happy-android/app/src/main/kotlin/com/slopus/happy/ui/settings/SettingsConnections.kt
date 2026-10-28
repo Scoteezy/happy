@@ -9,6 +9,7 @@ import com.slopus.happy.crypto.AccountLink
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.InvalidLinkException
 import com.slopus.happy.auth.TERMINAL_URL_PREFIX
+import com.slopus.happy.auth.TerminalNeedsUpdateException
 import com.slopus.happy.auth.approveAccountLink
 import com.slopus.happy.auth.approveTerminal
 import com.slopus.happy.connect.GmsQrScanner
@@ -31,6 +32,8 @@ object PairingFlow {
         Approved,
         /** Not a pairing link of the expected kind. */
         InvalidLink,
+        /** A terminal that only speaks auth v1. */
+        TerminalNeedsUpdate,
         Failed,
     }
 
@@ -52,6 +55,8 @@ object PairingFlow {
             throw e
         } catch (_: InvalidLinkException) {
             Outcome.InvalidLink
+        } catch (_: TerminalNeedsUpdateException) {
+            Outcome.TerminalNeedsUpdate
         } catch (_: Exception) {
             Outcome.Failed
         }
@@ -71,6 +76,7 @@ object PairingFlow {
                 Kind.Account -> Alerts.show(context, context.getString(R.string.common_success), context.getString(R.string.modals_device_linked_successfully))
             }
             Outcome.InvalidLink -> Alerts.show(context, error, context.getString(R.string.modals_invalid_auth_url))
+            Outcome.TerminalNeedsUpdate -> Alerts.show(context, error, context.getString(R.string.modals_terminal_needs_update))
             Outcome.Failed -> Alerts.show(
                 context,
                 error,

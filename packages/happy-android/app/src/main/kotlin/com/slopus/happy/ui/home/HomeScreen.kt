@@ -13,6 +13,7 @@ import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.InvalidLinkException
 import com.slopus.happy.auth.TERMINAL_URL_PREFIX
+import com.slopus.happy.auth.TerminalNeedsUpdateException
 import com.slopus.happy.auth.approveTerminal
 import com.slopus.happy.changelog.Changelog
 import com.slopus.happy.connect.GmsQrScanner
@@ -336,6 +337,8 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
             throw e
         } catch (_: InvalidLinkException) {
             context.getString(R.string.modals_invalid_auth_url)
+        } catch (_: TerminalNeedsUpdateException) {
+            context.getString(R.string.modals_terminal_needs_update)
         } catch (_: Exception) {
             context.getString(R.string.modals_failed_to_connect_terminal)
         }

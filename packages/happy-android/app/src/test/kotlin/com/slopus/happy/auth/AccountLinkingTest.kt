@@ -138,10 +138,15 @@ class AccountLinkingTest {
     }
 
     @Test
-    fun aV1TerminalGetsTheSecret() = runBlocking {
+    fun aV1TerminalIsRefusedAndGetsNothing() = runBlocking {
         val (keyPair, url) = terminal(supportsV2 = false)
-        approveTerminal(api, credentials, server.encryption, url)
-        assertArrayEquals(server.secret, answerFor(keyPair))
+        try {
+            approveTerminal(api, credentials, server.encryption, url)
+            fail("answered a v1 terminal")
+        } catch (_: TerminalNeedsUpdateException) {
+        }
+        assertEquals(null, answerFor(keyPair))
+        assertTrue(server.requestsTo("/v1/auth/response").isEmpty())
     }
 
     @Test
