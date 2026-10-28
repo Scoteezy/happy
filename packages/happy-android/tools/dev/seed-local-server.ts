@@ -38,6 +38,9 @@ import {
 } from '../../../happy-cli/src/api/encryption'
 import { deriveKey } from '../../../happy-cli/src/utils/deriveKey'
 import { createHash } from 'node:crypto'
+import { execSync } from 'node:child_process'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { rgbaToThumbHash } from 'thumbhash'
 import {
@@ -207,6 +210,22 @@ const sessions: SessionSeed[] = [
     { tag: 'landing', summary: 'Landing page copy pass', path: `${home}/code/website`, flavor: 'claude', minutesAgo: 60 * 5 },
     { tag: 'old-migration', summary: 'Migrate settings to v2', path: `${home}/code/happy`, flavor: 'claude', archived: true, minutesAgo: 60 * 26 },
     { tag: 'old-icons', summary: 'Regenerate the icon font', path: `${home}/code/happy`, flavor: 'codex', archived: true, minutesAgo: 60 * 24 * 3 },
+    // A Happy Agent session in the same checkout: its changes come from the
+    // agent's own git RPCs (gitState, readFile, readFileAtRevision).
+    {
+        tag: 'agent-changes', summary: 'Tune the reconnect backoff', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 5,
+        chat: ['Make the reconnect back off.', 'Reconnects now wait 500 ms, doubling up to 30 s.'],
+        metadata: {
+            client: { id: 'rig', name: 'Happy Agent', version: '1.0.0' },
+            rigMetadataVersion: 1,
+            capabilities: {
+                abort: true, attachments: { enabled: false, maxBytes: 0, mediaTypes: [] },
+                files: { browse: true, read: true, search: false, write: false },
+                modelSelection: false, reasoningSelection: false, permissionModeSelection: false, resume: false,
+                rpcMethods: ['gitState', 'readFile', 'readFileAtRevision'], shell: false, steering: false,
+            },
+        },
+    },
     // Inactive with the agent's id: Resume on the seeded computer, which answers it.
     {
         tag: 'resume-demo', summary: 'Tidy the release notes', path: `${home}/code/happy`, flavor: 'claude', archived: true, minutesAgo: 60 * 3,
@@ -558,6 +577,7 @@ async function main() {
         })
         socket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
             const method = data.method.slice(session.id.length + 1)
+            if (method === 'bash' || method === 'readFile') return
             if (method === 'communication') {
                 const response = decryptWithDataKey(decodeBase64(data.params), session.key) as { id: string; status: string; answers?: object }
                 console.error('communication', JSON.stringify(response))
@@ -618,8 +638,163 @@ async function main() {
             callback(encodeBase64(encryptWithDataKey({}, session.key)))
         })
     })
+    // The sessions in ~/code/happy answer the shell and file reads the
+    // changes screen makes, from a real repository with uncommitted work.
+    const fixture = changesFixture()
+    created.filter(({ seed }) => !seed.archived).forEach((session, index) => {
+        if (session.seed.path !== `${home}/code/happy`) return
+        const socket = live[index]
+        if (session.seed.tag === 'agent-changes') return agentGit(session, socket, fixture)
+        socket.on('connect', () => {
+            for (const method of ['bash', 'readFile']) socket.emit('rpc-register', { method: `${session.id}:${method}` })
+        })
+        socket.on('rpc-request', (data: { method: string; params: string }, callback: (response: string) => void) => {
+            const method = data.method.slice(session.id.length + 1)
+            if (method !== 'bash' && method !== 'readFile') return
+            const params = decryptWithDataKey(decodeBase64(data.params), session.key) as { command?: string; path?: string }
+            let answer: object
+            if (method === 'bash') {
+                // Only git, in the fixture: the app asks for nothing else here.
+                const command = String(params.command ?? '')
+                if (!command.startsWith('git ')) {
+                    answer = { success: false, stdout: '', stderr: 'not available in the seed', exitCode: 1 }
+                } else {
+                    try {
+                        answer = { success: true, stdout: execSync(command, { cwd: fixture, encoding: 'utf8', shell: '/bin/sh', maxBuffer: 32 << 20 }), stderr: '', exitCode: 0 }
+                    } catch (error) {
+                        const failed = error as { stdout?: string; stderr?: string; status?: number }
+                        answer = { success: true, stdout: failed.stdout ?? '', stderr: failed.stderr ?? '', exitCode: failed.status ?? 1 }
+                    }
+                }
+            } else {
+                const path = String(params.path ?? '')
+                const local = path.startsWith(`${home}/code/happy/`) ? resolve(fixture, path.slice(`${home}/code/happy/`.length)) : null
+                try {
+                    if (!local || !local.startsWith(fixture)) throw new Error('outside the workspace')
+                    answer = { success: true, content: readFileSync(local).toString('base64') }
+                } catch (error) {
+                    answer = { success: false, error: (error as Error).message }
+                }
+            }
+            console.error('session rpc', session.seed.tag, method, params.command ?? params.path)
+            callback(encodeBase64(encryptWithDataKey(answer, session.key)))
+        })
+    })
+
     setInterval(beat, 15_000)
     console.error('keeping the computer and its sessions online; Ctrl-C to stop')
+}
+
+/**
+ * Happy Agent's git surface over the fixture: a snapshot against HEAD and
+ * either side of a file. Counts are marked approximate, so the list shows a
+ * notice above it.
+ */
+function agentGit(session: { id: string; key: Uint8Array }, socket: Socket, fixture: string) {
+    const run = (command: string) => execSync(command, { cwd: fixture, maxBuffer: 32 << 20 })
+    socket.on('connect', () => {
+        for (const method of ['gitState', 'readFile', 'readFileAtRevision']) socket.emit('rpc-register', { method: `${session.id}:${method}` })
+    })
+    socket.on('rpc-request', (data: { method: string; params: string }, callback: (response: string) => void) => {
+        const method = data.method.slice(session.id.length + 1)
+        if (!['gitState', 'readFile', 'readFileAtRevision'].includes(method)) return
+        const params = decryptWithDataKey(decodeBase64(data.params), session.key) as { path?: string; revision?: string }
+        let answer: object
+        try {
+            if (method === 'gitState') {
+                const head = run('git rev-parse HEAD').toString().trim()
+                const statuses = new Map(run('git diff --name-status HEAD').toString().trim().split('\n').filter(Boolean).map((line) => {
+                    const [code, path] = line.split('\t')
+                    return [path, code === 'A' ? 'added' : code === 'D' ? 'deleted' : 'modified'] as const
+                }))
+                const tracked = run('git diff --numstat HEAD').toString().trim().split('\n').filter(Boolean).map((line) => {
+                    const [added, removed, path] = line.split('\t')
+                    const binary = added === '-'
+                    return {
+                        path, status: statuses.get(path) ?? 'modified', staged: false, unstaged: true, binary,
+                        ...(binary ? {} : { insertions: Number(added), deletions: Number(removed) }),
+                    }
+                })
+                const untracked = run('git ls-files --others --exclude-standard').toString().trim().split('\n').filter(Boolean).map((path) => ({
+                    path, status: 'untracked', staged: false, unstaged: true, binary: false,
+                    insertions: readFileSync(resolve(fixture, path), 'utf8').split('\n').filter(Boolean).length, deletions: 0,
+                }))
+                const files = [...tracked, ...untracked].sort((a, b) => a.path.localeCompare(b.path))
+                answer = {
+                    success: true,
+                    git: {
+                        facts: { branch: 'main', detached: false, head, upstream: 'origin/main', ahead: 0, behind: 0 },
+                        comparison: 'ready', base: head,
+                        changedFiles: files.length,
+                        insertions: files.reduce((sum, file) => sum + (file.insertions ?? 0), 0),
+                        deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
+                        countsExact: false, conflicted: false, files, filesTruncated: false, scannedAt: Date.now(),
+                    },
+                }
+            } else if (method === 'readFile') {
+                const local = resolve(fixture, String(params.path))
+                if (!local.startsWith(fixture)) throw new Error('outside the workspace')
+                const bytes = readFileSync(local)
+                answer = { success: true, content: bytes.toString('base64'), hash: createHash('sha256').update(bytes).digest('hex') }
+            } else {
+                const bytes = run(`git show ${String(params.revision).replace(/[^0-9a-f]/g, '')}:"${String(params.path).replace(/"/g, '')}"`)
+                answer = { success: true, content: bytes.toString('base64') }
+            }
+        } catch (error) {
+            answer = { success: false, code: 'unavailable', error: (error as Error).message.split('\n')[0] }
+        }
+        console.error('agent rpc', method, params.path ?? '')
+        callback(encodeBase64(encryptWithDataKey(answer, session.key)))
+    })
+}
+
+/**
+ * A git repository with uncommitted work, standing in for ~/code/happy:
+ * edits in a long file (three hunks with unchanged lines between), a small
+ * edit, a new file, a deleted one, a changed picture and an edit too big to
+ * open by default. Made again on every run, under .context/tmp.
+ */
+function changesFixture(): string {
+    const root = resolve(process.cwd(), '../../.context/tmp/changes-fixture')
+    rmSync(root, { recursive: true, force: true })
+    const write = (path: string, content: string | Buffer) => {
+        mkdirSync(dirname(resolve(root, path)), { recursive: true })
+        writeFileSync(resolve(root, path), content)
+    }
+    const git = (command: string) => execSync(`git -c user.name=Seed -c user.email=seed@example.invalid ${command}`, { cwd: root, stdio: 'ignore' })
+    const socket = (variant: 'before' | 'after') => Array.from({ length: 120 }, (_, i) => {
+        const n = i + 1
+        if (n === 1) return "import { io, type Socket } from 'socket.io-client'"
+        if (n === 12) return variant === 'before' ? 'const RECONNECT_DELAY_MS = 1000' : 'const RECONNECT_DELAY_MS = 500\nconst RECONNECT_MAX_DELAY_MS = 30_000'
+        if (n === 58) return variant === 'before' ? "    socket.on('disconnect', () => reconnect())" : "    socket.on('disconnect', (reason) => {\n        if (reason === 'io client disconnect') return\n        reconnect(backoff(attempt++))\n    })"
+        if (n === 104) return variant === 'before' ? 'export function reconnect() { connect() }' : 'export function reconnect(delay = RECONNECT_DELAY_MS) {\n    setTimeout(connect, Math.min(delay, RECONNECT_MAX_DELAY_MS))\n}'
+        return n % 10 === 0 ? '' : `// socket.ts line ${n}: keeps the session's updates flowing`
+    }).join('\n') + '\n'
+    const schema = (variant: string) => JSON.stringify({ fields: Array.from({ length: 1100 }, (_, i) => `${variant}-field-${i}`) }, null, 0).replace(/,/g, ',\n') + '\n'
+    execSync('git init -q', { cwd: (mkdirSync(root, { recursive: true }), root) })
+    write('sources/sync/socket.ts', socket('before'))
+    write('sources/app/settings/index.tsx', "export function Settings() {\n    return <List title=\"Settings\" />\n}\n")
+    write('README.md', '# Happy\n\nMobile and web client for Claude Code.\n')
+    write('sources/old/legacy.ts', 'export const legacy = true\n')
+    write('assets/icon.png', png(96, 96, (x, y) => (x - 48) ** 2 + (y - 48) ** 2 < 900 ? [255, 255, 255] : [0x2b, 0xac, 0xcc]))
+    write('sources/generated/schema.json', schema('old'))
+    git('add -A')
+    git('commit -q -m initial')
+    write('sources/sync/socket.ts', socket('after'))
+    write('sources/app/settings/index.tsx', "export function Settings() {\n    return <List title=\"Settings\" showsDarkMode />\n}\n")
+    write('README.md', '# Happy\n\nMobile and web client for Claude Code and Codex.\n\nUse it from anywhere with end-to-end encryption.\n')
+    rmSync(resolve(root, 'sources/old/legacy.ts'))
+    write('assets/icon.png', png(96, 96, (x, y) => Math.abs(x - 48) + Math.abs(y - 48) < 36 ? [255, 255, 255] : [0xf5, 0x9e, 0x0b]))
+    write('sources/generated/schema.json', schema('new'))
+    write('sources/sync/reconnect.ts', [
+        '/** Backoff for socket reconnects: doubles from 500 ms, up to 30 s. */',
+        'export function backoff(attempt: number): number {',
+        '    return Math.min(500 * 2 ** attempt, 30_000)',
+        '}',
+        '',
+    ].join('\n'))
+    console.error('changes fixture', root)
+    return root
 }
 
 /**

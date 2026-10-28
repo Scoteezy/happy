@@ -40,4 +40,29 @@ object DiffPalette {
 object DiffTextStyles {
     /** DiffFileView's "Show N more lines": semibold 13. */
     val showMore = TextStyle(FontFace.SemiBold, 13)
+
+    /**
+     * DiffFileHeader: the directory (mono 12), the file name (mono
+     * semibold 12.5), the change badge (mono semibold 10.5, upper case) and
+     * the +N / −N counts (mono 12).
+     */
+    val headerDir = TextStyle(FontFace.Mono, 12)
+    val headerFileName = TextStyle(FontFace.MonoSemiBold, 12.5)
+    val headerBadge = TextStyle(FontFace.MonoSemiBold, 10.5, uppercase = true)
+    val headerCount = TextStyle(FontFace.Mono, 12)
+
+    /** FileSection's size hint and messages, and DiffImageView's "binary". */
+    val sectionMessage = TextStyle(FontFace.Regular, 13)
+
+    /** DiffImageView's Before / After. */
+    val imageLabel = TextStyle(FontFace.MonoSemiBold, 10.5, uppercase = true)
+
+    /**
+     * DiffFilesList's empty text, the changes screen's centred messages and
+     * HappyAgentDiffView's notices: Typography.default() at RN's 14.
+     */
+    val body = TextStyle(FontFace.Regular, 14)
+
+    /** HappyAgentDiffView's Retry. */
+    val retry = TextStyle(FontFace.SemiBold, 14)
 }

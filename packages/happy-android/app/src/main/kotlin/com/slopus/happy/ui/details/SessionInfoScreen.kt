@@ -757,7 +757,7 @@ class SessionInfoScreen(context: Context, private val graph: AppGraph, private v
     }
 
     private fun openChanges() {
-        Alerts.show(context, string(R.string.files_changes), NOT_PORTED)
+        push(SessionChangesScreen(context, graph, sessionId))
     }
 
     /** router.back() twice: off this screen and off the chat it came from. */
@@ -773,7 +773,6 @@ class SessionInfoScreen(context: Context, private val graph: AppGraph, private v
         const val FIRST_PAINT_TIMEOUT_MS = 5_000L
         const val MENU_RETRY = 1
         const val MENU_DIAGNOSTICS = 2
-        const val NOT_PORTED = "Not available in this Android build yet."
 
         /** Hard-coded in useSessionQuickActions.ts / info.tsx, not in en.ts (happy-ios SessionDetailActions). */
         const val BOT_ARCHIVE_MESSAGE = "Connect to the bot’s machine to archive it."

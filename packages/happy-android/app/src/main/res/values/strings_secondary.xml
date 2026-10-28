@@ -32,4 +32,11 @@
     <!-- Tasks -->
     <string name="tasks_leave">Leave task</string>
     <string name="tasks_archive">Archive task</string>
+    <!-- Changes -->
+    <string name="diff_badge_new">new</string>
+    <string name="diff_badge_deleted">deleted</string>
+    <string name="diff_badge_renamed">renamed</string>
+    <string name="changes_update_happy_agent">Update Happy Agent on your computer to view changes in this session.</string>
+    <string name="changes_comparison_unavailable">A comparison with origin/main is not available for this workspace.</string>
+    <string name="changes_no_file_details">No file details are available for this comparison.</string>
 </resources>

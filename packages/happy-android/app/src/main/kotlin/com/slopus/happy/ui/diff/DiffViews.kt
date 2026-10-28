@@ -19,6 +19,7 @@ import com.slopus.happy.ui.text.TextLayouts
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
 import com.slopus.happy.ui.view.dp
+import com.slopus.happy.ui.view.px
 import com.slopus.happy.ui.view.setFrame
 import kotlin.math.roundToInt
 
@@ -68,6 +69,8 @@ class DiffChunkView(context: Context) : ViewGroup(context), ThemeAware {
  */
 class DiffFileView(context: Context) : ViewGroup(context) {
     var onShowMore: (() -> Unit)? = null
+    /** An "N unchanged" separator was tapped (`canExpandContext`). */
+    var onExpandContext: (() -> Unit)? = null
 
     private var plan: DiffFilePlan? = null
     private val code = DiffCodeView(context)
@@ -91,6 +94,17 @@ class DiffFileView(context: Context) : ViewGroup(context) {
         addView(gutter)
         addView(showMore)
         setWillNotDraw(false)
+        code.onTap = { y -> canvasTapped(y) }
+    }
+
+    private fun canvasTapped(y: Float): Boolean {
+        val plan = plan ?: return false
+        val onExpandContext = onExpandContext ?: return false
+        if (!plan.options.canExpandContext) return false
+        val index = plan.layout.rowIndex(px(y) - plan.layout.canvas.minY) ?: return false
+        if ((plan.rows[index] as? DiffRowDraw.Hunk)?.expandable != true) return false
+        onExpandContext()
+        return true
     }
 
     fun apply(plan: DiffFilePlan) {
@@ -103,6 +117,49 @@ class DiffFileView(context: Context) : ViewGroup(context) {
         if (!keepOffset) scroll.scrollTo(0, 0)
         requestLayout()
         invalidate()
+        updateWindow()
+    }
+
+    // Only the rows within a screen of the visible part are drawn, as
+    // happy-ios draws only the rows near its scroll view's bounds: a long
+    // file's view is recorded again as the list scrolls, in steps.
+
+    private val visible = android.graphics.Rect()
+    private val scrolled = android.view.ViewTreeObserver.OnScrollChangedListener { updateWindow() }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        viewTreeObserver.addOnScrollChangedListener(scrolled)
+        updateWindow()
+    }
+
+    override fun onDetachedFromWindow() {
+        viewTreeObserver.removeOnScrollChangedListener(scrolled)
+        super.onDetachedFromWindow()
+    }
+
+    private fun updateWindow() {
+        val plan = plan ?: return
+        val count = plan.rows.size
+        val window = when {
+            count <= WINDOW_STEP -> null
+            !isAttachedToWindow || !getLocalVisibleRect(visible) -> IntRange.EMPTY
+            else -> {
+                val margin = px(rootView.height)
+                val top = px(visible.top) - margin - plan.layout.canvas.minY
+                val bottom = px(visible.bottom) + margin - plan.layout.canvas.minY
+                val rows = plan.layout.rows(top, bottom)
+                if (rows.isEmpty()) IntRange.EMPTY
+                else (rows.first / WINDOW_STEP * WINDOW_STEP) until minOf(count, (rows.last / WINDOW_STEP + 1) * WINDOW_STEP)
+            }
+        }
+        code.window = window
+        gutter.window = window
+    }
+
+    private companion object {
+        /** Rows the drawn window moves by; a file this short is drawn whole. */
+        const val WINDOW_STEP = 64
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -116,6 +173,7 @@ class DiffFileView(context: Context) : ViewGroup(context) {
         scroll.setFrame(layout.scroll)
         code.setFrame(Rect(0.0, 0.0, layout.scrollContentSize.width, layout.scrollContentSize.height))
         gutter.setFrame(layout.gutter)
+        updateWindow()
         val bar = layout.showMore
         if (bar != null) {
             showMore.visibility = VISIBLE
@@ -169,6 +227,24 @@ private class DiffCodeView(context: Context) : View(context) {
         }
     private val paints = DiffPaints()
 
+    /** The rows worth drawing (near the screen); null draws them all. */
+    var window: IntRange? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    /** A tap at y px in the view; true when it was used. */
+    var onTap: ((Float) -> Boolean)? = null
+    private val taps = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: MotionEvent) = plan?.options?.canExpandContext == true
+        override fun onSingleTapUp(e: MotionEvent) = onTap?.invoke(e.y) ?: false
+    })
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean = taps.onTouchEvent(event)
+
     override fun onDraw(canvas: Canvas) {
         val plan = plan ?: return
         paints.update(plan)
@@ -182,7 +258,8 @@ private class DiffCodeView(context: Context) : View(context) {
         val smallBaseline = paints.baseline(paints.small, DiffStyle.small(plan.metrics), plan)
         val messageBaseline = paints.baseline(paints.message, DiffStyle.message(plan.metrics), plan)
         val textX = originX + (com.slopus.happy.layout.diff.DiffFileLayout.Metrics.codePaddingLeft * d).toFloat()
-        plan.rows.forEachIndexed { index, row ->
+        for (index in window ?: plan.rows.indices) {
+            val row = plan.rows[index]
             val top = originY + index * rowHeight
             when (row) {
                 is DiffRowDraw.Line -> {
@@ -232,6 +309,14 @@ private class DiffGutterView(context: Context) : View(context) {
         }
     private val paints = DiffPaints()
 
+    /** The rows worth drawing (near the screen); null draws them all. */
+    var window: IntRange? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
     override fun onDraw(canvas: Canvas) {
         val plan = plan ?: return
         paints.update(plan)
@@ -243,7 +328,8 @@ private class DiffGutterView(context: Context) : View(context) {
         val marker = layout.marker
         val codeBaseline = paints.baseline(paints.code, DiffStyle.code(plan.metrics), plan)
         val smallBaseline = paints.baseline(paints.small, DiffStyle.small(plan.metrics), plan)
-        plan.rows.forEachIndexed { index, row ->
+        for (index in window ?: plan.rows.indices) {
+            val row = plan.rows[index]
             val top = index * rowHeight
             when (row) {
                 is DiffRowDraw.Line -> {

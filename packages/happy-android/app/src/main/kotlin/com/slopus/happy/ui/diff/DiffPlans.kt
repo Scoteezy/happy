@@ -153,6 +153,11 @@ data class DiffViewOptions(
     /** Rows drawn before "Show N more lines". */
     val collapseAfter: Int = 400,
     val paddingVertical: Double = 0.0,
+    /**
+     * Whether "N unchanged" separators can be tapped: only owners that can
+     * fetch a wider diff (`onExpandContext`) say yes.
+     */
+    val canExpandContext: Boolean = false,
 )
 
 /** One run of a code line: where it sits in the row (px from the text's start) and how it is coloured. */
@@ -168,7 +173,8 @@ sealed interface DiffRowDraw {
         val marker: String,
     ) : DiffRowDraw
 
-    class Hunk(val head: String, val section: String) : DiffRowDraw
+    /** [expandable]: an "N unchanged" separator a tap widens. */
+    class Hunk(val head: String, val section: String, val expandable: Boolean = false) : DiffRowDraw
 
     class Message(val text: String) : DiffRowDraw
 }
@@ -237,7 +243,10 @@ class DiffFilePlan(
             }
             DiffRowDraw.Line(row.type, text.toString(), runs, number, marker)
         }
-        is DiffRow.Hunk -> DiffRowDraw.Hunk(row.hidden?.let { "⋯ ${words.unchangedLines(it)}" } ?: row.text, row.section)
+        is DiffRow.Hunk -> {
+            val mark = if (options.canExpandContext) "⤢" else "⋯"
+            DiffRowDraw.Hunk(row.hidden?.let { "$mark ${words.unchangedLines(it)}" } ?: row.text, row.section, options.canExpandContext && row.hidden != null)
+        }
         is DiffRow.Message -> DiffRowDraw.Message(if (row.code == DiffRow.Message.Code.Binary) words.binaryFile else words.noChanges)
     }
 }
