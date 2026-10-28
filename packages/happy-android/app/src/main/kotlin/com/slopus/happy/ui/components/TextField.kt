@@ -82,7 +82,9 @@ class TextField(
     fun focus() {
         requestFocus()
         post {
-            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+            // The insets controller shows the IME even when the focus didn't come from a touch.
+            androidx.core.view.ViewCompat.getWindowInsetsController(this)?.show(androidx.core.view.WindowInsetsCompat.Type.ime())
+                ?: (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
         }
     }
 

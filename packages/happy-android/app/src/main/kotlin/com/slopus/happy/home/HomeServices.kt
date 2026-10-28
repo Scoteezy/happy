@@ -1,7 +1,10 @@
 package com.slopus.happy.home
 
+import android.content.Context
 import com.slopus.happy.AppGraph
+import com.slopus.happy.R
 import com.slopus.happy.model.Machine
+import com.slopus.happy.model.NewSessionLabels
 import com.slopus.happy.model.Session
 import com.slopus.happy.projects.GitStatusServices
 import com.slopus.happy.projects.ProjectServices
@@ -76,6 +79,49 @@ class HomeServices private constructor(private val graph: AppGraph) {
             graph.account.collect { next -> if (next !== account) { account = next; reads.reset() } }
         }
         scope.launch { snapshots.collect { snapshot -> if (snapshot != null) reads.observe(snapshot.sessions) } }
+    }
+
+    private var newSessionServices: NewSessionServices? = null
+
+    /**
+     * The dock's draft, pickers and starter (HomeDockController's
+     * NewSessionComposer and SessionStarter), made on first use and kept,
+     * as the draft outlives home. Logout starts the draft over.
+     */
+    fun newSession(context: Context): NewSessionServices = synchronized(this) {
+        newSessionServices ?: makeNewSession(context.applicationContext).also { made ->
+            newSessionServices = made
+            graph.afterLogoutWipe { made.resetDraft() }
+        }
+    }
+
+    private fun makeNewSession(context: Context): NewSessionServices {
+        val drafts = NewSessionDraftStore(context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE))
+        val machineActions = LiveMachineActions { graph.account.value?.machineOps }
+        val starter = SessionStarter(
+            machines = { snapshots.value?.machines.orEmpty() },
+            sessions = { snapshots.value?.sessions.orEmpty() },
+            settings = { graph.settings.settings.value },
+            drafts = drafts,
+            machineActions = machineActions,
+            sessionActions = sessionActions,
+            sender = LiveFirstMessageSender({ graph.account.value }),
+            awaitSession = { id -> graph.account.value?.sender?.ensureSessionReady(id) ?: false },
+            scope = scope,
+        )
+        val labels = NewSessionLabels(
+            selectMachine = context.getString(R.string.home_dock_select_machine),
+            project = context.getString(R.string.home_dock_picker_project),
+            projects = context.getString(R.string.home_dock_picker_projects),
+            noWorktree = context.getString(R.string.home_dock_no_worktree),
+            main = context.getString(R.string.home_dock_main),
+            createWorkspace = context.getString(R.string.home_dock_create_workspace),
+            createWorktree = context.getString(R.string.home_dock_create_worktree),
+            enterCustomPath = context.getString(R.string.machine_launcher_enter_custom_path),
+            online = context.getString(R.string.status_online),
+            notSupportedBy = { context.getString(R.string.home_dock_not_supported_by, it) },
+        )
+        return NewSessionServices(drafts, snapshots, graph.settings.settings, machineActions, starter, labels, context::getString, scope)
     }
 
     fun session(id: String): Session? = snapshots.value?.sessions?.find { it.id == id }

@@ -307,7 +307,7 @@ class MessageSender internal constructor(
     }
 
     /** sync.ts `ensureSessionReady`: a visible row alone is not enough to place a message safely; it needs its own key. */
-    private suspend fun ensureSessionReady(sessionId: String): Boolean {
+    suspend fun ensureSessionReady(sessionId: String): Boolean {
         val ready = suspend {
             withContext(io) {
                 val session = store.session(sessionId)

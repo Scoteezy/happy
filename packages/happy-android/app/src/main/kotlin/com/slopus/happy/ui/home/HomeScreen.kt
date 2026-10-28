@@ -31,6 +31,7 @@ import com.slopus.happy.layout.Size
 import com.slopus.happy.model.HomeEmptyState
 import com.slopus.happy.model.ProjectHomeEntry
 import com.slopus.happy.model.SessionListGrouping
+import com.slopus.happy.model.workspaceOrigin
 import com.slopus.happy.ui.components.Alerts
 import com.slopus.happy.ui.components.AvatarStyle
 import com.slopus.happy.ui.components.RoundButton
@@ -78,6 +79,9 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
     private val services = HomeServices.of(graph)
     private val header = HomeHeaderView(context)
     private val dock = HomeDockView(context)
+    private val dockController: HomeDockController by lazy {
+        HomeDockController(context, dock, services.newSession(context), scope, DockHost())
+    }
     private val bar = NavigationBar(context)
     private val root = Root(context)
     private var kind: Kind? = null
@@ -95,6 +99,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         // Where a computer is a home of its own, the account's picture leads to the profiles' settings.
         header.showsAccountAvatar = graph.stemCells.isAvailable
         dock.visibility = View.GONE
+        dockController.render()
         bar.actions = listOf(
             NavigationBar.Action(WelcomeScreen.SETTINGS_ICON, context.getString(R.string.onboarding_settings_title), 22.0) {
                 push(OnboardingSettingsScreen(context, graph))
@@ -123,8 +128,15 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         bar.safeArea = safeArea
         header.safeTop = safeArea.top
         dock.safeBottom = safeArea.bottom
+        focus?.let {
+            it.safeTop = safeArea.top
+            it.safeBottom = safeArea.bottom
+            it.keyboard = keyboard
+        }
         root.requestLayout()
     }
+
+    override fun onBackPressed(): Boolean = dockController.onBackPressed()
 
     /** Something can be started from the dock: a computer is linked and, where a computer is a home of its own, one is reachable. */
     private val showsDock: Boolean
@@ -195,7 +207,8 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
                 view.showArchived.onTap = { showArchive() }
             }
             Kind.NoSessions -> NoSessionsView(context).also { view ->
-                view.startNewSession.onTap = { notPorted(context.getString(R.string.home_start_new_session)) }
+                // The new-session screen is a later stage of the port; the dock's composer starts one meanwhile.
+                view.startNewSession.onTap = { dockController.openFocus() }
                 view.showArchived.onTap = { showArchive() }
             }
             Kind.List -> SessionListView(context, this).also { list = it }
@@ -225,12 +238,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         val floating = kind != Kind.Link
         header.visibility = if (floating) View.VISIBLE else View.GONE
         bar.visibility = if (floating) View.GONE else View.VISIBLE
-        val wasShown = dock.visibility == View.VISIBLE
-        dock.visibility = if (showsDock) View.VISIBLE else View.GONE
-        if (showsDock && !wasShown) {
-            val reduceMotion = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-            dock.fadeIn(HomeDockFade.shown(HomeDockFade.Origin.Appearing, onWindow = animated && root.isAttachedToWindow, reduceMotion = reduceMotion))
-        }
+        dockController.isAvailable = showsDock
         root.requestLayout()
     }
 
@@ -290,7 +298,12 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
 
     override fun holdProject(entry: ProjectHomeEntry) = Unit
 
-    override fun createWorkspace(entry: ProjectHomeEntry) = Unit
+    /** ProjectRow's +: the draft moves to the project, asking for a new workspace, and the composer opens on it. */
+    override fun createWorkspace(entry: ProjectHomeEntry) {
+        val origin = (entry.session ?: entry.avatarSession)?.let(::workspaceOrigin) ?: return
+        dockController.services.prepareWorkspace(origin.machineId, origin.projectId, origin.path)
+        dockController.openFocus()
+    }
 
     override fun openTroubleshoot() = notPorted(context.getString(R.string.onboarding_offline_troubleshoot))
 
@@ -433,6 +446,38 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         }
     }
 
+    private var focus: HomeDockFocusView? = null
+
+    /** The open composer lies over everything on home; the list, header and capsule blur faintly under it. */
+    private inner class DockHost : HomeDockController.Host {
+        override val canPresent: Boolean get() = root.isAttachedToWindow && stack?.top === this@HomeScreen
+
+        override fun present(focus: HomeDockFocusView) {
+            this@HomeScreen.focus = focus
+            focus.safeTop = safeArea.top
+            focus.safeBottom = safeArea.bottom
+            focus.keyboard = keyboard
+            focus.onBackdrop = ::blurUnderFocus
+            root.addView(focus)
+        }
+
+        override fun dismiss(focus: HomeDockFocusView) {
+            blurUnderFocus(0f)
+            root.removeView(focus)
+            if (this@HomeScreen.focus === focus) this@HomeScreen.focus = null
+        }
+
+        override fun openSession(id: String) = this@HomeScreen.openSession(id)
+    }
+
+    /** expo-blur's intensity 8 under the dim: a few pixels at most, Android 12 and later. */
+    private fun blurUnderFocus(amount: Float) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return
+        val radius = com.slopus.happy.ui.view.dp(BACKDROP_BLUR) * amount
+        val effect = if (radius < 0.5f) null else android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP)
+        for (view in listOfNotNull(content, header)) view.setRenderEffect(effect)
+    }
+
     private inner class Root(context: Context) : ManualLayout(context), ThemeAware {
         init {
             addView(dock)
@@ -452,6 +497,10 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
             for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 if (child === dock || child === header || child === bar) continue
+                if (child is HomeDockFocusView) {
+                    child.setFrame(Rect(0.0, 0.0, width, height))
+                    continue
+                }
                 child.setFrame(layout.content)
                 when (child) {
                     // The list pads itself under the header; every other state sees the padding as safe area.
@@ -471,6 +520,8 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
 
     private companion object {
         const val CROSSFADE_MS = 250L
+        /** The open composer's blur under the dim, in dp: the ultra-thin material at 0.08. */
+        const val BACKDROP_BLUR = 10.0
         val MACHINE_ARRIVAL_TIMEOUT = 10.seconds
         const val GROUPING = 1
         const val APPEARANCE_GROUP = 2

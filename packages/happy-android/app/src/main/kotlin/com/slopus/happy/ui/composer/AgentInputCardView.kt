@@ -9,11 +9,8 @@ import android.os.Build
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
-import android.view.HapticFeedbackConstants
-import android.view.Menu
 import android.view.View
 import android.view.ViewOutlineProvider
-import android.widget.PopupMenu
 import android.widget.ProgressBar
 import com.slopus.happy.chat.AgentInputPrimaryAction
 import com.slopus.happy.chat.ComposerChipSet
@@ -25,15 +22,19 @@ import com.slopus.happy.layout.Rect
 import com.slopus.happy.layout.Size
 import com.slopus.happy.layout.TextStyles
 import com.slopus.happy.layout.composer.AgentInputCardLayout
+import com.slopus.happy.layout.composer.AgentInputPrimaryFlash
 import com.slopus.happy.layout.composer.ComposerShake
 import com.slopus.happy.layout.composer.MobileComposerMetrics
 import com.slopus.happy.layout.composerCapsuleFill
 import com.slopus.happy.layout.composerChip
+import com.slopus.happy.layout.composerNewSessionPrimaryFill
+import com.slopus.happy.layout.composerNewSessionPrimaryIcon
 import com.slopus.happy.layout.composerInput
 import com.slopus.happy.layout.composerPrimaryFlash
 import com.slopus.happy.layout.composerPrimaryInactive
 import com.slopus.happy.layout.composerStopFill
 import com.slopus.happy.layout.composerStopIcon
+import com.slopus.happy.ui.components.ChoiceMenu
 import com.slopus.happy.ui.components.IconView
 import com.slopus.happy.ui.components.Label
 import com.slopus.happy.ui.components.TextField
@@ -46,6 +47,22 @@ import com.slopus.happy.ui.view.setFrame
 
 /** Which of the card's chips. */
 enum class AgentInputChip { Permission, Model, Effort }
+
+/** A control in the action row that can refuse a press ([AgentInputCardView.Configuration.refusesControls]). */
+enum class AgentInputControl { Add, Permission, Model, Effort }
+
+/** How the round button is painted. */
+enum class AgentInputPrimaryStyle {
+    /** AgentInput.tsx's chat composer: send on `surfaceHighest`, stop black (light) or #F5F5F5 (dark), idle grey. */
+    Standard,
+
+    /**
+     * HomeDock.tsx's focused composer: send and stop share the solid fill
+     * with the contrasting icon; idle is `surfaceHighest` with a
+     * `textSecondary` arrow (Ionicons); busy is a spinner on the unfilled button.
+     */
+    NewSession,
+}
 
 /**
  * The compact composer card (AgentInput.tsx `mobileUnifiedPanel`; happy-ios
@@ -68,6 +85,11 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         val primaryAction: AgentInputPrimaryAction = AgentInputPrimaryAction.Idle,
         val isPrimaryBusy: Boolean = false,
         val primaryAccessibilityLabel: String? = null,
+        val primaryStyle: AgentInputPrimaryStyle = AgentInputPrimaryStyle.Standard,
+        /** A session is starting: add and the chips shake instead of acting (only Home's dock refuses). */
+        val refusesControls: Boolean = false,
+        /** A bot's name: words capitalised, Return makes it. */
+        val capitalizesWords: Boolean = false,
     )
 
     var configuration = Configuration()
@@ -86,6 +108,17 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     var onAdd: (() -> Unit)? = null
     var onSelect: ((AgentInputChip, String) -> Unit)? = null
     var onFocusChanged: ((Boolean) -> Unit)? = null
+    /** A control was pressed while [Configuration.refusesControls] is on; it has shaken. */
+    var onRefuse: ((AgentInputControl) -> Unit)? = null
+    /** Return was pressed in a card that capitalises words (a bot's name): true when it was taken. */
+    var onReturn: (() -> Boolean)? = null
+
+    /**
+     * Whether the card draws its own capsule. Home's dock draws it on the
+     * shell that grows around the card, and turns this off.
+     */
+    var showsSurface = true
+        set(value) { field = value; surface.visibility = if (value) VISIBLE else GONE }
 
     private val surface = View(context)
     private val surfaceShape = GradientDrawable()
@@ -132,14 +165,25 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         textView.setOnFocusChangeListener { _, focused -> onFocusChanged?.invoke(focused) }
         addView(textView)
         addButton.contentDescription = context.getString(com.slopus.happy.R.string.composer_add_photo)
-        addButton.setOnClickListener { onAdd?.invoke() }
+        addButton.setOnClickListener {
+            if (configuration.refusesControls) refuse(addButton, AgentInputControl.Add) else onAdd?.invoke()
+        }
         addView(addButton)
         addView(middle)
         separator.text = "·"
         for (chip in listOf(permissionChip, modelChip, effortChip)) {
             chip.onSelect = { which, key -> onSelect?.invoke(which, key) }
+            chip.refuses = {
+                if (configuration.refusesControls) {
+                    refuse(chip, AgentInputControl.valueOf(chip.chip.name))
+                    true
+                } else {
+                    false
+                }
+            }
             middle.addView(chip)
         }
+        textView.setOnEditorActionListener { _, _, _ -> onReturn?.invoke() ?: false }
         middle.addView(separator)
         primaryButton.setOnClickListener { onPrimary?.invoke() }
         addView(primaryButton)
@@ -181,7 +225,17 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         modelChip.configure(config.model)
         effortChip.configure(config.effort)
         separator.visibility = if (config.effort == null) GONE else VISIBLE
-        primaryButton.configure(config.primaryAction, config.isPrimaryBusy, config.primaryAccessibilityLabel)
+        primaryButton.configure(config.primaryAction, config.isPrimaryBusy, config.primaryAccessibilityLabel, config.primaryStyle)
+        if (previous == null || previous.capitalizesWords != config.capitalizesWords) {
+            // A bot's name is one line that Return makes; a prompt takes newlines.
+            textView.inputType = if (config.capitalizesWords) {
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+            } else {
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                    InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+            }
+            textView.imeOptions = if (config.capitalizesWords) android.view.inputmethod.EditorInfo.IME_ACTION_DONE else 0
+        }
         if (previous == null || previous.permission != config.permission || previous.model != config.model ||
             previous.effort != config.effort || previous.showsAdd != config.showsAdd
         ) {
@@ -201,12 +255,36 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     fun blur() = textView.dismissKeyboard()
 
     /** A refused send: the card shakes (ComposerShake.shaker). */
-    fun shake() {
-        val shake = ComposerShake.steps(ComposerShake.shakerKeyframes(), 1.0)
-        ObjectAnimator.ofFloat(this, TRANSLATION_X, *shake.values.map { dp(it) }.toFloatArray()).apply {
-            duration = (shake.duration * 1000).toLong()
-            start()
+    fun shake() = shake(this)
+
+    /**
+     * HomeDock.tsx's refusal flash, driven by home (0…1): the round button
+     * swells by a tenth and, on Stop, a lighter wash rises under the glyph.
+     */
+    fun setPrimaryFlash(amount: Double) {
+        val scale = AgentInputPrimaryFlash.scale(amount).toFloat()
+        primaryButton.scaleX = scale
+        primaryButton.scaleY = scale
+        primaryButton.flash = AgentInputPrimaryFlash.overlayAlpha(amount).toFloat()
+    }
+
+    /**
+     * HomeDock.tsx's open animation: [input] (alpha, offsetY) moves the
+     * text, [actions] the action row. Transform and alpha only
+     * ([com.slopus.happy.layout.composer.AgentInputCardReveal] has the ranges).
+     */
+    fun setReveal(input: Pair<Double, Double>, actions: Pair<Double, Double>) {
+        textView.alpha = input.first.toFloat() * if (configuration.isEditable) 1f else AgentInputCardLayout.Metrics.readOnlyTextOpacity.toFloat()
+        textView.translationY = dp(input.second)
+        for (view in listOf(addButton, middle, primaryButton)) {
+            view.alpha = actions.first.toFloat()
+            view.translationY = dp(actions.second)
         }
+    }
+
+    private fun refuse(view: View, control: AgentInputControl) {
+        shake(view, ComposerShake.refusal)
+        onRefuse?.invoke(control)
     }
 
     // Layout
@@ -302,6 +380,8 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     /** A chip: its label (or the shield) where the layout says, opening its menu on tap. */
     private class ChipButton(context: Context, val chip: AgentInputChip) : ManualLayout(context) {
         var onSelect: ((AgentInputChip, String) -> Unit)? = null
+        /** Asked first on a tap: true when the press was refused instead. */
+        var refuses: () -> Boolean = { false }
         private val label = Label(context, TextStyles.composerChip, Palette.text, maxLines = 1)
         private val iconView = IconView(context, null, AgentInputCardLayout.Metrics.permissionIconSize, Palette.text)
         private var config: ComposerChipSet.Chip? = null
@@ -312,7 +392,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             addView(iconView)
             isClickable = true
             isFocusable = true
-            setOnClickListener { openMenu() }
+            setOnClickListener { if (!refuses()) openMenu() }
         }
 
         val contentSize: Size
@@ -361,24 +441,10 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         /** The chip's menu: one group per section, its title a disabled row, the current pick checked. */
         private fun openMenu() {
             val sections = config?.sections ?: return
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            val popup = PopupMenu(context, this)
-            val keys = ArrayList<String>()
-            sections.forEachIndexed { group, section ->
-                section.title?.let { popup.menu.add(group, Menu.NONE, Menu.NONE, it).isEnabled = false }
-                for (option in section.options) {
-                    val item = popup.menu.add(group, keys.size, Menu.NONE, option.label)
-                    item.isCheckable = true
-                    item.isChecked = option.key == config?.selectedKey
-                    item.isEnabled = !option.isDisabled
-                    keys += option.key
-                }
+            val menu = sections.map { section ->
+                ChoiceMenu.Section(section.title, section.options.map { ChoiceMenu.Option(it.key, it.label, it.isDisabled) })
             }
-            popup.setOnMenuItemClickListener { item ->
-                keys.getOrNull(item.itemId)?.let { onSelect?.invoke(chip, it) }
-                true
-            }
-            popup.show()
+            ChoiceMenu.show(this, menu, config?.selectedKey) { onSelect?.invoke(chip, it) }
         }
     }
 
@@ -387,11 +453,20 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         private val shape = GradientDrawable().apply { shape = GradientDrawable.OVAL }
         private val iconView = IconView(context, null, AgentInputCardLayout.Metrics.primaryIconSize)
         private val spinner = ProgressBar(context, null, android.R.attr.progressBarStyleSmall)
+        /** The refusal flash's wash, over the fill and under the glyph. */
+        private val flashOverlay = View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL } }
         private var action = AgentInputPrimaryAction.Idle
         private var busy = false
+        private var style = AgentInputPrimaryStyle.Standard
+
+        /** The wash's alpha ([AgentInputPrimaryFlash.overlayAlpha]). */
+        var flash = 0f
+            set(value) { field = value; applyFlash() }
 
         init {
             background = shape
+            flashOverlay.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+            addView(flashOverlay)
             addView(iconView)
             spinner.visibility = GONE
             addView(spinner)
@@ -399,9 +474,10 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             isFocusable = true
         }
 
-        fun configure(action: AgentInputPrimaryAction, busy: Boolean, accessibilityLabel: String?) {
+        fun configure(action: AgentInputPrimaryAction, busy: Boolean, accessibilityLabel: String?, style: AgentInputPrimaryStyle) {
             this.action = action
             this.busy = busy
+            this.style = style
             when (action) {
                 AgentInputPrimaryAction.Stop -> {
                     iconView.icon = Icon.octicons("stop")
@@ -416,7 +492,8 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
                     iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
                 }
                 AgentInputPrimaryAction.Send, AgentInputPrimaryAction.Idle -> {
-                    iconView.icon = Icon.octicons("arrow-up")
+                    // HomeDock draws Ionicons' arrow; AgentInput Octicons'.
+                    iconView.icon = if (style == AgentInputPrimaryStyle.NewSession) Icon.ionicons("arrow-up") else Icon.octicons("arrow-up")
                     iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
                 }
             }
@@ -430,8 +507,23 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             applyTheme()
         }
 
+        private fun applyFlash() {
+            flashOverlay.visibility = if (action != AgentInputPrimaryAction.Stop || (busy && style == AgentInputPrimaryStyle.NewSession)) GONE else VISIBLE
+            flashOverlay.alpha = flash
+        }
+
         fun applyTheme() {
             shape.setStroke(0, 0)
+            (flashOverlay.background as GradientDrawable).setColor(Theme.color(Palette.composerPrimaryFlash))
+            applyFlash()
+            if (style == AgentInputPrimaryStyle.NewSession) {
+                // HomeDock's 'busy' is its own action, on the unfilled button.
+                val filled = !busy && (action == AgentInputPrimaryAction.Send || action == AgentInputPrimaryAction.Stop)
+                shape.setColor(Theme.color(if (filled) Palette.composerNewSessionPrimaryFill else Palette.surfaceHighest))
+                iconView.tint = if (filled) Palette.composerNewSessionPrimaryIcon else Palette.textSecondary
+                spinner.indeterminateTintList = ColorStateList.valueOf(Theme.color(Palette.textSecondary))
+                return
+            }
             val (fill, tint) = when (action) {
                 AgentInputPrimaryAction.Stop -> Palette.composerStopFill to Palette.composerStopIcon
                 AgentInputPrimaryAction.Blocked -> {
@@ -455,9 +547,22 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         }
 
         override fun layoutSubviews(width: Double, height: Double) {
+            flashOverlay.setFrame(Rect(0.0, 0.0, width, height))
             iconView.setFrame(Rect(0.0, 0.0, width, height))
             val s = 20.0
             spinner.setFrame(Rect((width - s) / 2, (height - s) / 2, s, s))
+        }
+    }
+
+    companion object {
+        /** Shaker.tsx: [view] slides through [shake]'s keyframes, ease in-out per step, added to where it is. */
+        fun shake(view: View, shake: ComposerShake = ComposerShake.shaker) {
+            val base = view.translationX
+            ObjectAnimator.ofFloat(view, TRANSLATION_X, *shake.values.map { base + dp(it) }.toFloatArray()).apply {
+                duration = (shake.duration * 1000).toLong()
+                interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+                start()
+            }
         }
     }
 }
