@@ -103,7 +103,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [ ] Text selection screen, long-press copy
 - [~] Tool calls: compact rows (eye/terminal glyphs, grey), Edit card, tap to open/close (pinned), Bash terminal panel, raw Input/Output sections, errors, running spinner and timer. Evidence: `chat/a19-bash-open-*.png`, `chat/a20-edit-open-*.png`, `chat/chat-tool-expand.mp4`. The full tool view screen is to do
 - [ ] Tool views: Bash (terminal panel done), Edit, MultiEdit, Write (diff views not ported: they show raw Input/Output), Todo, Task, MCP, Codex, Gemini, file, exit plan, questions
-- [ ] Permission prompts
+- [~] Permission prompts: the footer under a waiting tool (Yes / Yes, don't ask again for this tool / No, and provide feedback; the Codex, edit and plan sets), the tapped button pulsing while its answer is on its way with no other taking a tap, the answer through `SessionOps.allow`/`deny` and the mode switch after it, the answered button shaded and the rest faded; the status reads "permission required" and the primary turns to the black "!" (`ChatRowRenderer.permissionFooter`, `chat/tools/PermissionOptions.kt`). Evidence: `chat/b02-permission-*.png` vs `ios-ref/33-permission.png`, `chat/b07-answering.png`, `chat/b08-approved.png` vs `ios-ref/36-approved.png`, `chat/chat-permission-approve.mp4` (the seeded `perm-demo` session answers over RPC). A list taller than its cap does not scroll yet, and the tablet layout is to do
 - [ ] Agent questions: banner, sheet with footer above the keyboard, inline form
 - [ ] Image and file messages
 - [ ] Message detail screen
