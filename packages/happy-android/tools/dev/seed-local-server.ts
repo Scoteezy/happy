@@ -2,7 +2,9 @@
  * Seeds a local Happy server with a throwaway account, a computer and a set
  * of sessions, then keeps them present (machine-alive, session-alive) until
  * stopped, so the Android and iOS apps can be compared screen by screen on
- * the same data without a real account or a real agent.
+ * the same data without a real account or a real agent. The computer also
+ * answers the daemon's start: a session asked for from the app is made,
+ * kept online, and answers each prompt with one short turn.
  *
  * Run from packages/happy-cli, against `pnpm --filter happy-server standalone:dev`
  * (--reset-chat writes the transcript again):
@@ -129,7 +131,7 @@ async function main() {
     }
 
     const machineKey = getRandomBytes(32)
-    await axios.post(`${server}/v1/machines`, {
+    const registered = await axios.post(`${server}/v1/machines`, {
         id: machineId,
         metadata: encodeBase64(encryptWithDataKey({
             host: 'MacBook Pro',
@@ -153,6 +155,9 @@ async function main() {
         if (!opened) throw new Error('could not open a session key')
         return opened
     }
+
+    // A computer registered on an earlier run keeps the key it was made with; its RPCs are sealed with that one.
+    const machineDataKey = registered.data.machine?.dataEncryptionKey ? unseal(registered.data.machine.dataEncryptionKey) : machineKey
 
     const created: { id: string; seed: SessionSeed; key: Uint8Array; agentStateVersion: number }[] = []
     // --reset-chat / --reset-permission: the session holding that transcript
@@ -241,7 +246,63 @@ async function main() {
             live[index].volatile.emit('session-alive', { sid: id, time: Date.now(), thinking: false, mode: 'remote' })
         })
     }
-    machine.on('connect', beat)
+    machine.on('connect', () => {
+        beat()
+        for (const method of ['spawn-happy-session', 'bash', 'stop-session']) machine.emit('rpc-register', { method: `${machineId}:${method}` })
+    })
+    // The daemon's side of a start: a session is made where it was asked
+    // for, kept online, and answers each prompt with one short turn.
+    // Nothing runs; git knows no worktrees here.
+    machine.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
+        const params = decryptWithDataKey(decodeBase64(data.params), machineDataKey) as Record<string, unknown>
+        const method = data.method.slice(machineId.length + 1)
+        console.error('machine rpc', method, JSON.stringify(params))
+        let answer: object
+        if (method === 'spawn-happy-session') {
+            await new Promise((resolve) => setTimeout(resolve, 1200))
+            answer = { type: 'success', sessionId: await spawn(String(params.directory ?? home), String(params.agent ?? 'claude')) }
+        } else if (method === 'bash') {
+            answer = { success: false, stdout: '', stderr: 'fatal: not a git repository', exitCode: 128 }
+        } else {
+            answer = { message: 'Session stopped' }
+        }
+        callback(encodeBase64(encryptWithDataKey(answer, machineDataKey)))
+    })
+
+    async function spawn(directory: string, agent: string): Promise<string> {
+        const key = getRandomBytes(32)
+        const response = await axios.post(`${server}/v1/sessions`, {
+            tag: randomUUID(),
+            metadata: encodeBase64(encryptWithDataKey({
+                path: directory, host: 'MacBook Pro', homeDir: home, happyHomeDir: `${home}/.happy`, happyLibDir: `${home}/.happy/lib`,
+                machineId, flavor: agent,
+            }, key)),
+            agentState: null,
+            dataEncryptionKey: seal(key),
+        }, { headers })
+        const id: string = response.data.session.id
+        const chat = { id, key: unseal(response.data.session.dataEncryptionKey) }
+        const socket = io(ws, {
+            transports: ['websocket'],
+            path: '/v1/updates',
+            auth: { token, clientType: 'session-scoped', sessionId: id, happyClient: 'cli-coding-session/seed' },
+        })
+        const alive = (thinking: boolean) => socket.volatile.emit('session-alive', { sid: id, time: Date.now(), thinking, mode: 'remote' })
+        socket.on('connect', () => alive(false))
+        setInterval(() => alive(false), 15_000)
+        socket.on('update', async (update: { body: { t: string; sid: string; message?: { content: { t: string; c: string } } } }) => {
+            if (update.body.t !== 'new-message' || update.body.sid !== id || update.body.message?.content.t !== 'encrypted') return
+            const record = decryptWithDataKey(decodeBase64(update.body.message.content.c), chat.key) as { role: string; content: { text?: string } }
+            if (record.role !== 'user') return
+            console.error('prompt', id, JSON.stringify(record.content.text))
+            alive(true)
+            await new Promise((resolve) => setTimeout(resolve, 1500))
+            await writeTranscript(chat, reply(record.content.text ?? ''), true)
+            alive(false)
+        })
+        console.error('spawned', id, directory, agent)
+        return id
+    }
     // The server takes no agent state when a session is made: a session with
     // one sets it over its own socket, once (or again with --reset-permission),
     // and answers the app's permission RPC as the CLI does: the request moves
@@ -384,6 +445,20 @@ function transcript(): unknown[] {
     user('Yes please, and keep it short.')
     assistant([{ type: 'text', text: 'Added `expired session does not loop` to `guard.test.ts`. It fails on the old code and passes now.' }])
     emit(closeClaudeTurnWithStatus(state, 'completed').envelopes)
+    return records
+}
+
+/** The spawned sessions' answer to a prompt: one Claude turn that says what it got. */
+function reply(prompt: string): unknown[] {
+    const state = protocolState()
+    const records: unknown[] = []
+    const mapped = mapClaudeLogMessageToSessionEnvelopes({
+        uuid: randomUUID(), type: 'assistant',
+        message: { role: 'assistant', model: 'claude-sonnet-4-5', content: [{ type: 'text', text: `Got it: “${prompt}”. This computer is the seed script, so nothing will run, but the session is real.` }] },
+    } as never, state)
+    state.currentTurnId = mapped.currentTurnId
+    mapped.envelopes.forEach((content: unknown) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
+    closeClaudeTurnWithStatus(state, 'completed').envelopes.forEach((content: unknown) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
     return records
 }
 
