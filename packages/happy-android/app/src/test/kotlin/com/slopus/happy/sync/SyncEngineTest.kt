@@ -122,6 +122,25 @@ class SyncEngineTest {
     }
 
     @Test
+    fun aReconnectListsEverythingSoDeletionsMissedWhileOfflineGo() = runTest {
+        server.addSession("keep", updatedAt = 100)
+        server.addSession("gone", updatedAt = 100)
+        val engine = engine()
+        engine.syncAll()
+        server.sessions.removeAll { it.id == "gone" }
+
+        now += 60_000
+        engine.requestFullListing()
+        engine.syncAll()
+        assertNull(server.requestsTo("/v2/sessions").last().url.queryParameter("changedSince"))
+        assertEquals(setOf("keep"), store.sessionIds())
+
+        now += 60_000
+        engine.syncAll()
+        assertEquals("the request is used once", "99", server.requestsTo("/v2/sessions").last().url.queryParameter("changedSince"))
+    }
+
+    @Test
     fun messagesOfASessionDeletedOnTheServerRemoveIt() = runTest {
         server.addSession("s1", updatedAt = 100)
         server.addMessage("s1", seq = 1, content = buildJsonObject { put("n", 1) }, updatedAt = 110)

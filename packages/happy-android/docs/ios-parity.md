@@ -64,6 +64,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 ### Foundation
 
 - [~] `:layout` module: geometry, `Measurable`, design tokens (`Palette`, `TextStyles`, `Spacing`, `Radius`; Stem Cells palette generated). Ported so far: round button, onboarding, checklists, wordmark, navigation bar, Stem Cells link, item rows/groups, grouped list, settings header, secret key card, restore, server form; the rest come with their screens
+- [x] Session list sync: `changedSince` deltas, live `delete-session`, and a full listing that drops sessions deleted elsewhere. That listing runs on first sync and daily, as on iOS, and also after every socket connect (`SyncEngine.requestFullListing`). The last is a deliberate departure: iOS keeps a session deleted while the app was offline until its next daily reconcile, which showed as duplicates on Home. Evidence: `session-deletion/before-after-reconnect.png` (stale copies gone on connect), `session-deletion/live-delete.png`
 - [x] `:icons` module: Ionicons/Octicons/etc. outlines from the iOS generated tables, `GlyphOutline` decoder
 - [x] Fonts: IBM Plex Sans/Mono, Bricolage Grotesque; `TextStyle` → `TextPaint`, exact line heights
 - [ ] Text measurement off the main thread (`StaticLayout`), font scale as RN scales it

@@ -26,8 +26,10 @@ import java.io.IOException
  *   sessions   `/v2/sessions?changedSince=` from the stored watermark, paged
  *              by cursor. A session's `updatedAt` moves with every message,
  *              so this also says which sessions have new messages. A full
- *              listing (no `changedSince`) runs on first sync and then daily,
- *              because deletions do not show up in a delta.
+ *              listing (no `changedSince`) runs on first sync, daily, and
+ *              after every socket connect ([requestFullListing]), because
+ *              deletions do not show up in a delta and a `delete-session`
+ *              sent while the socket was down is lost.
  *   messages   for sessions whose server `seq` is ahead of the stored run:
  *              the newest page (`before_seq`) if nothing is stored yet,
  *              then `/v3/sessions/:id/messages?after_seq=` from the run's
@@ -51,6 +53,14 @@ class SyncEngine(
     private val messages: MessageSync = MessageSync(api, store, decoder, CoroutineScope(SupervisorJob() + io), io),
 ) {
     private val mutex = Mutex()
+
+    @Volatile
+    private var fullListingRequested = false
+
+    /** The next session sync lists every session, dropping the ones deleted while no update could say so. */
+    fun requestFullListing() {
+        fullListingRequested = true
+    }
 
     /** Runs every stream once. Returns the streams' failures; empty means fully synced. */
     suspend fun syncAll(): List<Exception> = mutex.withLock {
@@ -132,7 +142,9 @@ class SyncEngine(
         val watermark = store.cursor(CURSOR_SESSIONS_CHANGED)
         val listedAt = store.cursor(CURSOR_SESSIONS_LISTED_AT)
         val now = clock()
-        val fullListing = watermark == null || listedAt == null || now - listedAt >= FULL_LISTING_INTERVAL_MS
+        val requested = fullListingRequested
+        fullListingRequested = false
+        val fullListing = requested || watermark == null || listedAt == null || now - listedAt >= FULL_LISTING_INTERVAL_MS
         // One millisecond back: a session updated in the same millisecond as
         // the newest one seen, but committed after that read, is not lost.
         // Fetching the boundary record again is harmless.
@@ -141,15 +153,21 @@ class SyncEngine(
         var cursor: String? = null
         var newest = watermark ?: 0L
         val listed = HashSet<String>()
-        do {
-            val page = api.sessions(cursor, changedSince, SESSION_PAGE_SIZE)
-            store.upsertSessions(page.sessions.mapNotNull(decoder::session))
-            for (session in page.sessions) {
-                listed += session.id
-                newest = maxOf(newest, session.updatedAt)
-            }
-            cursor = page.nextCursor
-        } while (page.hasNext && cursor != null)
+        try {
+            do {
+                val page = api.sessions(cursor, changedSince, SESSION_PAGE_SIZE)
+                store.upsertSessions(page.sessions.mapNotNull(decoder::session))
+                for (session in page.sessions) {
+                    listed += session.id
+                    newest = maxOf(newest, session.updatedAt)
+                }
+                cursor = page.nextCursor
+            } while (page.hasNext && cursor != null)
+        } catch (e: Exception) {
+            // The retry lists everything again.
+            if (requested) fullListingRequested = true
+            throw e
+        }
 
         store.transaction {
             if (fullListing) {

@@ -218,6 +218,8 @@ class AccountSync(
     private fun onConnected() {
         // The handshake carried the state for the first connect; this covers reconnects.
         socket.emit("app-state", appState(foreground.value))
+        // Sessions deleted while the socket was down sent their delete-session to no one.
+        engine.requestFullListing()
         deltaSync.invalidate()
         refreshViewing()
         scope.launch { composer.flushAhead() }
