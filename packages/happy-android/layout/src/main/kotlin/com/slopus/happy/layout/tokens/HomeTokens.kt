@@ -10,8 +10,8 @@ import kotlin.math.pow
 /** The controls' 1dp rim: white in light, rgba(255,255,255,0.18) in dark. */
 val Palette.headerGlassBorder get() = ColorToken(RGBA.White, RGBA(1.0, 1.0, 1.0, 0.18))
 
-/** The controls' fill, standing in for the static material over the page. */
-val Palette.headerControlFill get() = ColorToken(RGBA.hex("#F7F7F8")!!, RGBA.hex("#1C1C1E")!!)
+/** The controls' fill, standing in for the static material over the page: what the iOS 26 simulator draws it as over the light page (#E9E9E9) and the dark one (#1A1A1B). */
+val Palette.headerControlFill get() = ColorToken(RGBA.hex("#E9E9E9")!!, RGBA.hex("#1A1A1B")!!)
 
 /** The colour the home scrim fades from: white in light, black in dark. */
 val Palette.headerScrimTint get() = ColorToken(RGBA.White, RGBA.Black)
