@@ -50,6 +50,7 @@ def declaration(line: str) -> str | None:
         pname, ptype, default = pm.groups()
         ktype = kotlin_type(ptype)
         if default is not None:
+            default = re.sub(r"\bnil\b", "null", default)
             if ktype == "Double" and re.fullmatch(r"-?\d+", default):
                 default += ".0"
             out.append(f"{pname}: {ktype} = {default}")
@@ -83,6 +84,14 @@ def brackets(text: str) -> str:
     return "".join(out)
 
 
+def list_literal(text: str) -> str:
+    """`[a, b]` as `listOf(a, b)`; anything else as it is."""
+    text = text.strip()
+    if text.startswith("[") and text.endswith("]"):
+        return f"listOf({text[1:-1]})"
+    return text
+
+
 def convert_line(line: str) -> str:
     s = line
     if s.lstrip().startswith("//"):
@@ -104,8 +113,14 @@ def convert_line(line: str) -> str:
     s = re.sub(r"\(fitting: ", "(", s)
     s = re.sub(r"\bfor (\w+) in ", r"for (\1 in ", s)
     s = re.sub(r"(?<![\w\]])\[\]", "emptyList()", s)
-    # Argument labels become named arguments.
+    # Typed declarations keep their colon; argument labels become named arguments.
+    s = re.sub(r"\b(val|var) (\w+): ", lambda m: f"{m.group(1)} {m.group(2)}\0 ", s)
     s = re.sub(r"(?<=[(,\s])([a-z]\w*): (?=[^\s])", r"\1 = ", s)
+    s = s.replace("\0", ":")
+    s = re.sub(r"\bnil\b", "null", s)
+    s = re.sub(r"\.count\b(?!\()", ".size", s)
+    s = re.sub(r"(\w)!(?=[,)\s.])", r"\1!!", s)
+    s = re.sub(r"\bfor \((\w+) in (.+) \{$", lambda m: f"for ({m.group(1)} in {list_literal(m.group(2))}) {{", s)
     s = re.sub(r"\{ (\w+|_|\(\w+, \w+\)) in\b", lambda m: "{ " + m.group(1).strip("()") + " ->", s)
     s = re.sub(r"\b(?:Double|CGFloat)\(([^()]*)\)", r"(\1).toDouble()", s)
     s = s.replace("$0", "it")
