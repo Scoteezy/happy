@@ -6,6 +6,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <!-- AgentInput.tsx accessibilityLabel literals -->
     <string name="composer_add_photo">Add photo</string>
+    <string name="composer_remove_attachment">Remove image</string>
     <string name="composer_stop">Stop</string>
     <string name="composer_send">Send</string>
     <!-- RigActivityBar.tsx: "2 +1 queued agents" -->

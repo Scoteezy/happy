@@ -3,6 +3,10 @@ package com.slopus.happy.ui.composer
 import android.content.Context
 import android.view.HapticFeedbackConstants
 import com.slopus.happy.R
+import com.slopus.happy.attachments.AttachmentNotice
+import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.attachments.AttachmentUploadResult
+import com.slopus.happy.attachments.prepareAttachmentSend
 import com.slopus.happy.chat.AgentInputPrimaryAction
 import com.slopus.happy.chat.ChatActions
 import com.slopus.happy.chat.ChatState
@@ -26,6 +30,8 @@ import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.settings.AgentDefaultOverrides
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
+import com.slopus.happy.text.plural
+import com.slopus.happy.ui.components.Alerts
 import com.slopus.happy.ui.components.Label
 import com.slopus.happy.ui.home.StatusDotView
 import com.slopus.happy.ui.theme.Theme
@@ -34,6 +40,7 @@ import com.slopus.happy.ui.view.ManualLayout
 import com.slopus.happy.ui.view.setFrame
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Date
@@ -49,6 +56,8 @@ class ChatComposerView(
     private val sessionId: String,
     private val actions: ChatActions,
     private val scope: CoroutineScope,
+    /** Encrypts and uploads picked pictures under the session; what failed is counted. */
+    private val upload: suspend (List<AttachmentPreview>) -> AttachmentUploadResult = { AttachmentUploadResult(emptyList(), it.size) },
 ) : ManualLayout(context), ThemeAware {
     val card = AgentInputCardView(context)
     private val statusDot = StatusDotView(context)
@@ -72,6 +81,10 @@ class ChatComposerView(
     private var isAborting = false
     private var stopRequested = false
     private var detailsVisible = true
+    private val images = ComposerImagePicker(context, scope)
+
+    /** Text, or a picture waiting. */
+    private val hasComposerContent get() = card.hasContent || images.images.isNotEmpty()
 
     init {
         clipChildren = false
@@ -84,6 +97,12 @@ class ChatComposerView(
             if (restoredDraft) scope.launch { runCatching { actions.setDraft(sessionId, card.text) } }
         }
         card.onPrimary = ::primaryPressed
+        card.onAdd = images::attach
+        card.onRemoveAttachment = images::remove
+        card.onReceiveImages = images::receive
+        images.onChange = { applyConfiguration() }
+        // The picked files live as long as the screen's composer.
+        scope.coroutineContext[Job]?.invokeOnCompletion { images.close() }
         card.onSelect = ::select
         card.configuration = card.configuration.copy(placeholder = context.getString(R.string.session_input_placeholder))
     }
@@ -109,6 +128,8 @@ class ChatComposerView(
         if (state.sessionState != previousState) vibingWord = ComposerStatus.randomVibingWord()
         status = state.session?.let { ComposerStatus.of(state.sessionState, state.activeAt, System.currentTimeMillis(), vibingWord) }
         if (!SessionComposerRules.showsAbortButton(state)) stopRequested = false
+        // Nothing to attach to: a picked image would be dropped at send.
+        if (!SessionComposerRules.canUseAttachments(state) && images.images.isNotEmpty()) images.clear()
         recomputeModes()
         applyStatus()
         applyConfiguration()
@@ -133,7 +154,7 @@ class ChatComposerView(
         val state = state ?: return
         val chips = ComposerChipSet.of(modes, state.session, titles)
         val primary = AgentInputPrimaryAction.resolve(
-            hasComposerContent = card.hasContent,
+            hasComposerContent = hasComposerContent,
             isSendBlocked = SessionComposerRules.isSendBlocked(state),
             isSendDisabled = false,
             showAbortButton = SessionComposerRules.showsAbortButton(state),
@@ -142,6 +163,7 @@ class ChatComposerView(
         )
         card.configuration = card.configuration.copy(
             showsAdd = SessionComposerRules.canUseAttachments(state),
+            attachments = if (SessionComposerRules.canUseAttachments(state)) images.images.map { AgentInputAttachmentPreview(it.id, it.image.file) } else emptyList(),
             permission = chips.permission,
             model = chips.model,
             effort = chips.effort,
@@ -243,17 +265,17 @@ class ChatComposerView(
     private fun primaryPressed() {
         val state = state ?: return
         val action = card.configuration.primaryAction
-        if (!card.hasContent && action == AgentInputPrimaryAction.Stop) return abort()
-        if (!card.hasContent && action == AgentInputPrimaryAction.Voice) return
+        if (!hasComposerContent && action == AgentInputPrimaryAction.Stop) return abort()
+        if (!hasComposerContent && action == AgentInputPrimaryAction.Voice) return
         if (SessionComposerRules.isSendBlocked(state)) {
             // The agent refuses steering while it works.
-            if (!card.hasContent || isSending) return
+            if (!hasComposerContent || isSending) return
             performHapticFeedback(HapticFeedbackConstants.REJECT)
             card.shake()
             return
         }
         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-        if (!card.hasContent) return
+        if (!hasComposerContent) return
         stopRequested = false
         send()
     }
@@ -261,13 +283,22 @@ class ChatComposerView(
     private fun send() {
         if (isSending) return
         val text = card.text
+        val picked = images.images
         isSending = true
         scope.launch {
             try {
-                actions.send(sessionId, text)
+                // sync.ts: images the agent can't take are named before anything goes; with nothing else to send, nothing does.
+                val plan = prepareAttachmentSend(state?.session?.metadata, text, picked.map { it.preview }, upload)
+                plan.notices.forEach(::notice)
+                if (!plan.send || (text.isBlank() && picked.isNotEmpty() && plan.records.isEmpty())) {
+                    isSending = false
+                    return@launch
+                }
+                actions.send(sessionId, text, attachments = plan.records)
                 isSending = false
                 // Only clear what was sent: typing may have gone on.
                 if (card.text == text) card.setText("")
+                images.removeSent(picked.map { it.id })
                 runCatching { actions.setDraft(sessionId, "") }
                 applyConfiguration()
                 onSent?.invoke()
@@ -279,6 +310,19 @@ class ChatComposerView(
                 card.shake()
             }
         }
+    }
+
+    private fun notice(notice: AttachmentNotice) = when (notice) {
+        AttachmentNotice.NotSupported -> Alerts.show(
+            context,
+            context.getString(R.string.image_upload_not_supported_title),
+            context.getString(R.string.image_upload_not_supported_message),
+        )
+        is AttachmentNotice.UploadFailed -> Alerts.show(
+            context,
+            context.getString(R.string.image_upload_upload_failed_title),
+            context.resources.plural(R.plurals.image_upload_upload_failed_message, notice.count, notice.count),
+        )
     }
 
     private fun abort() {

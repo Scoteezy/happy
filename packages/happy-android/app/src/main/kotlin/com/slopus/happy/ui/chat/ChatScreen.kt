@@ -1,6 +1,8 @@
 package com.slopus.happy.ui.chat
 
 import com.slopus.happy.attachments.AttachmentServices
+import com.slopus.happy.attachments.AttachmentUploadResult
+import com.slopus.happy.attachments.readAttachmentBytes
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -110,7 +112,10 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private val list = ChatListView(context)
     private val header = ChatHeaderView(context)
     private val scrim = ChatScrimView(context)
-    private val composer = ChatComposerView(context, sessionId, actions, scope)
+    private val composer = ChatComposerView(context, sessionId, actions, scope) { previews ->
+        AttachmentServices.of(graph).transfers?.upload(sessionId, previews, ::readAttachmentBytes)
+            ?: AttachmentUploadResult(emptyList(), previews.size)
+    }
     private val scrollButton = ScrollButton(context)
     private val spinner = ProgressBar(context)
     private val inactiveHint = ChatInactiveHintView(context, scope)

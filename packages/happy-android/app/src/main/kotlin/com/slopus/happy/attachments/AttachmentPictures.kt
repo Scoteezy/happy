@@ -55,7 +55,8 @@ class AttachmentPictures(val maxCount: Int = DEFAULT_MAX_COUNT, val maxCost: Int
     /** The thumbhash as a picture, decoded off the main thread. */
     suspend fun placeholder(thumbhash: String): Bitmap? {
         placeholders.get(thumbhash)?.let { return it }
-        val bitmap = withContext(Dispatchers.Default) { thumbhashBitmap(thumbhash) } ?: return null
+        val bitmap = withContext(Dispatchers.Default) { thumbhashBitmap(thumbhash) }
+        bitmap ?: return null
         placeholders.put(thumbhash, bitmap)
         return bitmap
     }

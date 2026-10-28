@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Outline
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.ViewGroup
@@ -122,7 +123,8 @@ class ChatAttachmentView(context: Context) : ViewGroup(context), ThemeAware {
         placeholderJob = null
         this.attachment = attachment
         // Only one already decoded; any other is decoded off the main thread.
-        placeholder.setImageBitmap(attachment?.thumbhash?.let { source()?.cachedPlaceholder(it) })
+        // setImageBitmap(null) would leave an empty drawable that reads as loaded.
+        placeholder.setImageDrawable(attachment?.thumbhash?.let { source()?.cachedPlaceholder(it) }?.let { BitmapDrawable(resources, it) })
         picture.setImageDrawable(null)
         picture.animate().cancel()
         picture.alpha = 1f
@@ -198,7 +200,7 @@ class ChatAttachmentView(context: Context) : ViewGroup(context), ThemeAware {
         }
         placeholderJob = viewScope.launch {
             val image = images.placeholder(thumbhash)
-            if (this@ChatAttachmentView.attachment == attachment) placeholder.setImageBitmap(image)
+            if (this@ChatAttachmentView.attachment == attachment && image != null) placeholder.setImageBitmap(image)
         }
     }
 

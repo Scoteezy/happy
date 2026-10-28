@@ -79,6 +79,8 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         val placeholder: String = "",
         val isEditable: Boolean = true,
         val showsAdd: Boolean = false,
+        /** The pictures waiting to go, in the strip over the text. */
+        val attachments: List<AgentInputAttachmentPreview> = emptyList(),
         val permission: ComposerChipSet.Chip? = null,
         val model: ComposerChipSet.Chip? = null,
         val effort: ComposerChipSet.Chip? = null,
@@ -106,6 +108,9 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     var onHeightChanged: (() -> Unit)? = null
     var onPrimary: (() -> Unit)? = null
     var onAdd: (() -> Unit)? = null
+    var onRemoveAttachment: ((String) -> Unit)? = null
+    /** Pictures pasted or inserted by the keyboard into the text, while [Configuration.showsAdd]. */
+    var onReceiveImages: ((List<android.net.Uri>) -> Unit)? = null
     var onSelect: ((AgentInputChip, String) -> Unit)? = null
     var onFocusChanged: ((Boolean) -> Unit)? = null
     /** A control was pressed while [Configuration.refusesControls] is on; it has shaken. */
@@ -124,6 +129,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     private val surfaceShape = GradientDrawable()
     val textView = TextField(context, TextStyles.composerInput, multiline = true)
     private val addButton = ComposerIconButton(context, Icon.ionicons("add"), metrics.addIconSize)
+    private val attachmentStrip = AttachmentStripView(context)
     private val middle = Box(context)
     private val permissionChip = ChipButton(context, AgentInputChip.Permission)
     private val modelChip = ChipButton(context, AgentInputChip.Model)
@@ -163,7 +169,18 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             }
         })
         textView.setOnFocusChangeListener { _, focused -> onFocusChanged?.invoke(focused) }
+        // A pasted or keyboard-inserted picture is attached, as iOS's paste does; text goes on as text.
+        androidx.core.view.ViewCompat.setOnReceiveContentListener(textView, arrayOf("image/*")) { _, payload ->
+            if (!configuration.showsAdd || onReceiveImages == null) return@setOnReceiveContentListener payload
+            val split = payload.partition { it.uri != null }
+            val clip = split.first?.clip
+            if (clip != null) onReceiveImages?.invoke((0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri })
+            split.second
+        }
         addView(textView)
+        attachmentStrip.onRemove = { id -> onRemoveAttachment?.invoke(id) }
+        attachmentStrip.visibility = GONE
+        addView(attachmentStrip)
         addButton.contentDescription = context.getString(com.slopus.happy.R.string.composer_add_photo)
         addButton.setOnClickListener {
             if (configuration.refusesControls) refuse(addButton, AgentInputControl.Add) else onAdd?.invoke()
@@ -205,7 +222,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             surface.outlineAmbientShadowColor = alpha shl 24
         }
         // What sits on the capsule rides at its height, casting nothing.
-        for (view in listOf(textView, addButton, middle, primaryButton)) {
+        for (view in listOf(textView, attachmentStrip, addButton, middle, primaryButton)) {
             view.outlineProvider = null
             view.elevation = surface.elevation
         }
@@ -213,6 +230,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         if (Build.VERSION.SDK_INT >= 29) textView.textCursorDrawable?.setTintList(ColorStateList.valueOf(Theme.color(Palette.radioActive)))
         primaryButton.applyTheme()
         separator.applyTheme()
+        attachmentStrip.applyTheme()
     }
 
     private fun apply(previous: Configuration?) {
@@ -221,6 +239,9 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         textView.isEnabled = config.isEditable
         textView.alpha = if (config.isEditable) 1f else AgentInputCardLayout.Metrics.readOnlyTextOpacity.toFloat()
         addButton.visibility = if (config.showsAdd) VISIBLE else GONE
+        // The glyph turns blue while pictures are attached.
+        addButton.iconView.tint = if (config.attachments.isEmpty()) Palette.text else Palette.radioActive
+        attachmentStrip.attachments = config.attachments
         permissionChip.configure(config.permission)
         modelChip.configure(config.model)
         effortChip.configure(config.effort)
@@ -237,7 +258,8 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             textView.imeOptions = if (config.capitalizesWords) android.view.inputmethod.EditorInfo.IME_ACTION_DONE else 0
         }
         if (previous == null || previous.permission != config.permission || previous.model != config.model ||
-            previous.effort != config.effort || previous.showsAdd != config.showsAdd
+            previous.effort != config.effort || previous.showsAdd != config.showsAdd ||
+            previous.attachments.size != config.attachments.size
         ) {
             requestLayout()
             reportHeight()
@@ -276,6 +298,8 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     fun setReveal(input: Pair<Double, Double>, actions: Pair<Double, Double>) {
         textView.alpha = input.first.toFloat() * if (configuration.isEditable) 1f else AgentInputCardLayout.Metrics.readOnlyTextOpacity.toFloat()
         textView.translationY = dp(input.second)
+        attachmentStrip.alpha = input.first.toFloat()
+        attachmentStrip.translationY = dp(input.second)
         for (view in listOf(addButton, middle, primaryButton)) {
             view.alpha = actions.first.toFloat()
             view.translationY = dp(actions.second)
@@ -310,6 +334,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             hasText = textView.string.isNotEmpty(),
             lineHeight = TextLayouts.lineHeight(TextStyles.composerInput, env),
             showsAdd = config.showsAdd,
+            attachmentCount = config.attachments.size,
             permission = config.permission?.let { AgentInputCardLayout.Chip(permissionChip.contentSize) },
             model = config.model?.let { AgentInputCardLayout.Chip(modelChip.contentSize) },
             modelIsMenu = config.model?.sections != null,
@@ -344,6 +369,12 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         surface.setFrame(Rect(0.0, 0.0, width, l.size.height))
         textView.setFrame(l.text)
         textView.isVerticalScrollBarEnabled = l.textScrolls
+        val strip = l.attachments
+        attachmentStrip.visibility = if (strip == null) GONE else VISIBLE
+        if (strip != null) {
+            attachmentStrip.insets = l.attachmentInsets
+            attachmentStrip.setFrame(strip)
+        }
         l.add?.let { addButton.setFrame(it) }
         middle.setFrame(l.middle)
         val content = l.middleContent

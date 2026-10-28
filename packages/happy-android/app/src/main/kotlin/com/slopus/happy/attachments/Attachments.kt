@@ -142,9 +142,12 @@ class AttachmentTransfers(
         for (attachment in attachments) {
             try {
                 val encrypted = withContext(Dispatchers.Default) { encryptBlob(read(attachment), blobKey) }
-                val upload = api.requestUpload(auth, sessionId, attachment.name, encrypted.size.toLong())
-                api.uploadBlob(upload, encrypted, auth)
-                uploaded += UploadedAttachment(upload.ref, attachment.name, attachment.size, attachment.width, attachment.height)
+                // The responses' bodies are read where the call returns: off the main thread.
+                withContext(Dispatchers.IO) {
+                    val upload = api.requestUpload(auth, sessionId, attachment.name, encrypted.size.toLong())
+                    api.uploadBlob(upload, encrypted, auth)
+                    uploaded += UploadedAttachment(upload.ref, attachment.name, attachment.size, attachment.width, attachment.height)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -192,7 +195,7 @@ class AttachmentTransfers(
         val blobKey = withContext(Dispatchers.IO) { blobKeys(sessionId) } ?: return warn("missing-blob-key")
         if (blobKey.size != 32) return warn("invalid-blob-key-length", blobKey.size.toString())
         val encrypted = try {
-            api.download(auth, sessionId, ref)
+            withContext(Dispatchers.IO) { api.download(auth, sessionId, ref) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
