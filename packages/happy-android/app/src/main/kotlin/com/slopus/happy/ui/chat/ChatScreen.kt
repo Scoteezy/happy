@@ -73,6 +73,7 @@ import com.slopus.happy.ui.composer.ChatComposerView
 import com.slopus.happy.ui.nav.Screen
 import com.slopus.happy.ui.text.TextLayouts
 import com.slopus.happy.ui.theme.Theme
+import com.slopus.happy.layout.chat.MarkdownLayout
 import com.slopus.happy.ui.theme.ThemeAware
 import com.slopus.happy.ui.view.ManualLayout
 import com.slopus.happy.ui.view.dp
@@ -129,6 +130,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private var diffExpanded = mapOf<String, Map<Int, Set<Int>>>()
     /** Question forms the reader has touched, by tool: picks, and answers on their way. */
     private var questionDrafts = mapOf<String, ChatQuestionState>()
+    /** How tall each diagram's page said it is: by row id, then by its place in the row. For as long as the screen lives. */
+    private var mermaidHeights = mapOf<String, Map<Int, Double>>()
     private var dockDetailsVisible = true
     private var mirror = ComposerMirror()
     private var machine: Machine? = null
@@ -162,6 +165,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         val permissionBusy: Map<String, PermissionChoice>,
         val diffExpanded: Map<String, Map<Int, Set<Int>>>,
         val questions: Map<String, ChatQuestionState>,
+        /** How tall each diagram's page said it is: by row, then by its place in the row. */
+        val diagrams: Map<String, Map<Int, Double>>,
         val style: ChatRowStyle,
         val width: Double,
         /** A row the reader just opened or closed. */
@@ -378,7 +383,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         workGroups = workGroups.observed(sessionId, foreground = true, rows, currentTurnComplete)
         planRequests.value = PlanRequest(
             rows, settings.groupToolCalls, currentTurnComplete, workGroups,
-            expandedTools, copiedMessageId, permissionBusy, diffExpanded, questionStates(), style(), listWidth, pinning,
+            expandedTools, copiedMessageId, permissionBusy, diffExpanded, questionStates(), mermaidHeights, style(), listWidth, pinning,
         )
     }
 
@@ -400,7 +405,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
                     ChatRowInput(
                         row, expanded = row.key in request.expanded, copied = row.key == request.copied,
                         permissionBusy = request.permissionBusy[row.key], diffExpanded = request.diffExpanded[row.key].orEmpty(),
-                        question = request.questions[row.key], style = request.style,
+                        question = request.questions[row.key], diagrams = request.diagrams[row.key].orEmpty(), style = request.style,
                     )
                 }
                 is ChatListItem.WorkHeader -> {
@@ -479,6 +484,13 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
                 val tool = diffExpanded[action.toolId].orEmpty()
                 diffExpanded = diffExpanded + (action.toolId to tool + (action.chunk to tool[action.chunk].orEmpty() + action.file))
                 requestPlans(pinning = action.toolId)
+            }
+            is ChatRowAction.MermaidHeight -> {
+                // Planned again off the main thread, only if the box grows.
+                val row = mermaidHeights[action.row].orEmpty()
+                val kept = MarkdownLayout.mermaidHeightToKeep(action.height, row[action.index], Theme.density.toDouble()) ?: return
+                mermaidHeights = mermaidHeights + (action.row to row + (action.index to kept))
+                requestPlans()
             }
             is ChatRowAction.OpenMessage -> push(MessageDetailScreen(context, graph, sessionId, action.id))
         }

@@ -39,7 +39,21 @@ sealed interface ChatDrawItem {
     class Diff(val plan: com.slopus.happy.ui.diff.DiffChunkPlan, val frame: Rect, val toolId: String, val chunk: Int) : ChatDrawItem
     /** A ring breathing around the permission button whose answer is on its way. */
     class Pulse(val box: ChatBox) : ChatDrawItem
+    /** A markdown image block's picture, loaded once it is on screen; [label] is what TalkBack reads. */
+    class WebImage(val url: String, val frame: Rect, val label: String) : ChatDrawItem
+    /** A mermaid diagram, drawn by its own page; the page reports how tall it is with [ChatRowAction.MermaidHeight]. */
+    class Mermaid(val diagram: ChatMermaid, val frame: Rect) : ChatDrawItem
 }
+
+/**
+ * A diagram in a row: [index] is its place among the row's diagrams, so it
+ * keeps its height while the message streams (MermaidRenderer's state,
+ * keyed by its place).
+ */
+data class ChatMermaid(val row: String, val index: Int, val content: String)
+
+/** The row a markdown text is in, and the heights its diagrams reported. */
+data class ChatMermaidHeights(val row: String = "", val heights: Map<Int, Double> = emptyMap())
 
 /** What a tap on a row does. */
 sealed interface ChatRowAction {
@@ -58,6 +72,8 @@ sealed interface ChatRowAction {
     data class QuestionSubmit(val toolId: String) : ChatRowAction
     /** "Show N more lines" on file [file] of diff [chunk] in tool [toolId]. */
     data class DiffShowMore(val toolId: String, val chunk: Int, val file: Int) : ChatRowAction
+    /** Diagram [index] of row [row] says its page is [height] tall. */
+    data class MermaidHeight(val row: String, val index: Int, val height: Double) : ChatRowAction
     /** A permission footer button: the answer, and the mode the session switches to locally. */
     data class Permission(
         val toolId: String,

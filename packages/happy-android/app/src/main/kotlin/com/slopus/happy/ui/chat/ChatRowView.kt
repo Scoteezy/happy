@@ -88,7 +88,7 @@ internal class ChatPlanPainter {
                     val eased = (1 - kotlin.math.cos(Math.PI * p)) / 2
                     drawBox(canvas, item.box.copy(alpha = 0.18 + (0.52 - 0.18) * eased), d)
                 }
-                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff -> Unit
+                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff, is ChatDrawItem.Mermaid, is ChatDrawItem.WebImage -> Unit
             }
         }
     }
@@ -162,6 +162,8 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     private val scrollers = ArrayList<Pair<HorizontalScrollView, ChatDrawItem.Scroller>>()
     private val spinners = ArrayList<Pair<ProgressBar, ChatDrawItem.Spinner>>()
     private val diffs = ArrayList<Pair<DiffChunkView, ChatDrawItem.Diff>>()
+    private val mermaids = ArrayList<Pair<ChatMermaidView, ChatDrawItem.Mermaid>>()
+    private val images = ArrayList<Pair<ChatWebImageView, ChatDrawItem.WebImage>>()
     private var ticking = false
     /** A pulse redraws every frame; a timer every 100ms. */
     private var pulsing = false
@@ -206,6 +208,11 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         // Diff views are kept, by position, so an opened diff keeps its scroll.
         val spareDiffs = diffs.map { it.first }.toMutableList()
         diffs.clear()
+        // Diagram pages too: loading one is the slow part.
+        val spareMermaids = mermaids.map { it.first }.toMutableList()
+        mermaids.clear()
+        val spareImages = images.map { it.first }.toMutableList()
+        images.clear()
         for (item in plan.items) {
             when (item) {
                 is ChatDrawItem.Scroller -> {
@@ -240,11 +247,25 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
                     view.apply(item.plan)
                     diffs += view to item
                 }
+                is ChatDrawItem.Mermaid -> {
+                    val view = spareMermaids.firstOrNull { it.diagram == item.diagram }?.also { spareMermaids.remove(it) }
+                        ?: (if (spareMermaids.isNotEmpty()) spareMermaids.removeAt(0) else ChatMermaidView(context).also { addView(it) })
+                    view.onHeight = { diagram, height -> onAction?.invoke(ChatRowAction.MermaidHeight(diagram.row, diagram.index, height), item.frame, false) }
+                    view.apply(item.diagram)
+                    mermaids += view to item
+                }
+                is ChatDrawItem.WebImage -> {
+                    val view = if (spareImages.isNotEmpty()) spareImages.removeAt(0) else ChatWebImageView(context).also { addView(it) }
+                    view.apply(item.url, item.label)
+                    images += view to item
+                }
                 else -> Unit
             }
         }
         pulsing = painter.hasPulse(plan.items)
         for (view in spareDiffs) removeView(view)
+        for (view in spareMermaids) removeView(view)
+        for (view in spareImages) removeView(view)
         ticking = pulsing || painter.hasElapsed(plan.items)
         requestLayout()
         invalidate()
@@ -271,6 +292,8 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         for ((view, item) in scrollers) view.setFrame(item.frame)
         for ((view, item) in diffs) view.setFrame(item.frame)
+        for ((view, item) in mermaids) view.setFrame(item.frame)
+        for ((view, item) in images) view.setFrame(item.frame)
         for ((view, item) in spinners) {
             // The platform's spinner at 0.8 of the glyph's box, as iOS scales its own.
             val f = item.frame
@@ -288,6 +311,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     override fun applyTheme() {
         for ((view, item) in spinners) view.indeterminateTintList = ColorStateList.valueOf(Theme.color(item.tint))
         for ((view, _) in diffs) view.applyTheme()
+        for ((view, _) in mermaids) view.applyTheme()
         invalidate()
         for ((view, _) in scrollers) view.getChildAt(0)?.invalidate()
     }

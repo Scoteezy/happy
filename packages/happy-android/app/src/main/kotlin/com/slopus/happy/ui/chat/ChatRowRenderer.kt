@@ -128,6 +128,8 @@ data class ChatRowInput(
     val diffExpanded: Map<Int, Set<Int>> = emptyMap(),
     /** For a question tool: its form and what the reader has done to it. */
     val question: ChatQuestionState? = null,
+    /** How tall the row's diagrams' pages said they are, by their place in the row. */
+    val diagrams: Map<Int, Double> = emptyMap(),
     val style: ChatRowStyle,
 )
 
@@ -144,7 +146,7 @@ class ChatRowRenderer(private val resources: Resources) {
 
     fun plan(input: ChatRowInput, width: Double): ChatRowPlan = when (val row = input.row) {
         is ChatRow.User -> userText(row, width, input.style)
-        is ChatRow.AgentText -> agentText(row, input.copied, width, input.style)
+        is ChatRow.AgentText -> agentText(row, input.copied, ChatMermaidHeights(row.key, input.diagrams), width, input.style)
         is ChatRow.Tool -> toolCall(row.message, input, width)
         is ChatRow.Event -> agentEvent(row.message, width, input.style)
     }
@@ -267,9 +269,9 @@ class ChatRowRenderer(private val resources: Resources) {
 
     // Agent rows
 
-    private fun agentText(row: ChatRow.AgentText, copied: Boolean, width: Double, style: ChatRowStyle): ChatRowPlan {
+    private fun agentText(row: ChatRow.AgentText, copied: Boolean, diagrams: ChatMermaidHeights, width: Double, style: ChatRowStyle): ChatRowPlan {
         val message = row.message
-        val markdown = MarkdownPiece(row.blocks, Palette.text, style.env)
+        val markdown = MarkdownPiece(row.blocks, Palette.text, style.env, diagrams = diagrams)
         val layout = AgentTextLayout(width, style.maxContentWidth, markdown.blocks)
         val (drawn, drawnHits) = markdown.draw(layout.markdown, layout.markdownOrigin.x, layout.markdownOrigin.y)
         val slop = AgentTextLayout.Metrics.copyHitSlop
@@ -446,7 +448,7 @@ class ChatRowRenderer(private val resources: Resources) {
             ToolViewKind.AskUserQuestion, ToolViewKind.RequestUserInput -> input.question?.let { section(null, questions.form(it, message.id, env), env) }
             ToolViewKind.Edit, ToolViewKind.Write, ToolViewKind.MultiEdit, ToolViewKind.GeminiEdit -> diffView(kind, message, style, input.diffExpanded, flush)
             ToolViewKind.Todo -> todoView(message, env)
-            ToolViewKind.ExitPlan -> exitPlanView(tool.input.obj?.get("plan").str ?: "<empty>", env)
+            ToolViewKind.ExitPlan -> exitPlanView(tool.input.obj?.get("plan").str ?: "<empty>", ChatMermaidHeights(message.id, input.diagrams), env)
             ToolViewKind.Task -> taskView(message, env)
             ToolViewKind.Bash -> bashView(tool.input.obj?.get("command"), tool.state, tool.result, env)
             ToolViewKind.CodexBash -> codexBashView(message, style)
@@ -540,8 +542,8 @@ class ChatRowRenderer(private val resources: Resources) {
     }
 
     /** ExitPlanToolView: the plan as markdown, 8 in, pulled 10 up. */
-    private fun exitPlanView(plan: String, env: ChatTextEnv): ChatStackEntry {
-        val markdown = MarkdownPiece(parseMarkdown(plan), Palette.text, env)
+    private fun exitPlanView(plan: String, diagrams: ChatMermaidHeights, env: ChatTextEnv): ChatStackEntry {
+        val markdown = MarkdownPiece(parseMarkdown(plan), Palette.text, env, diagrams = diagrams)
         val piece = ChatPiece(Measurable { MarkdownLayout(it, markdown.blocks).size }) { frame ->
             markdown.draw(MarkdownLayout(frame.width, markdown.blocks), frame.minX, frame.minY)
         }
@@ -787,6 +789,8 @@ class MarkdownPiece(
     color: ColorToken,
     env: ChatTextEnv,
     selectable: Boolean = true,
+    /** The row it is in and the heights its diagrams' pages reported. */
+    diagrams: ChatMermaidHeights = ChatMermaidHeights(),
 ) {
     val blocks: List<MarkdownLayout.Block>
     private val drawers: List<(MarkdownLayout.Placed, Double, Double) -> Pair<List<ChatDrawItem>, List<ChatHit>>>
@@ -795,6 +799,7 @@ class MarkdownPiece(
         val blocks = ArrayList<MarkdownLayout.Block>()
         val drawers = ArrayList<(MarkdownLayout.Placed, Double, Double) -> Pair<List<ChatDrawItem>, List<ChatHit>>>()
         val body = ChatTextStyles.markdownText
+        var diagramIndex = 0
 
         fun hold(frame: Rect, paragraph: String): List<ChatHit> =
             if (selectable) listOf(ChatHit(frame, ChatRowAction.CopyMenu(paragraph), hold = true)) else emptyList()
@@ -854,8 +859,11 @@ class MarkdownPiece(
                 })
                 is MarkdownBlock.CodeBlock -> code(block.language, block.content, env, blocks, drawers, ::hold)
                 is MarkdownBlock.Mermaid -> {
-                    // A diagram needs a web view; until the diagram stage, its source as code.
-                    code("mermaid", block.content, env, blocks, drawers, ::hold)
+                    // MermaidRenderer: the diagram drawn by mermaid in a web page, as tall as the page last said, from 200 up to 600.
+                    val diagram = ChatMermaid(diagrams.row, diagramIndex, block.content)
+                    blocks += MarkdownLayout.Block.Mermaid(diagrams.heights[diagramIndex])
+                    diagramIndex += 1
+                    drawers += { placed, x, y -> listOf<ChatDrawItem>(ChatDrawItem.Mermaid(diagram, placed.frame.offsetBy(x, y))) to emptyList() }
                 }
                 is MarkdownBlock.Options -> {
                     val labels = block.items.map { MeasuredText(ChatStrings.string(it, color), ChatTextStyles.option, env) }
@@ -914,8 +922,10 @@ class MarkdownPiece(
                     drawers += { placed, x, y ->
                         val image = placed as MarkdownLayout.Placed.Image
                         val shifted = image.frame.offsetBy(x, y)
-                        val items = arrayListOf<ChatDrawItem>(
-                            ChatDrawItem.Box(ChatBox(image.picture.offsetBy(shifted.minX, shifted.minY), Palette.surfaceHighest, radius = MarkdownLayout.Metrics.imageRadius)),
+                        val picture = image.picture.offsetBy(shifted.minX, shifted.minY)
+                        val items = arrayListOf(
+                            ChatDrawItem.Box(ChatBox(picture, Palette.surfaceHighest, radius = MarkdownLayout.Metrics.imageRadius)),
+                            ChatDrawItem.WebImage(block.url, picture, block.alt),
                         )
                         val captionFrame = image.caption
                         if (caption != null && captionFrame != null) {

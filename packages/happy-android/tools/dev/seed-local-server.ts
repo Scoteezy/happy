@@ -38,6 +38,7 @@ import {
 } from '../../../happy-cli/src/api/encryption'
 import { deriveKey } from '../../../happy-cli/src/utils/deriveKey'
 import { createHash } from 'node:crypto'
+import { deflateSync } from 'node:zlib'
 import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
@@ -170,6 +171,30 @@ const sessions: SessionSeed[] = [
                 capabilities: { edit: true, stop: true, clear: true },
             },
         },
+    },
+    // A mermaid diagram and a picture in the agent's markdown.
+    {
+        tag: 'diagram-demo', summary: 'Sketch the reconnect flow', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 11,
+        chat: ['Sketch how the sync client reconnects.', [
+            'Here is the reconnect flow as it stands:',
+            '',
+            '```mermaid',
+            'sequenceDiagram',
+            '    participant App',
+            '    participant Socket',
+            '    participant Server',
+            '    App->>Socket: connect()',
+            '    Socket->>Server: handshake (token)',
+            '    Server-->>Socket: connected',
+            '    Socket-->>App: Connected',
+            '    App->>Server: GET /v2/sessions',
+            '    Server-->>App: sessions',
+            '```',
+            '',
+            'And the palette the banner uses:',
+            '',
+            `![Banner gradient](data:image/png;base64,${gradientPng()})`,
+        ].join('\n')],
     },
     // TodoWrite, a sub-agent, an MCP call and a plan: the tools' own views.
     { tag: 'tools-demo', summary: 'Plan the reconnect fix', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 10 },
@@ -707,6 +732,45 @@ function summarize(answers: object | undefined): string {
 type PermissionReply = {
     id: string; approved: boolean; reason?: string; mode?: string; allowTools?: string[]
     updatedInput?: { answers?: Record<string, string> }
+}
+
+/** A small left-to-right gradient as a PNG, for a markdown image the seed can show without the network. */
+function gradientPng(width = 64, height = 32): string {
+    const rows = Buffer.alloc((width * 3 + 1) * height)
+    for (let y = 0; y < height; y++) {
+        const at = y * (width * 3 + 1)
+        for (let x = 0; x < width; x++) {
+            rows[at + 1 + x * 3] = Math.round(80 + (150 * x) / width)
+            rows[at + 2 + x * 3] = Math.round(60 + (120 * y) / height)
+            rows[at + 3 + x * 3] = 200
+        }
+    }
+    const crcTable = Array.from({ length: 256 }, (_, n) => {
+        let c = n
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+        return c >>> 0
+    })
+    const crc = (bytes: Buffer) => {
+        let c = 0xffffffff
+        for (const byte of bytes) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8)
+        return (c ^ 0xffffffff) >>> 0
+    }
+    const chunk = (kind: string, data: Buffer) => {
+        const body = Buffer.concat([Buffer.from(kind, 'ascii'), data])
+        const length = Buffer.alloc(4)
+        length.writeUInt32BE(data.length)
+        const sum = Buffer.alloc(4)
+        sum.writeUInt32BE(crc(body))
+        return Buffer.concat([length, body, sum])
+    }
+    const header = Buffer.alloc(13)
+    header.writeUInt32BE(width, 0)
+    header.writeUInt32BE(height, 4)
+    header.set([8, 2, 0, 0, 0], 8)
+    return Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        chunk('IHDR', header), chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0)),
+    ]).toString('base64')
 }
 
 function protocolState(): ClaudeSessionProtocolState {
