@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English that happy-app writes inline on the secondary screens (happy-ios SecondaryStrings.swift); the machine screen's other inline words are in strings_home.xml. -->
+<resources>
+    <!-- machine/[id].tsx: the stop alert's buttons and a failed rename's title, in English there. -->
+    <string name="machine_stop_daemon_cancel">Cancel</string>
+    <string name="machine_stop_daemon_confirm">Stop Daemon</string>
+    <string name="machine_rename_error_title">Error</string>
+</resources>

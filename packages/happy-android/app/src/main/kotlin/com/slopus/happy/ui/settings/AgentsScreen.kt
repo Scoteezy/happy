@@ -17,6 +17,7 @@ import com.slopus.happy.ui.components.GroupedListView
 import com.slopus.happy.ui.components.ItemGroupView
 import com.slopus.happy.ui.components.ItemIcon
 import com.slopus.happy.ui.components.ItemRowView
+import com.slopus.happy.ui.machine.MachineScreen
 import com.slopus.happy.ui.nav.BarScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,12 +106,12 @@ class AgentsScreen(context: Context, private val graph: AppGraph) : BarScreen(co
             context,
             title = title,
             rows = machines.map { machine ->
-                // The machine screen comes with the secondary screens.
                 ItemRowView(
                     context,
                     machine.name,
                     subtitle = machine.subtitle,
                     icon = ItemIcon.Glyph(Icon.ionicons("desktop-outline"), if (machine.online) Palette.statusConnected else Palette.statusDisconnected),
+                    onTap = machine.targetMachineId?.let { id -> { push(MachineScreen(context, graph, id)) } },
                 ).apply { alpha = if (machine.online) 1f else 0.5f }
             },
         )

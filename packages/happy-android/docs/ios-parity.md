@@ -125,7 +125,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [ ] Account switcher (with several accounts, Platform)
 - [x] Appearance: theme cycle, language, quota and bubble colour (the inline dropdown with previews), avatar style and black-and-white, usage status, grouping, compact tool calls, file diffs, group tool calls and the rest of the display switches; the switches are the platform's. iOS's Home and Chat list renderer rows are iOS-only and left out. Evidence: `settings/20-appearance.png`, `21-appearance-bottom.png`, `22-appearance-bubble-open.png` vs `ios-ref/83-appearance*.png`. Home's filter menu opens it
 - [x] Language: Automatic plus the ten catalogs, a checkmark, the restart confirmation; the choice applies through the activity's configuration. Evidence: `settings/80-language.png`
-- [~] Agents: machines (online and offline, show offline), Clear Overrides, per-agent permission, model and effort with the inline options and the custom Codex model, computed off main. Evidence: `settings/30-agents.png` vs `ios-ref/84-agents.png`. A machine row does not open the machine screen yet (Secondary)
+- [x] Agents: machines (online and offline, show offline), Clear Overrides, per-agent permission, model and effort with the inline options and the custom Codex model, computed off main. Evidence: `settings/30-agents.png` vs `ios-ref/84-agents.png`. A machine row opens the machine screen
 - [x] Voice settings and voice language: usage (spinner, then the unavailable row that retries), Upgrade Voice, preferred language with the searchable list, ElevenLabs agent id, direct connection. Evidence: `settings/40-voice.png`, `41-voice-later.png` vs `ios-ref/85-voice.png`. The bring-your-own footer is happy-app's English catalog text, longer than iOS's inline English
 - [x] Connect Claude (`settings/70-connect-claude.png`)
 - [x] What's new: the bundled changelog planned off main, bold and links, long press copies; opening it marks the latest entry read (home's What's new banner opens it too). Evidence: `settings/50-whatsnew.png` vs `ios-ref/87-whatsnew.png` (iOS's bar shows only the picture; the title view's label is there in its source, so Android shows both)
@@ -135,7 +135,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 ### Secondary
 
 - [ ] Session info (metadata, machine, path, archive, delete, duplicate sheet, fork, resume)
-- [ ] Machine screen
+- [x] Machine screen (`ui/machine/MachineScreen.kt`, `model/details/MachineDetails.kt` with iOS's `MachineDetailsModelTests`): status, Stop Daemon (confirm, spinner, result alert), daemon pid/port/start/CLI version, CLI availability, the five newest sessions opening their chat, the machine's details, Delete (confirm, spinner, pops), the pencil renaming it (metadata `displayName`, empty restores the host), "Machine not found". Rows built off main and only when what they show changes. Opened from Settings › Agents. Evidence: `machine/01-machine.png`, `02-machine-bottom.png` vs `ios-ref/90-machine*.png`, `machine/03-delete-confirm.png`, `04-rename.png`; a rename round trip on the emulator. iOS's pull to refresh is left out (updates arrive over the socket); session info's View Machine and the machine deep link come with their screens
 - [ ] New session screen
 - [ ] Changes with diffs, file viewer
 - [~] Message detail (see Chat), text selection

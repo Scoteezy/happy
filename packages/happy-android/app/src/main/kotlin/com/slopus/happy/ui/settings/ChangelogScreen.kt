@@ -25,6 +25,8 @@ import com.slopus.happy.layout.CenteredMessageLayout
 import com.slopus.happy.layout.ChangelogBodyLayout
 import com.slopus.happy.layout.ChangelogEntryLayout
 import com.slopus.happy.layout.ChangelogTitleLayout
+import com.slopus.happy.layout.ColorToken
+import com.slopus.happy.layout.TextStyle
 import com.slopus.happy.layout.GroupedListLayout
 import com.slopus.happy.layout.LayoutInsets
 import com.slopus.happy.layout.Palette
@@ -344,11 +346,16 @@ class ChangelogTitleView(context: Context, title: String) : ManualLayout(context
 }
 
 /** A message centred on the grouped background. */
-class CenteredMessageView(context: Context, message: String) : ManualLayout(context), ThemeAware {
+class CenteredMessageView(
+    context: Context,
+    message: String,
+    style: TextStyle = TextStyles.changelogEmpty,
+    color: ColorToken = Palette.textSecondary,
+) : ManualLayout(context), ThemeAware {
     var safeArea: LayoutInsets = LayoutInsets.Zero
         set(value) { if (field != value) { field = value; requestLayout() } }
 
-    private val label = Label(context, TextStyles.changelogEmpty, Palette.textSecondary, alignment = Layout.Alignment.ALIGN_CENTER)
+    private val label = Label(context, style, color, alignment = Layout.Alignment.ALIGN_CENTER)
 
     init {
         label.text = message
