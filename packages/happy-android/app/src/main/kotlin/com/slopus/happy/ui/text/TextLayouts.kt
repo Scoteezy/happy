@@ -61,7 +61,7 @@ object TextLayouts {
         alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL,
     ): StaticLayout {
         val paint = paint(style, env, color)
-        val shown = if (style.uppercase) text.toString().uppercase() else text
+        val shown = if (style.uppercase) upper(text) else text
         val scaled = style.scaled(env.scale)
         val source: CharSequence = scaled.lineHeight?.let { lineHeight ->
             val lineHeightPx = (lineHeight * env.density).roundToInt()
@@ -100,7 +100,7 @@ object TextLayouts {
     ): Size {
         if (maxLines == 1) {
             val paint = paint(style, env, 0)
-            val shown = if (style.uppercase) text.toString().uppercase() else text
+            val shown = if (style.uppercase) upper(text) else text
             val w = Layout.getDesiredWidth(shown, paint) / env.density
             return Size(PixelGrid.ceil(w.toDouble(), env.density.toDouble()), lineHeight(style, env))
         }
@@ -125,6 +125,13 @@ object TextLayouts {
             fm.descent = height - baseline
             fm.bottom = fm.descent
         }
+    }
+
+    /** [text] upper-cased, its spans (colour, faces) kept where the length stays the same. */
+    private fun upper(text: CharSequence): CharSequence {
+        val upper = text.toString().uppercase()
+        if (text !is Spanned || upper.length != text.length) return upper
+        return SpannableString(upper).also { TextUtils.copySpansFrom(text, 0, text.length, null, it, 0) }
     }
 
     fun clampWidth(size: Size, width: Double) = Size(min(size.width, width), size.height)

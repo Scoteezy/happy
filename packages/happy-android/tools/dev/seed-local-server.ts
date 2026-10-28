@@ -62,6 +62,24 @@ type SessionSeed = {
 }
 
 const home = '/Users/sam'
+/** The ask-demo session's AskUserQuestion: one single choice, one multiple. */
+const askQuestions = [
+    {
+        header: 'Runner', question: 'Which test runner should the website use?', multiSelect: false,
+        options: [
+            { label: 'Vitest', description: 'Fast, shares the Vite config' },
+            { label: 'Jest', description: 'What the other packages use' },
+        ],
+    },
+    {
+        header: 'Coverage', question: 'What should the first tests cover?', multiSelect: true,
+        options: [
+            { label: 'Navigation' },
+            { label: 'Signup form' },
+            { label: 'Pricing table' },
+        ],
+    },
+]
 const machineId = 'seed-macbook'
 const sessions: SessionSeed[] = [
     { tag: 'fix-login', summary: 'Fix the login redirect loop', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 3 },
@@ -70,6 +88,14 @@ const sessions: SessionSeed[] = [
         agentState: {
             controlledByUser: false,
             requests: { toolu_rm: { tool: 'Bash', arguments: { command: 'rm -rf .cache/build', description: 'Remove the stale build cache' }, createdAt: Date.now() } },
+            completedRequests: {},
+        },
+    },
+    {
+        tag: 'ask-demo', summary: 'Pick a test runner', path: `${home}/code/website`, flavor: 'claude', minutesAgo: 2,
+        agentState: {
+            controlledByUser: false,
+            requests: { toolu_ask: { tool: 'AskUserQuestion', arguments: { questions: askQuestions }, createdAt: Date.now() } },
             completedRequests: {},
         },
     },
@@ -131,7 +157,7 @@ async function main() {
     const created: { id: string; seed: SessionSeed; key: Uint8Array; agentStateVersion: number }[] = []
     // --reset-chat / --reset-permission: the session holding that transcript
     // is deleted and made again, so it is written afresh.
-    const stales = [...(resetChat ? ['fix-login'] : []), ...(resetPermission ? ['perm-demo'] : [])]
+    const stales = [...(resetChat ? ['fix-login'] : []), ...(resetPermission ? Object.keys(turns) : [])]
     for (const tag of stales) {
         const stale = await axios.post(`${server}/v1/sessions`, {
             tag,
@@ -166,9 +192,10 @@ async function main() {
         }
     }
 
-    // The transcripts, each written once: the finished turn, and one waiting on a permission.
-    for (const [tag, records] of [['fix-login', transcript()], ['perm-demo', permissionTranscript()]] as const) {
-        await writeTranscript(created.find(({ seed }) => seed.tag === tag)!, records)
+    // The transcripts, each written once: the finished turn, and the ones waiting on the person.
+    await writeTranscript(created.find(({ seed }) => seed.tag === 'fix-login')!, transcript())
+    for (const [tag, turn] of Object.entries(turns)) {
+        await writeTranscript(created.find(({ seed }) => seed.tag === tag)!, turn.transcript())
     }
 
     /** Writes [records]; unless [append], only into a session that has none yet. */
@@ -246,7 +273,7 @@ async function main() {
             }
         })
         socket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
-            const answer = decryptWithDataKey(decodeBase64(data.params), session.key) as { id: string; approved: boolean; reason?: string; mode?: string; allowTools?: string[] }
+            const answer = decryptWithDataKey(decodeBase64(data.params), session.key) as PermissionReply
             console.error('permission answer', JSON.stringify(answer))
             // A CLI takes a moment to answer; the tapped button pulses meanwhile.
             await new Promise((resolve) => setTimeout(resolve, 1500))
@@ -266,7 +293,7 @@ async function main() {
                     },
                 }
                 await writeState()
-                if (answer.approved) await writeTranscript(session, permissionResult(), true)
+                if (answer.approved) await writeTranscript(session, turns[session.seed.tag].result(answer), true)
             }
             callback(encodeBase64(encryptWithDataKey({}, session.key)))
         })
@@ -360,54 +387,81 @@ function transcript(): unknown[] {
     return records
 }
 
-/** The permission chat's protocol state, shared by its transcript and the turn's end once approved. */
-const permissionState: ClaudeSessionProtocolState = {
-    currentTurnId: null,
-    uuidToProviderSubagent: new Map(),
-    taskPromptToSubagents: new Map(),
-    providerSubagentToSessionSubagent: new Map(),
-    subagentTitles: new Map(),
-    bufferedSubagentMessages: new Map(),
-    hiddenParentToolCalls: new Set(),
-    startedSubagents: new Set(),
-    activeSubagents: new Set(),
+/** What the app answers a permission with (the CLI's `PermissionResponse`). */
+type PermissionReply = {
+    id: string; approved: boolean; reason?: string; mode?: string; allowTools?: string[]
+    updatedInput?: { answers?: Record<string, string> }
 }
 
-/** A Claude turn stopped on a Bash call that needs the person's permission. */
-function permissionTranscript(): unknown[] {
-    const records: unknown[] = []
-    const state = permissionState
-    records.push({ role: 'user', content: { type: 'text', text: 'The build keeps picking up stale output. Clear the build cache.' }, meta: { sentFrom: 'ios' } })
-    const mapped = mapClaudeLogMessageToSessionEnvelopes({
-        uuid: randomUUID(),
-        type: 'assistant',
-        message: {
-            role: 'assistant', model: 'claude-sonnet-4-5', content: [
-                { type: 'text', text: 'The stale output lives in `.cache/build`. I will remove it.' },
-                { type: 'tool_use', id: 'toolu_rm', name: 'Bash', input: { command: 'rm -rf .cache/build', description: 'Remove the stale build cache' } },
-            ],
-        },
-    } as never, state)
-    state.currentTurnId = mapped.currentTurnId
-    mapped.envelopes.forEach((content: unknown) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
-    return records
+function protocolState(): ClaudeSessionProtocolState {
+    return {
+        currentTurnId: null,
+        uuidToProviderSubagent: new Map(),
+        taskPromptToSubagents: new Map(),
+        providerSubagentToSessionSubagent: new Map(),
+        subagentTitles: new Map(),
+        bufferedSubagentMessages: new Map(),
+        hiddenParentToolCalls: new Set(),
+        startedSubagents: new Set(),
+        activeSubagents: new Set(),
+    }
 }
 
-/** The approved command's result and Claude's last word, closing the turn. */
-function permissionResult(): unknown[] {
-    const records: unknown[] = []
-    const state = permissionState
-    const push = (envelopes: unknown[]) => envelopes.forEach((content) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
-    for (const line of [
-        { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_rm', content: '' }] } },
-        { type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-4-5', content: [{ type: 'text', text: 'Removed `.cache/build`. The next build starts clean.' }] } },
-    ]) {
+/**
+ * A Claude turn stopped on one tool call that needs the person: the
+ * prompt, Claude's text and the call; once approved, the call's result and
+ * Claude's last word, closing the turn.
+ */
+function waitingTurn(prompt: string, text: string, call: { id: string; name: string; input: object }, done: (answer: PermissionReply) => { result: string; text: string }) {
+    const state = protocolState()
+    const map = (records: unknown[], line: Record<string, unknown>) => {
         const mapped = mapClaudeLogMessageToSessionEnvelopes({ uuid: randomUUID(), ...line } as never, state)
         state.currentTurnId = mapped.currentTurnId
-        push(mapped.envelopes)
+        mapped.envelopes.forEach((content: unknown) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
     }
-    push(closeClaudeTurnWithStatus(state, 'completed').envelopes)
-    return records
+    return {
+        transcript(): unknown[] {
+            const records: unknown[] = [{ role: 'user', content: { type: 'text', text: prompt }, meta: { sentFrom: 'ios' } }]
+            map(records, {
+                type: 'assistant',
+                message: { role: 'assistant', model: 'claude-sonnet-4-5', content: [{ type: 'text', text }, { type: 'tool_use', ...call }] },
+            })
+            return records
+        },
+        result(answer: PermissionReply): unknown[] {
+            const records: unknown[] = []
+            const end = done(answer)
+            map(records, { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: call.id, content: end.result }] } })
+            map(records, { type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-4-5', content: [{ type: 'text', text: end.text }] } })
+            closeClaudeTurnWithStatus(state, 'completed').envelopes.forEach((content: unknown) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
+            return records
+        },
+    }
+}
+
+/** The sessions waiting on the person, by tag. */
+const turns: Record<string, ReturnType<typeof waitingTurn>> = {
+    'perm-demo': waitingTurn(
+        'The build keeps picking up stale output. Clear the build cache.',
+        'The stale output lives in `.cache/build`. I will remove it.',
+        { id: 'toolu_rm', name: 'Bash', input: { command: 'rm -rf .cache/build', description: 'Remove the stale build cache' } },
+        () => ({ result: '', text: 'Removed `.cache/build`. The next build starts clean.' }),
+    ),
+    'ask-demo': waitingTurn(
+        'Set up tests for the website.',
+        'Two quick choices before I start.',
+        { id: 'toolu_ask', name: 'AskUserQuestion', input: { questions: askQuestions } },
+        (answer) => {
+            const answers = answer.updatedInput?.answers ?? {}
+            const lines = Object.entries(answers).map(([question, picked]) => `"${question}"="${picked}"`)
+            const runner = answers[askQuestions[0].question] ?? 'Vitest'
+            const areas = answers[askQuestions[1].question] ?? 'navigation'
+            return {
+                result: `User has answered your questions: ${lines.join(', ')}. You can now continue with the user's answers in mind.`,
+                text: `Setting up **${runner}**, starting with: ${areas}.`,
+            }
+        },
+    ),
 }
 
 void tweetnacl

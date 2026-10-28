@@ -8,6 +8,8 @@ package com.slopus.happy.layout
 
 val Palette.userMessageText get() = ColorToken("#000000", "#FFFFFF")
 val Palette.agentEventText get() = ColorToken("#666666", "#8E8E93")
+/** Marks on an accent fill (a checked checkbox). */
+val Palette.onAccent get() = ColorToken("#FFFFFF")
 /** theme.colors.warning: the tool error glyph. */
 val Palette.warning get() = ColorToken("#8E8E93")
 val Palette.boxWarningBackground get() = ColorToken(RGBA.hex("#FFF8F0")!!, RGBA(1.0, 159 / 255.0, 10 / 255.0, 0.15))
@@ -99,6 +101,15 @@ object ChatTextStyles {
     // PermissionFooter.tsx
     val permissionButton = TextStyle(FontFace.SystemMedium, 14, 18)
     val permissionButtonSettled = TextStyle(FontFace.System, 14, 18)
+
+    // InlineQuestionForm.tsx
+    val inlineQuestionHeader = TextStyle(FontFace.SystemSemiBold, 12, uppercase = true)
+    val inlineQuestionText = TextStyle(FontFace.SystemMedium, 15)
+    val inlineOptionLabel = TextStyle(FontFace.SystemMedium, 14)
+    val inlineOptionDescription = TextStyle(FontFace.System, 13)
+    val inlineSubmit = TextStyle(FontFace.SystemSemiBold, 14)
+    val inlineSubmittedHeader = TextStyle(FontFace.SystemSemiBold, 13)
+    val inlineSubmittedValue = TextStyle(FontFace.System, 13)
 
     // AgentWorkGroupHeader.tsx
     val workGroup = TextStyle(FontFace.System, 13, 20)

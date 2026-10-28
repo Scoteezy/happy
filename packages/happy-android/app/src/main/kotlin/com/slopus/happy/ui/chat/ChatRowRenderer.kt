@@ -27,6 +27,7 @@ import com.slopus.happy.chat.tools.PermissionChoice
 import com.slopus.happy.chat.tools.ToolDiffInputs
 import com.slopus.happy.chat.tools.ToolPresentation
 import com.slopus.happy.chat.tools.ToolViewKind
+import com.slopus.happy.chat.tools.isInteractiveQuestionToolName
 import com.slopus.happy.ui.diff.DiffChunkPlan
 import com.slopus.happy.ui.diff.DiffChunkSource
 import com.slopus.happy.ui.diff.DiffWords
@@ -108,6 +109,8 @@ data class ChatRowInput(
     val permissionBusy: PermissionChoice? = null,
     /** For a tool's diffs: the files the reader opened in full, by diff. */
     val diffExpanded: Map<Int, Set<Int>> = emptyMap(),
+    /** For a question tool: its form and what the reader has done to it. */
+    val question: ChatQuestionState? = null,
     val style: ChatRowStyle,
 )
 
@@ -125,7 +128,7 @@ class ChatRowRenderer(private val resources: Resources) {
     fun plan(input: ChatRowInput, width: Double): ChatRowPlan = when (val row = input.row) {
         is ChatRow.User -> userText(row, width, input.style)
         is ChatRow.AgentText -> agentText(row, input.copied, width, input.style)
-        is ChatRow.Tool -> toolCall(row.message, input.expanded, input.permissionBusy, input.diffExpanded, width, input.style)
+        is ChatRow.Tool -> toolCall(row.message, input, width)
         is ChatRow.Event -> agentEvent(row.message, width, input.style)
     }
 
@@ -252,9 +255,10 @@ class ChatRowRenderer(private val resources: Resources) {
 
     // Tool rows (ToolView.tsx)
 
-    private fun toolCall(
-        message: ChatMessage.ToolCallMessage, expanded: Boolean, busy: PermissionChoice?, diffExpanded: Map<Int, Set<Int>>, width: Double, style: ChatRowStyle,
-    ): ChatRowPlan {
+    private fun toolCall(message: ChatMessage.ToolCallMessage, input: ChatRowInput, width: Double): ChatRowPlan {
+        val expanded = input.expanded
+        val busy = input.permissionBusy
+        val style = input.style
         val tool = message.tool
         val env = style.env
         val presentation = presentTool(message, toolText, style.compactTools, style.flavor, style.root)
@@ -264,8 +268,9 @@ class ChatRowRenderer(private val resources: Resources) {
             tool.name == "file" -> Form.Inline
             else -> Form.Card
         }
-        val awaitingDecision = tool.permission?.status == PermissionStatus.Pending
-        val full = fullBody(message, presentation, style, diffExpanded, flush = form != Form.Compact)
+        val awaitingDecision = tool.permission?.status == PermissionStatus.Pending ||
+            (isInteractiveQuestionToolName(tool.name) && tool.state == ToolState.Running)
+        val full = fullBody(message, presentation, input, flush = form != Form.Compact)
         val body = when {
             form == Form.Inline || expanded -> full
             awaitingDecision -> full.filter { it.inputOnly }
@@ -359,9 +364,9 @@ class ChatRowRenderer(private val resources: Resources) {
      * What the tool's body shows once opened: its own view where there is
      * one (a command), an error, or its raw input and output.
      */
-    private fun fullBody(
-        message: ChatMessage.ToolCallMessage, presentation: ToolPresentation, style: ChatRowStyle, diffExpanded: Map<Int, Set<Int>>, flush: Boolean,
-    ): List<BodyPart> {
+    private fun fullBody(message: ChatMessage.ToolCallMessage, presentation: ToolPresentation, input: ChatRowInput, flush: Boolean): List<BodyPart> {
+        val style = input.style
+        val diffExpanded = input.diffExpanded
         val tool = message.tool
         val env = style.env
         val hideDefaultError = presentation.hideDefaultError
@@ -378,6 +383,11 @@ class ChatRowRenderer(private val resources: Resources) {
             val error = if (hideDefaultError) null else errorText
             val diff = diffView(view!!, message, style, diffExpanded, flush)
             return listOfNotNull(diff?.let { BodyPart(it, inputOnly = true) }, error?.let { BodyPart(toolError(it, env), inputOnly = false) })
+        }
+        if (view == ToolViewKind.AskUserQuestion || view == ToolViewKind.RequestUserInput) {
+            val error = if (hideDefaultError) null else errorText
+            val form = input.question?.let { section(null, questions.form(it, message.id, env), env) }
+            return listOfNotNull(form?.let { BodyPart(it, inputOnly = true) }, error?.let { BodyPart(toolError(it, env), inputOnly = false) })
         }
         if (errorText != null && !isToolUseError && !hideDefaultError) return listOf(BodyPart(toolError(errorText, env), inputOnly = false))
         val parts = ArrayList<BodyPart>()
@@ -428,6 +438,8 @@ class ChatRowRenderer(private val resources: Resources) {
         ToolStatusIcon.Removed -> ChatDrawItem.Glyph(Icon.ionicons("remove-circle-outline"), 20.0, frame, Palette.textSecondary)
         else -> ChatDrawItem.Glyph(Icon.ionicons("alert-circle-outline"), 20.0, frame, Palette.warning)
     }
+
+    private val questions = ChatQuestionRenderer(resources.getString(R.string.tools_ask_user_question_submit))
 
     // Diff views
 

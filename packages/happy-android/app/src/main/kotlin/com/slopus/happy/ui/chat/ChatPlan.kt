@@ -53,6 +53,9 @@ sealed interface ChatRowAction {
     data class Option(val text: String) : ChatRowAction
     data class Retry(val localId: String) : ChatRowAction
     data class ToggleGroup(val id: String) : ChatRowAction
+    /** An option of question [questionId] in tool [toolId]'s inline form. */
+    data class QuestionOption(val toolId: String, val questionId: String, val option: Int) : ChatRowAction
+    data class QuestionSubmit(val toolId: String) : ChatRowAction
     /** "Show N more lines" on file [file] of diff [chunk] in tool [toolId]. */
     data class DiffShowMore(val toolId: String, val chunk: Int, val file: Int) : ChatRowAction
     /** A permission footer button: the answer, and the mode the session switches to locally. */

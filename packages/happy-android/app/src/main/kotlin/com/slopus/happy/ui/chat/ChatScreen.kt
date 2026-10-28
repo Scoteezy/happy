@@ -22,6 +22,9 @@ import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatMessagesSource
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.ChatState
+import com.slopus.happy.chat.InlineQuestionForm
+import com.slopus.happy.chat.PermissionAnswer
+import com.slopus.happy.chat.PermissionDecision
 import com.slopus.happy.chat.NoLivePresence
 import com.slopus.happy.chat.StoreChatMessagesSource
 import com.slopus.happy.chat.StoreChatSessionSource
@@ -100,6 +103,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private var permissionBusy = mapOf<String, PermissionChoice>()
     /** Diff files the reader opened in full: by tool, by diff, the files. */
     private var diffExpanded = mapOf<String, Map<Int, Set<Int>>>()
+    /** Question forms the reader has touched, by tool: picks, and answers on their way. */
+    private var questionDrafts = mapOf<String, ChatQuestionState>()
     private var dockDetailsVisible = true
     private var loadingOlder = false
     private var listWidth = 0.0
@@ -116,6 +121,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         val copied: String?,
         val permissionBusy: Map<String, PermissionChoice>,
         val diffExpanded: Map<String, Map<Int, Set<Int>>>,
+        val questions: Map<String, ChatQuestionState>,
         val style: ChatRowStyle,
         val width: Double,
         /** A row the reader just opened or closed. */
@@ -202,7 +208,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
 
     private fun requestPlans(pinning: String? = null) {
         if (listWidth <= 0) return
-        planRequests.value = PlanRequest(state.snapshot.rows, expandedTools, copiedMessageId, permissionBusy, diffExpanded, style(), listWidth, pinning)
+        planRequests.value = PlanRequest(state.snapshot.rows, expandedTools, copiedMessageId, permissionBusy, diffExpanded, questionStates(), style(), listWidth, pinning)
     }
 
     /** On [planner]: every row's plan, made again only where its input or the width changed. */
@@ -211,7 +217,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         val rows = request.rows.map { row ->
             val input = ChatRowInput(
                 row, expanded = row.key in request.expanded, copied = row.key == request.copied,
-                permissionBusy = request.permissionBusy[row.key], diffExpanded = request.diffExpanded[row.key].orEmpty(), style = request.style,
+                permissionBusy = request.permissionBusy[row.key], diffExpanded = request.diffExpanded[row.key].orEmpty(),
+                question = request.questions[row.key], style = request.style,
             )
             val key = PlanKey(input, request.width)
             seen += row.key
@@ -268,12 +275,64 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             is ChatRowAction.Option -> scope.launch { runCatching { actions.send(sessionId, action.text) } }
             is ChatRowAction.Retry -> scope.launch { runCatching { actions.retry(sessionId, action.localId) } }
             is ChatRowAction.Permission -> answer(action)
+            is ChatRowAction.QuestionOption -> {
+                val current = questionState(action.toolId) ?: return
+                val question = current.form.questions.firstOrNull { it.id == action.questionId } ?: return
+                if (!current.canInteract || current.submitting) return
+                questionDrafts = questionDrafts + (action.toolId to current.copy(selections = current.selections.toggle(question, action.option)))
+                requestPlans()
+            }
+            is ChatRowAction.QuestionSubmit -> submitQuestion(action.toolId)
             is ChatRowAction.DiffShowMore -> {
                 val tool = diffExpanded[action.toolId].orEmpty()
                 diffExpanded = diffExpanded + (action.toolId to tool + (action.chunk to tool[action.chunk].orEmpty() + action.file))
                 requestPlans(pinning = action.toolId)
             }
             is ChatRowAction.OpenMessage -> Unit
+        }
+    }
+
+    /** Every question tool's form, with the reader's picks laid over it. */
+    private fun questionStates(): Map<String, ChatQuestionState> {
+        val agentState = state.session?.agentState
+        val states = HashMap<String, ChatQuestionState>()
+        for (row in state.snapshot.rows) {
+            val tool = (row as? ChatRow.Tool)?.message?.tool ?: continue
+            val form = InlineQuestionForm.of(tool, agentState) ?: continue
+            states[row.key] = (questionDrafts[row.key] ?: ChatQuestionState(form)).copy(form = form)
+        }
+        return states
+    }
+
+    private fun questionState(toolId: String): ChatQuestionState? {
+        val tool = state.snapshot.rows.firstOrNull { it.key == toolId }?.let { (it as? ChatRow.Tool)?.message?.tool } ?: return null
+        val form = InlineQuestionForm.of(tool, state.session?.agentState) ?: return null
+        return (questionDrafts[toolId] ?: ChatQuestionState(form)).copy(form = form)
+    }
+
+    /** Sends a question form's answers. The summary shows at once; if the answer fails, the form comes back as it was. */
+    private fun submitQuestion(toolId: String) {
+        val current = questionState(toolId) ?: return
+        val reply = current.form.reply ?: return
+        val tool = (state.snapshot.rows.first { it.key == toolId } as ChatRow.Tool).message.tool
+        if (!current.canInteract || current.submitting || !current.selections.allAnswered(current.form.questions)) return
+        val answers = current.selections.answers(current.form.questions)
+        questionDrafts = questionDrafts + (toolId to current.copy(sent = answers, submitting = true))
+        requestPlans()
+        scope.launch {
+            val result = runCatching {
+                when (reply) {
+                    is InlineQuestionForm.Reply.Permission -> actions.answerPermission(
+                        sessionId,
+                        PermissionAnswer(reply.id, approved = true, decision = PermissionDecision.Approved, updatedInput = InlineQuestionForm.askUserQuestionInput(tool, answers)),
+                    )
+                    is InlineQuestionForm.Reply.Communication ->
+                        actions.answerQuestion(sessionId, reply.id, InlineQuestionForm.communicationAnswers(current.form.questions, answers), reply.kind)
+                }
+            }
+            val latest = questionDrafts[toolId] ?: return@launch
+            questionDrafts = questionDrafts + (toolId to latest.copy(submitting = false, sent = if (result.isFailure) null else latest.sent))
+            requestPlans()
         }
     }
 
