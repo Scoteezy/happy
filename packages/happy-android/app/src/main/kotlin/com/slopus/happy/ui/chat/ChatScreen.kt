@@ -98,6 +98,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private var copiedJob: Job? = null
     /** Tools whose permission answer is on its way, by message id, with the button tapped. */
     private var permissionBusy = mapOf<String, PermissionChoice>()
+    /** Diff files the reader opened in full: by tool, by diff, the files. */
+    private var diffExpanded = mapOf<String, Map<Int, Set<Int>>>()
     private var dockDetailsVisible = true
     private var loadingOlder = false
     private var listWidth = 0.0
@@ -113,6 +115,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         val expanded: Set<String>,
         val copied: String?,
         val permissionBusy: Map<String, PermissionChoice>,
+        val diffExpanded: Map<String, Map<Int, Set<Int>>>,
         val style: ChatRowStyle,
         val width: Double,
         /** A row the reader just opened or closed. */
@@ -189,6 +192,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         return ChatRowStyle(
             bubble = bubble,
             compactTools = settings.compactToolCalls,
+            showLineNumbers = settings.showLineNumbersInToolViews,
             maxContentWidth = ChatScreenLayout.Metrics.regularMaxContentWidth,
             root = state.session?.metadata?.path,
             flavor = state.session?.metadata?.flavor,
@@ -198,7 +202,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
 
     private fun requestPlans(pinning: String? = null) {
         if (listWidth <= 0) return
-        planRequests.value = PlanRequest(state.snapshot.rows, expandedTools, copiedMessageId, permissionBusy, style(), listWidth, pinning)
+        planRequests.value = PlanRequest(state.snapshot.rows, expandedTools, copiedMessageId, permissionBusy, diffExpanded, style(), listWidth, pinning)
     }
 
     /** On [planner]: every row's plan, made again only where its input or the width changed. */
@@ -207,7 +211,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         val rows = request.rows.map { row ->
             val input = ChatRowInput(
                 row, expanded = row.key in request.expanded, copied = row.key == request.copied,
-                permissionBusy = request.permissionBusy[row.key], style = request.style,
+                permissionBusy = request.permissionBusy[row.key], diffExpanded = request.diffExpanded[row.key].orEmpty(), style = request.style,
             )
             val key = PlanKey(input, request.width)
             seen += row.key
@@ -264,6 +268,11 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             is ChatRowAction.Option -> scope.launch { runCatching { actions.send(sessionId, action.text) } }
             is ChatRowAction.Retry -> scope.launch { runCatching { actions.retry(sessionId, action.localId) } }
             is ChatRowAction.Permission -> answer(action)
+            is ChatRowAction.DiffShowMore -> {
+                val tool = diffExpanded[action.toolId].orEmpty()
+                diffExpanded = diffExpanded + (action.toolId to tool + (action.chunk to tool[action.chunk].orEmpty() + action.file))
+                requestPlans(pinning = action.toolId)
+            }
             is ChatRowAction.OpenMessage -> Unit
         }
     }

@@ -19,6 +19,7 @@ import com.slopus.happy.icons.IconCatalog
 import com.slopus.happy.layout.ChatTextStyles
 import com.slopus.happy.layout.Palette
 import com.slopus.happy.layout.Rect
+import com.slopus.happy.ui.diff.DiffChunkView
 import com.slopus.happy.ui.text.TextLayouts
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
@@ -87,7 +88,7 @@ internal class ChatPlanPainter {
                     val eased = (1 - kotlin.math.cos(Math.PI * p)) / 2
                     drawBox(canvas, item.box.copy(alpha = 0.18 + (0.52 - 0.18) * eased), d)
                 }
-                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner -> Unit
+                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff -> Unit
             }
         }
     }
@@ -160,6 +161,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
 
     private val scrollers = ArrayList<Pair<HorizontalScrollView, ChatDrawItem.Scroller>>()
     private val spinners = ArrayList<Pair<ProgressBar, ChatDrawItem.Spinner>>()
+    private val diffs = ArrayList<Pair<DiffChunkView, ChatDrawItem.Diff>>()
     private var ticking = false
     /** A pulse redraws every frame; a timer every 100ms. */
     private var pulsing = false
@@ -201,6 +203,9 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         scrollers.clear()
         for ((view, _) in spinners) removeView(view)
         spinners.clear()
+        // Diff views are kept, by position, so an opened diff keeps its scroll.
+        val spareDiffs = diffs.map { it.first }.toMutableList()
+        diffs.clear()
         for (item in plan.items) {
             when (item) {
                 is ChatDrawItem.Scroller -> {
@@ -229,10 +234,17 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
                     addView(spinner)
                     spinners += spinner to item
                 }
+                is ChatDrawItem.Diff -> {
+                    val view = if (spareDiffs.isNotEmpty()) spareDiffs.removeAt(0) else DiffChunkView(context).also { addView(it) }
+                    view.onShowMore = { file -> onAction?.invoke(ChatRowAction.DiffShowMore(item.toolId, item.chunk, file), item.frame, false) }
+                    view.apply(item.plan)
+                    diffs += view to item
+                }
                 else -> Unit
             }
         }
         pulsing = painter.hasPulse(plan.items)
+        for (view in spareDiffs) removeView(view)
         ticking = pulsing || painter.hasElapsed(plan.items)
         requestLayout()
         invalidate()
@@ -258,6 +270,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         for ((view, item) in scrollers) view.setFrame(item.frame)
+        for ((view, item) in diffs) view.setFrame(item.frame)
         for ((view, item) in spinners) {
             // The platform's spinner at 0.8 of the glyph's box, as iOS scales its own.
             val f = item.frame
@@ -274,6 +287,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
 
     override fun applyTheme() {
         for ((view, item) in spinners) view.indeterminateTintList = ColorStateList.valueOf(Theme.color(item.tint))
+        for ((view, _) in diffs) view.applyTheme()
         invalidate()
         for ((view, _) in scrollers) view.getChildAt(0)?.invalidate()
     }

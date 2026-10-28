@@ -35,6 +35,8 @@ sealed interface ChatDrawItem {
     class Spinner(val frame: Rect, val tint: ColorToken) : ChatDrawItem
     /** A running tool's timer, counting from [since] (ms). */
     class Elapsed(val since: Long, val frame: Rect, val env: ChatTextEnv) : ChatDrawItem
+    /** One DiffChunk of tool [toolId]'s view, drawn by its own view in [frame]. */
+    class Diff(val plan: com.slopus.happy.ui.diff.DiffChunkPlan, val frame: Rect, val toolId: String, val chunk: Int) : ChatDrawItem
     /** A ring breathing around the permission button whose answer is on its way. */
     class Pulse(val box: ChatBox) : ChatDrawItem
 }
@@ -51,6 +53,8 @@ sealed interface ChatRowAction {
     data class Option(val text: String) : ChatRowAction
     data class Retry(val localId: String) : ChatRowAction
     data class ToggleGroup(val id: String) : ChatRowAction
+    /** "Show N more lines" on file [file] of diff [chunk] in tool [toolId]. */
+    data class DiffShowMore(val toolId: String, val chunk: Int, val file: Int) : ChatRowAction
     /** A permission footer button: the answer, and the mode the session switches to locally. */
     data class Permission(
         val toolId: String,

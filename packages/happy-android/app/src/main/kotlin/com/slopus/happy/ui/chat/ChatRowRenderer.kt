@@ -24,6 +24,12 @@ import com.slopus.happy.chat.tools.permissionOptions
 import com.slopus.happy.chat.tools.presentTool
 import com.slopus.happy.chat.tools.resultText
 import com.slopus.happy.chat.tools.PermissionChoice
+import com.slopus.happy.chat.tools.ToolDiffInputs
+import com.slopus.happy.chat.tools.ToolPresentation
+import com.slopus.happy.chat.tools.ToolViewKind
+import com.slopus.happy.ui.diff.DiffChunkPlan
+import com.slopus.happy.ui.diff.DiffChunkSource
+import com.slopus.happy.ui.diff.DiffWords
 import com.slopus.happy.chat.tools.PermissionOptionState
 import com.slopus.happy.icons.Icon
 import com.slopus.happy.layout.BubblePalette
@@ -86,6 +92,8 @@ data class ChatRowStyle(
     /** metadata.path: tool paths under it are shown relative to it. */
     val root: String? = null,
     val flavor: String? = null,
+    /** `settings.showLineNumbersInToolViews`. */
+    val showLineNumbers: Boolean = false,
     val env: ChatTextEnv,
 )
 
@@ -98,6 +106,8 @@ data class ChatRowInput(
     val copied: Boolean = false,
     /** For a tool waiting on a permission: the button whose answer is being sent. */
     val permissionBusy: PermissionChoice? = null,
+    /** For a tool's diffs: the files the reader opened in full, by diff. */
+    val diffExpanded: Map<Int, Set<Int>> = emptyMap(),
     val style: ChatRowStyle,
 )
 
@@ -115,7 +125,7 @@ class ChatRowRenderer(private val resources: Resources) {
     fun plan(input: ChatRowInput, width: Double): ChatRowPlan = when (val row = input.row) {
         is ChatRow.User -> userText(row, width, input.style)
         is ChatRow.AgentText -> agentText(row, input.copied, width, input.style)
-        is ChatRow.Tool -> toolCall(row.message, input.expanded, input.permissionBusy, width, input.style)
+        is ChatRow.Tool -> toolCall(row.message, input.expanded, input.permissionBusy, input.diffExpanded, width, input.style)
         is ChatRow.Event -> agentEvent(row.message, width, input.style)
     }
 
@@ -242,7 +252,9 @@ class ChatRowRenderer(private val resources: Resources) {
 
     // Tool rows (ToolView.tsx)
 
-    private fun toolCall(message: ChatMessage.ToolCallMessage, expanded: Boolean, busy: PermissionChoice?, width: Double, style: ChatRowStyle): ChatRowPlan {
+    private fun toolCall(
+        message: ChatMessage.ToolCallMessage, expanded: Boolean, busy: PermissionChoice?, diffExpanded: Map<Int, Set<Int>>, width: Double, style: ChatRowStyle,
+    ): ChatRowPlan {
         val tool = message.tool
         val env = style.env
         val presentation = presentTool(message, toolText, style.compactTools, style.flavor, style.root)
@@ -253,7 +265,7 @@ class ChatRowRenderer(private val resources: Resources) {
             else -> Form.Card
         }
         val awaitingDecision = tool.permission?.status == PermissionStatus.Pending
-        val full = fullBody(message, presentation.hideDefaultError, presentation.isToolUseError, env)
+        val full = fullBody(message, presentation, style, diffExpanded, flush = form != Form.Compact)
         val body = when {
             form == Form.Inline || expanded -> full
             awaitingDecision -> full.filter { it.inputOnly }
@@ -347,13 +359,25 @@ class ChatRowRenderer(private val resources: Resources) {
      * What the tool's body shows once opened: its own view where there is
      * one (a command), an error, or its raw input and output.
      */
-    private fun fullBody(message: ChatMessage.ToolCallMessage, hideDefaultError: Boolean, isToolUseError: Boolean, env: ChatTextEnv): List<BodyPart> {
+    private fun fullBody(
+        message: ChatMessage.ToolCallMessage, presentation: ToolPresentation, style: ChatRowStyle, diffExpanded: Map<Int, Set<Int>>, flush: Boolean,
+    ): List<BodyPart> {
         val tool = message.tool
+        val env = style.env
+        val hideDefaultError = presentation.hideDefaultError
+        val isToolUseError = presentation.isToolUseError
         val stopped = tool.permission?.status == PermissionStatus.Denied || tool.permission?.status == PermissionStatus.Canceled
         val errorText = if (tool.state == ToolState.Error && truthy(tool.result) && !stopped) resultText(tool.result) ?: pretty(tool.result) else null
         val command = if (tool.name == "Bash" || tool.name == "CodexBash") tool.input.obj?.get("command").let { it.str ?: (it as? JsonArray)?.joinToString(" ") { e -> e.str ?: "" } } else null
         if (command != null) {
             return listOf(BodyPart(section(null, commandView(command, errorText, env), env), inputOnly = true))
+        }
+        val view = presentation.view
+        if (view in DIFF_VIEWS) {
+            // The view, then its error when it failed.
+            val error = if (hideDefaultError) null else errorText
+            val diff = diffView(view!!, message, style, diffExpanded, flush)
+            return listOfNotNull(diff?.let { BodyPart(it, inputOnly = true) }, error?.let { BodyPart(toolError(it, env), inputOnly = false) })
         }
         if (errorText != null && !isToolUseError && !hideDefaultError) return listOf(BodyPart(toolError(errorText, env), inputOnly = false))
         val parts = ArrayList<BodyPart>()
@@ -403,6 +427,46 @@ class ChatRowRenderer(private val resources: Resources) {
         ToolStatusIcon.Running -> ChatDrawItem.Spinner(frame, Palette.text)
         ToolStatusIcon.Removed -> ChatDrawItem.Glyph(Icon.ionicons("remove-circle-outline"), 20.0, frame, Palette.textSecondary)
         else -> ChatDrawItem.Glyph(Icon.ionicons("alert-circle-outline"), 20.0, frame, Palette.warning)
+    }
+
+    // Diff views
+
+    private val diffWords = object : DiffWords {
+        override fun showMoreLines(count: Int) = resources.getQuantityString(R.plurals.diff_show_more_lines, count, count)
+        override fun unchangedLines(count: Int) = resources.getString(R.string.diff_unchanged_lines, count)
+        override val binaryFile: String get() = resources.getString(R.string.diff_binary_file)
+        override val noChanges: String get() = resources.getString(R.string.diff_no_changes)
+    }
+
+    /**
+     * EditView, WriteView, MultiEditView and GeminiEditView: DiffChunk under a
+     * full-width ToolSectionView (flush under the card's header, to its
+     * edges), MultiEdit's diffs 8 apart. Null when no diff draws anything.
+     */
+    private fun diffView(kind: ToolViewKind, message: ChatMessage.ToolCallMessage, style: ChatRowStyle, expanded: Map<Int, Set<Int>>, flush: Boolean): ChatStackEntry? {
+        val pieces = ToolDiffInputs.chunks(kind, message.tool.input).mapIndexedNotNull { index, chunk ->
+            diffPiece(DiffChunkSource(oldText = chunk.oldText, newText = chunk.newText, fileName = chunk.fileName), index, message.id, style, expanded[index].orEmpty())
+        }
+        if (pieces.isEmpty()) return null
+        return fullWidthSection(ChatPiece.stack(pieces.map { ChatStackEntry(it) }, gap = 8.0), flush, style.env)
+    }
+
+    /** ToolSectionView fullWidth: flush under the card's header and out to its edges. In a compact row's box, a plain section. */
+    private fun fullWidthSection(piece: ChatPiece, flush: Boolean, env: ChatTextEnv): ChatStackEntry {
+        if (!flush) return section(null, piece, env)
+        val m = ToolCardLayout.Metrics
+        return ChatStackEntry(piece, marginTop = -m.contentPaddingTop, marginBottom = 12.0, padding = LayoutInsets(0.0, -m.contentPaddingH, 0.0, -m.contentPaddingH))
+    }
+
+    /** One DiffChunk: diff [index] of tool [toolId], planned once per width it is measured at; null when it draws nothing. */
+    private fun diffPiece(source: DiffChunkSource, index: Int, toolId: String, style: ChatRowStyle, expanded: Set<Int>): ChatPiece? {
+        if (source.document().files.isEmpty()) return null
+        val plans = ArrayList<Pair<Double, DiffChunkPlan>>(2)
+        fun plan(width: Double): DiffChunkPlan = plans.firstOrNull { it.first == width }?.second
+            ?: DiffChunkPlan(source, width, style.env, diffWords, style.showLineNumbers, expanded).also { plans += width to it }
+        return ChatPiece(Measurable { plan(it).size }) { frame ->
+            listOf(ChatDrawItem.Diff(plan(frame.width), frame, toolId, index)) to emptyList()
+        }
     }
 
     /** ToolSectionView: an optional uppercase title, then the content, 12 below. */
@@ -505,6 +569,7 @@ class ChatRowRenderer(private val resources: Resources) {
 
     companion object {
         const val FOOTER_ID = "chat-footer"
+        private val DIFF_VIEWS = setOf(ToolViewKind.Edit, ToolViewKind.Write, ToolViewKind.MultiEdit, ToolViewKind.GeminiEdit)
         private val PRETTY = Json { prettyPrint = true; prettyPrintIndent = "  " }
 
         fun union(a: Rect, b: Rect): Rect {

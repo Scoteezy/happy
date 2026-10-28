@@ -196,7 +196,41 @@ class SyntaxService(private val dispatcher: CoroutineDispatcher = Prism.executor
         }
     }
 
+    /** The cached result, or one tokenized now (on the calling thread; Prism hops to its own) and kept. */
+    private fun resultNow(input: DiffSyntax.Input): DiffSyntax.Result {
+        val key = key(input)
+        return cache.get(key) ?: DiffSyntax.tokenize(input).also { cache.set(key, it, key.length.toLong() * 2) }
+    }
+
+    /**
+     * usePreparedSyntax: [displayed] with the colours of every hunk they
+     * touch. A missing hunk is tokenized while [deadlineNanos] (`System.nanoTime`)
+     * hasn't passed; the ones after stay plain here and are tokenized in the
+     * background, cached for the next plan.
+     */
+    fun colour(file: DiffFile, displayed: List<DiffRow>, deadlineNanos: Long): List<DiffRow> {
+        val plan = DiffSyntax.plan(file, displayed)
+        if (plan.isEmpty()) return displayed
+        val outcomes = HashMap<DiffSyntax.Input, DiffSyntax.Result>()
+        for (hunk in plan) {
+            peek(hunk.input)?.let {
+                outcomes[hunk.input] = it
+                continue
+            }
+            val job = background.submit<DiffSyntax.Result> { resultNow(hunk.input) }
+            val left = deadlineNanos - System.nanoTime()
+            if (left <= 0) continue
+            runCatching { job.get(left, java.util.concurrent.TimeUnit.NANOSECONDS) }.getOrNull()?.let { outcomes[hunk.input] = it }
+        }
+        return DiffSyntax.apply(displayed, plan, outcomes)
+    }
+
     companion object {
+        /** Hunks tokenized for [colour], one at a time; Prism itself runs on its own thread. */
+        private val background = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+            Thread(task, "diff-syntax").apply { isDaemon = true }
+        }
+
         /** The app's one queue (happy-app's `diffSyntax`). */
         val Shared by lazy { SyntaxService() }
     }
