@@ -39,6 +39,30 @@ val ToolViewRegistry: Map<String, ToolViewKind> = mapOf(
     "file" to ToolViewKind.File,
 )
 
+/** Whether the view draws anything for this call (several return null for an empty input). */
+fun ToolViewKind.hasContent(message: ChatMessage.ToolCallMessage): Boolean {
+    val input = message.tool.input.obj
+    return when (this) {
+        ToolViewKind.Todo -> !input?.get("todos").arr.isNullOrEmpty() || !message.tool.result.obj?.get("newTodos").arr.isNullOrEmpty()
+        ToolViewKind.Task -> message.children.any { it is ChatMessage.ToolCallMessage && KnownTools[it.tool.name]?.hidden != true }
+        ToolViewKind.MultiEdit -> !input?.get("edits").arr.isNullOrEmpty()
+        ToolViewKind.CodexDiff -> input?.get("unified_diff").str != null
+        ToolViewKind.GeminiExecute -> !input?.get("toolCall").obj?.get("title").str.isNullOrEmpty()
+        else -> true
+    }
+}
+
+/** GeminiExecuteView's description: what the title's last parentheses hold. */
+fun trailingParenthesis(title: String): String? {
+    if (!title.endsWith(")")) return null
+    val body = title.dropLast(1)
+    val close = body.lastIndexOf(')')
+    val tail = if (close >= 0) body.substring(close + 1) else body
+    val open = tail.indexOf('(')
+    if (open < 0) return null
+    return tail.substring(open + 1).ifEmpty { null }
+}
+
 enum class ToolStatusIcon { None, Running, Error, Removed }
 
 /** Everything ToolView.tsx works out before it draws. */

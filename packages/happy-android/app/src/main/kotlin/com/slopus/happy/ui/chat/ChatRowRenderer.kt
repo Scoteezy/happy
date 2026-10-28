@@ -80,6 +80,19 @@ import com.slopus.happy.layout.userMessageText
 import com.slopus.happy.layout.warning
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.style.StrikethroughSpan
+import com.slopus.happy.chat.arr
+import com.slopus.happy.chat.markdown.parseMarkdown
+import com.slopus.happy.chat.tools.KnownTools
+import com.slopus.happy.chat.tools.hasContent
+import com.slopus.happy.chat.tools.resolvePath
+import com.slopus.happy.chat.tools.stringifyToolCommand
+import com.slopus.happy.chat.tools.toolActivityLabel
+import com.slopus.happy.chat.tools.trailingParenthesis
+import com.slopus.happy.layout.todoCompleted
+import com.slopus.happy.layout.todoInProgress
+import com.slopus.happy.layout.todoOther
+import com.slopus.happy.layout.todoPending
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -403,23 +416,15 @@ class ChatRowRenderer(private val resources: Resources) {
         val isToolUseError = presentation.isToolUseError
         val stopped = tool.permission?.status == PermissionStatus.Denied || tool.permission?.status == PermissionStatus.Canceled
         val errorText = if (tool.state == ToolState.Error && truthy(tool.result) && !stopped) resultText(tool.result) ?: pretty(tool.result) else null
-        val command = if (tool.name == "Bash" || tool.name == "CodexBash") tool.input.obj?.get("command").let { it.str ?: (it as? JsonArray)?.joinToString(" ") { e -> e.str ?: "" } } else null
-        if (command != null) {
-            return listOf(BodyPart(section(null, commandView(command, errorText, env), env), inputOnly = true))
-        }
         val view = presentation.view
-        if (view in DIFF_VIEWS) {
+        if (view != null) {
             // The view, then its error when it failed.
             val error = if (hideDefaultError) null else errorText
-            val diff = diffView(view!!, message, style, diffExpanded, flush)
-            return listOfNotNull(diff?.let { BodyPart(it, inputOnly = true) }, error?.let { BodyPart(toolError(it, env), inputOnly = false) })
+            if (!view.hasContent(message) && error == null) return emptyList()
+            val entry = toolView(view, message, input, flush)
+            return listOfNotNull(entry?.let { BodyPart(it, inputOnly = true) }, error?.let { BodyPart(toolError(it, env), inputOnly = false) })
         }
-        if (view == ToolViewKind.AskUserQuestion || view == ToolViewKind.RequestUserInput) {
-            val error = if (hideDefaultError) null else errorText
-            val form = input.question?.let { section(null, questions.form(it, message.id, env), env) }
-            return listOfNotNull(form?.let { BodyPart(it, inputOnly = true) }, error?.let { BodyPart(toolError(it, env), inputOnly = false) })
-        }
-        if (errorText != null && !isToolUseError && !hideDefaultError) return listOf(BodyPart(toolError(errorText, env), inputOnly = false))
+        if (errorText != null && !isToolUseError) return listOf(BodyPart(toolError(errorText, env), inputOnly = false))
         val parts = ArrayList<BodyPart>()
         if (truthy(tool.input)) parts += BodyPart(section(resources.getString(R.string.tool_view_input), codeView(pretty(tool.input), env), env), inputOnly = true)
         if (tool.state == ToolState.Completed && truthy(tool.result)) {
@@ -427,6 +432,147 @@ class ChatRowRenderer(private val resources: Resources) {
             parts += BodyPart(section(resources.getString(R.string.tool_view_output), codeView(output, env), env), inputOnly = false)
         }
         return parts
+    }
+
+    /** The tool's own view. */
+    private fun toolView(kind: ToolViewKind, message: ChatMessage.ToolCallMessage, input: ChatRowInput, flush: Boolean): ChatStackEntry? {
+        val style = input.style
+        val env = style.env
+        val tool = message.tool
+        return when (kind) {
+            ToolViewKind.AskUserQuestion, ToolViewKind.RequestUserInput -> input.question?.let { section(null, questions.form(it, message.id, env), env) }
+            ToolViewKind.Edit, ToolViewKind.Write, ToolViewKind.MultiEdit, ToolViewKind.GeminiEdit -> diffView(kind, message, style, input.diffExpanded, flush)
+            ToolViewKind.Todo -> todoView(message, env)
+            ToolViewKind.ExitPlan -> exitPlanView(tool.input.obj?.get("plan").str ?: "<empty>", env)
+            ToolViewKind.Task -> taskView(message, env)
+            ToolViewKind.Bash -> bashView(tool.input.obj?.get("command"), tool.state, tool.result, env)
+            ToolViewKind.CodexBash -> codexBashView(message, style)
+            ToolViewKind.GeminiExecute -> geminiExecuteView(tool.input.obj?.get("toolCall").obj?.get("title").str, env)
+            // Patches, unified diffs and attachments still show their raw input.
+            ToolViewKind.CodexPatch, ToolViewKind.CodexDiff, ToolViewKind.File ->
+                if (truthy(tool.input)) section(resources.getString(R.string.tool_view_input), codeView(pretty(tool.input), env), env) else null
+        }
+    }
+
+    private fun bashView(command: JsonElement?, state: ToolState, result: JsonElement?, env: ChatTextEnv): ChatStackEntry? {
+        val shown = command.str ?: stringifyToolCommand(command) ?: return null
+        val error = if (state == ToolState.Error) result.str else null
+        return section(null, commandView(shown, error, env), env)
+    }
+
+    /** CodexBashView: a read or a write as what it does to which file; anything else as a command. */
+    private fun codexBashView(message: ChatMessage.ToolCallMessage, style: ChatRowStyle): ChatStackEntry? {
+        val tool = message.tool
+        val env = style.env
+        val first = tool.input.obj?.get("parsed_cmd").arr?.firstOrNull().obj
+        val type = first?.get("type").str
+        val command = first?.get("cmd").str
+        val name = first?.get("name").str
+        if ((type == "read" || type == "write") && !name.isNullOrEmpty()) {
+            val path = resolvePath(name, style.root)
+            val operation = resources.getString(if (type == "read") R.string.tools_desc_reading_file else R.string.tools_desc_writing_file, path)
+            val label = MeasuredText(ChatStrings.string(operation, Palette.text), ChatTextStyles.toolOperation, env)
+            val glyph = Size(18, 18)
+            val icon = Icon.octicons(if (type == "read") "eye" else "file-diff")
+            val row = ChatPiece(Measurable { ChatAccessoryRowLayout(it, glyph, label.measurable).size }) { frame ->
+                val layout = ChatAccessoryRowLayout(frame.width, glyph, label.measurable)
+                val labelFrame = layout.text.offsetBy(frame.minX, frame.minY)
+                listOf(
+                    ChatDrawItem.Glyph(icon, 18.0, layout.leading!!.offsetBy(frame.minX, frame.minY), Palette.textSecondary),
+                    ChatDrawItem.Text(label.layout(labelFrame), labelFrame),
+                ) to emptyList()
+            }
+            val entries = arrayListOf(ChatStackEntry(row))
+            if (command != null) {
+                val line = MeasuredText(ChatStrings.string(command, Palette.textSecondary), ChatTextStyles.toolOperationCommand, env)
+                entries += ChatStackEntry(ChatPiece.text(line), marginTop = 8.0)
+            }
+            val box = ChatStackEntry(ChatPiece.stack(entries), padding = LayoutInsets(12, 12, 12, 12), background = ChatBox(Rect.Zero, Palette.surfaceHigh, radius = 8.0))
+            return section(null, ChatPiece.stack(listOf(box)), env)
+        }
+        val display = command ?: stringifyToolCommand(tool.input.obj?.get("command")) ?: ""
+        val error = if (tool.state == ToolState.Error) tool.result.str else null
+        return section(null, commandView(display, error, env), env)
+    }
+
+    /** GeminiExecuteView: the command, then where it ran and why. */
+    private fun geminiExecuteView(title: String?, env: ChatTextEnv): ChatStackEntry? {
+        if (title.isNullOrEmpty()) return null
+        val bracket = title.indexOf(" [")
+        val command = if (bracket > 0) title.substring(0, bracket) else title
+        val entries = arrayListOf(section(null, codeView(command, env), env))
+        val info = ArrayList<ChatStackEntry>()
+        val marker = "[current working directory "
+        val open = title.indexOf(marker)
+        val close = if (open >= 0) title.indexOf(']', open + marker.length) else -1
+        if (close >= 0) {
+            val cwd = title.substring(open + marker.length, close)
+            info += ChatStackEntry(ChatPiece.text(MeasuredText(ChatStrings.string("📁 $cwd", Palette.textSecondary), ChatTextStyles.executeCwd, env)), marginBottom = 4.0)
+        }
+        trailingParenthesis(title)?.let { description ->
+            info += ChatStackEntry(ChatPiece.text(MeasuredText(ChatStrings.string(description, Palette.textSecondary), ChatTextStyles.executeDescription, env)))
+        }
+        if (info.isNotEmpty()) entries += ChatStackEntry(ChatPiece.stack(info), padding = LayoutInsets(0.0, 12.0, 8.0, 12.0))
+        return ChatStackEntry(ChatPiece.stack(entries))
+    }
+
+    /** TodoView: ☐ and ☑ lines, coloured by status, the latest list. */
+    private fun todoView(message: ChatMessage.ToolCallMessage, env: ChatTextEnv): ChatStackEntry? {
+        val todos = message.tool.result.obj?.get("newTodos").arr ?: message.tool.input.obj?.get("todos").arr.orEmpty()
+        if (todos.isEmpty()) return null
+        val entries = todos.map { todo ->
+            val status = todo.obj?.get("status").str
+            val content = todo.obj?.get("content").str ?: ""
+            val color = when (status) {
+                "completed" -> Palette.todoCompleted
+                "in_progress" -> Palette.todoInProgress
+                "pending" -> Palette.todoPending
+                else -> Palette.todoOther
+            }
+            val string = SpannableStringBuilder(ChatStrings.string("${if (status == "completed") "☑" else "☐"} $content", color))
+            if (status == "completed") string.setSpan(StrikethroughSpan(), 0, string.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            ChatStackEntry(ChatPiece.text(MeasuredText(string, ChatTextStyles.todo, env)), padding = LayoutInsets(2.0, 0.0, 2.0, 0.0))
+        }
+        return section(null, ChatPiece.stack(entries, gap = 4.0), env)
+    }
+
+    /** ExitPlanToolView: the plan as markdown, 8 in, pulled 10 up. */
+    private fun exitPlanView(plan: String, env: ChatTextEnv): ChatStackEntry {
+        val markdown = MarkdownPiece(parseMarkdown(plan), Palette.text, env)
+        val piece = ChatPiece(Measurable { MarkdownLayout(it, markdown.blocks).size }) { frame ->
+            markdown.draw(MarkdownLayout(frame.width, markdown.blocks), frame.minX, frame.minY)
+        }
+        val inset = ChatStackEntry(piece, marginTop = -10.0, padding = LayoutInsets(0.0, 8.0, 0.0, 8.0))
+        return section(null, ChatPiece.stack(listOf(inset)), env)
+    }
+
+    /** TaskView: the sub-agent's last three tool calls and how they went, then how many came before. */
+    private fun taskView(message: ChatMessage.ToolCallMessage, env: ChatTextEnv): ChatStackEntry? {
+        val calls = message.children.mapNotNull { child ->
+            (child as? ChatMessage.ToolCallMessage)?.tool?.takeIf { KnownTools[it.name]?.hidden != true }
+        }
+        if (calls.isEmpty()) return null
+        val entries = calls.takeLast(3).map { call ->
+            val label = MeasuredText(ChatStrings.string(toolActivityLabel(call, toolText), Palette.textSecondary), ChatTextStyles.taskItem, env)
+            val status = if (call.state == ToolState.Running) Size(20, 20) else Size(16, 16)
+            val row = ChatPiece(Measurable { ChatAccessoryRowLayout(it, text = label.measurable, trailing = status).size }) { frame ->
+                val layout = ChatAccessoryRowLayout(frame.width, text = label.measurable, trailing = status)
+                val labelFrame = layout.text.offsetBy(frame.minX, frame.minY)
+                val glyph = layout.trailing!!.offsetBy(frame.minX, frame.minY)
+                val item = when (call.state) {
+                    ToolState.Running -> ChatDrawItem.Spinner(glyph, Palette.warning)
+                    ToolState.Completed -> ChatDrawItem.Glyph(Icon.ionicons("checkmark-circle"), 16.0, glyph, Palette.success)
+                    else -> ChatDrawItem.Glyph(Icon.ionicons("close-circle"), 16.0, glyph, Palette.textDestructive)
+                }
+                listOf(ChatDrawItem.Text(label.layout(labelFrame), labelFrame), item) to emptyList()
+            }
+            ChatStackEntry(row, padding = LayoutInsets(4.0, 4.0, 4.0, 2.0))
+        }.toMutableList()
+        if (calls.size > 3) {
+            val more = resources.getQuantityString(R.plurals.tools_task_view_more_tools, calls.size - 3, calls.size - 3)
+            entries += ChatStackEntry(ChatPiece.text(MeasuredText(ChatStrings.string(more, Palette.textSecondary, alpha = 0.7f), ChatTextStyles.taskMore, env)), padding = LayoutInsets(4, 4, 4, 4))
+        }
+        return ChatStackEntry(ChatPiece.stack(entries), padding = LayoutInsets(4.0, 0.0, 12.0, 0.0))
     }
 
     private fun truthy(value: JsonElement?): Boolean = when (value) {
@@ -611,7 +757,6 @@ class ChatRowRenderer(private val resources: Resources) {
 
     companion object {
         const val FOOTER_ID = "chat-footer"
-        private val DIFF_VIEWS = setOf(ToolViewKind.Edit, ToolViewKind.Write, ToolViewKind.MultiEdit, ToolViewKind.GeminiEdit)
         private val PRETTY = Json { prettyPrint = true; prettyPrintIndent = "  " }
 
         fun union(a: Rect, b: Rect): Rect {

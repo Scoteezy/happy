@@ -171,6 +171,8 @@ const sessions: SessionSeed[] = [
             },
         },
     },
+    // TodoWrite, a sub-agent, an MCP call and a plan: the tools' own views.
+    { tag: 'tools-demo', summary: 'Plan the reconnect fix', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 10 },
     { tag: 'dark-mode', summary: 'Add dark mode to settings', path: `${home}/code/happy/.dev/worktree/dark-mode`, flavor: 'claude', minutesAgo: 12 },
     { tag: 'api-docs', summary: 'Write API docs for sessions', path: `${home}/code/happy-server`, flavor: 'codex', minutesAgo: 47 },
     { tag: 'flaky-tests', summary: 'Investigate flaky sync tests', path: `${home}/code/happy/.dev/worktree/flaky-tests`, flavor: 'claude', minutesAgo: 95 },
@@ -297,6 +299,7 @@ async function main() {
 
     // The transcripts, each written once: the finished turn, and the ones waiting on the person.
     await writeTranscript(created.find(({ seed }) => seed.tag === 'fix-login')!, transcript())
+    await writeTranscript(created.find(({ seed }) => seed.tag === 'tools-demo')!, toolsTranscript())
     for (const [tag, turn] of Object.entries(turns)) {
         await writeTranscript(created.find(({ seed }) => seed.tag === tag)!, turn.transcript())
     }
@@ -543,30 +546,7 @@ async function main() {
  * CLI's own mapper. Fiction throughout.
  */
 function transcript(): unknown[] {
-    const records: unknown[] = []
-    const user = (text: string) => records.push({ role: 'user', content: { type: 'text', text }, meta: { sentFrom: 'ios' } })
-    const state: ClaudeSessionProtocolState = {
-        currentTurnId: null,
-        uuidToProviderSubagent: new Map(),
-        taskPromptToSubagents: new Map(),
-        providerSubagentToSessionSubagent: new Map(),
-        subagentTitles: new Map(),
-        bufferedSubagentMessages: new Map(),
-        hiddenParentToolCalls: new Set(),
-        startedSubagents: new Set(),
-        activeSubagents: new Set(),
-    }
-    const emit = (envelopes: unknown[]) => envelopes.forEach((content) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
-    const claude = (line: Record<string, unknown>) => {
-        const mapped = mapClaudeLogMessageToSessionEnvelopes({ uuid: randomUUID(), ...line } as never, state)
-        state.currentTurnId = mapped.currentTurnId
-        emit(mapped.envelopes)
-    }
-    const assistant = (content: unknown[]) => claude({ type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-4-5', content } })
-    const results = (...ids: string[]) => claude({
-        type: 'user',
-        message: { role: 'user', content: ids.map((id) => ({ type: 'tool_result', tool_use_id: id, content: 'ok' })) },
-    })
+    const { records, user, assistant, results, close } = claudeLog()
 
     user('After a session expires the login page redirects forever. Can you find out why?')
     assistant([
@@ -615,10 +595,82 @@ function transcript(): unknown[] {
             'Want me to add a test for the expired case?',
         ].join('\n'),
     }])
-    emit(closeClaudeTurnWithStatus(state, 'completed').envelopes)
+    close()
     user('Yes please, and keep it short.')
     assistant([{ type: 'text', text: 'Added `expired session does not loop` to `guard.test.ts`. It fails on the old code and passes now.' }])
-    emit(closeClaudeTurnWithStatus(state, 'completed').envelopes)
+    close()
+    return records
+}
+
+/**
+ * A Claude log as the CLI maps it. A line with a [parent] is a sub-agent's,
+ * under that Agent call.
+ */
+function claudeLog() {
+    const records: unknown[] = []
+    const user = (text: string) => records.push({ role: 'user', content: { type: 'text', text }, meta: { sentFrom: 'ios' } })
+    const state = protocolState()
+    const emit = (envelopes: unknown[]) => envelopes.forEach((content) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
+    const claude = (line: Record<string, unknown>) => {
+        const mapped = mapClaudeLogMessageToSessionEnvelopes({ uuid: randomUUID(), ...line } as never, state)
+        state.currentTurnId = mapped.currentTurnId
+        emit(mapped.envelopes)
+    }
+    const assistant = (content: unknown[], parent?: string) =>
+        claude({ type: 'assistant', parent_tool_use_id: parent, message: { role: 'assistant', model: 'claude-sonnet-4-5', content } })
+    const reply = (ids: string[], parent?: string, content: unknown = 'ok') => claude({
+        type: 'user', parent_tool_use_id: parent,
+        message: { role: 'user', content: ids.map((id) => ({ type: 'tool_result', tool_use_id: id, content })) },
+    })
+    const close = () => emit(closeClaudeTurnWithStatus(state, 'completed').envelopes)
+    return { records, user, assistant, results: (...ids: string[]) => reply(ids), reply, close }
+}
+
+/** The tools-demo session: a todo list, a sub-agent's work, an MCP call and a plan, each with its own view. */
+function toolsTranscript(): unknown[] {
+    const { records, user, assistant, results, reply, close } = claudeLog()
+    const todos = (done: number) => [
+        { content: 'Find where sync drops the reconnect event', status: done > 0 ? 'completed' : 'in_progress', activeForm: 'Finding the drop' },
+        { content: 'Add a retry with backoff', status: done > 1 ? 'completed' : done === 1 ? 'in_progress' : 'pending', activeForm: 'Adding the retry' },
+        { content: 'Cover it with a test', status: 'pending', activeForm: 'Writing the test' },
+    ]
+    user('Sync loses the reconnect event on flaky networks. Plan a fix, look around first.')
+    assistant([{ type: 'tool_use', id: 'toolu_todo1', name: 'TodoWrite', input: { todos: todos(0) } }])
+    results('toolu_todo1')
+    assistant([
+        { type: 'text', text: 'I will have an agent survey the sync code while I keep the list.' },
+        { type: 'tool_use', id: 'toolu_agent', name: 'Agent', input: { description: 'Survey the sync client', prompt: 'Find every place the sync client handles a reconnect.', subagent_type: 'Explore' } },
+    ])
+    const steps: [string, string, object][] = [
+        ['toolu_c1', 'Glob', { pattern: 'sources/sync/**/*.ts' }],
+        ['toolu_c2', 'Grep', { pattern: 'reconnect', path: 'sources/sync' }],
+        ['toolu_c3', 'Read', { file_path: `${home}/code/happy/sources/sync/socket.ts` }],
+        ['toolu_c4', 'Read', { file_path: `${home}/code/happy/sources/sync/apiSocket.ts` }],
+        ['toolu_c5', 'Grep', { pattern: 'onDisconnect', path: 'sources/sync' }],
+    ]
+    for (const [id, name, input] of steps) {
+        assistant([{ type: 'tool_use', id, name, input }], 'toolu_agent')
+        reply([id], 'toolu_agent')
+    }
+    reply(['toolu_agent'], undefined, [{ type: 'text', text: 'socket.ts drops the event when the reconnect races the auth refresh.' }])
+    assistant([{ type: 'tool_use', id: 'toolu_mcp', name: 'mcp__linear__create_issue', input: { title: 'Sync drops reconnect on flaky networks', team: 'APP' } }])
+    reply(['toolu_mcp'], undefined, 'Created APP-142')
+    assistant([{ type: 'tool_use', id: 'toolu_todo2', name: 'TodoWrite', input: { todos: todos(1) } }])
+    results('toolu_todo2')
+    assistant([{
+        type: 'tool_use', id: 'toolu_plan', name: 'ExitPlanMode', input: {
+            plan: [
+                '## Fix the dropped reconnect',
+                '',
+                '1. Queue the reconnect event in `socket.ts` until the auth refresh settles.',
+                '2. Retry with **backoff** (250ms, doubling, at most 8s).',
+                '3. Add `reconnect survives a slow refresh` to `socket.test.ts`.',
+            ].join('\n'),
+        },
+    }])
+    results('toolu_plan')
+    assistant([{ type: 'text', text: 'Filed APP-142 and wrote the plan above. Shall I start on step 1?' }])
+    close()
     return records
 }
 

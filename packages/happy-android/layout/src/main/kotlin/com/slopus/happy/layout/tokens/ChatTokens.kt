@@ -51,6 +51,7 @@ val Palette.headerGlassSubtitle get() = ColorToken(RGBA(24 / 255.0, 23 / 255.0, 
 val Palette.todoCompleted get() = ColorToken("#34C759")
 val Palette.todoInProgress get() = ColorToken("#007AFF")
 val Palette.todoPending get() = ColorToken("#666666")
+val Palette.todoOther get() = ColorToken("#000000")
 
 // AgentInput.tsx's status dot.
 val Palette.sessionStatusDisconnected get() = ColorToken("#999999")
@@ -92,6 +93,11 @@ object ChatTextStyles {
     val compactActivity = TextStyle(FontFace.System, 15, 20)
     val todo = TextStyle(FontFace.System, 14)
     val taskItem = TextStyle(FontFace.SystemMedium, 14)
+    val taskMore = TextStyle(FontFace.SystemItalic, 14)
+    val toolOperation = TextStyle(FontFace.SystemMedium, 14)
+    val toolOperationCommand = TextStyle(FontFace.System, 12)
+    val executeCwd = TextStyle(FontFace.System, 12)
+    val executeDescription = TextStyle(FontFace.SystemItalic, 13)
     val toolSectionTitle = TextStyle(FontFace.SystemSemiBold, 13, uppercase = true)
     val toolError = TextStyle(FontFace.System, 13)
     val codeView = TextStyle(FontFace.Menlo, 12, 18)
