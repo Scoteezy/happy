@@ -5,4 +5,31 @@
     <string name="machine_stop_daemon_cancel">Cancel</string>
     <string name="machine_stop_daemon_confirm">Stop Daemon</string>
     <string name="machine_rename_error_title">Error</string>
+
+    <!-- session/[id]/info.tsx -->
+    <string name="session_info_resume_command">Resume Command</string>
+    <string name="session_info_client">Client</string>
+    <string name="session_info_model">Model</string>
+    <string name="session_info_sandbox">Sandbox</string>
+    <string name="session_info_dangerously_skip_permissions">Dangerously Skip Permissions</string>
+    <string name="session_info_client_logs_suffix">\n&amp; Client Logs</string>
+    <string name="session_info_subagents">Subagents</string>
+    <string name="session_info_workflows">Workflows</string>
+    <string name="session_info_background_processes">Background processes</string>
+    <string name="session_info_tasks">Tasks</string>
+    <string name="session_info_update_command">npm install -g happy@latest</string>
+    <string name="session_info_raw_json">Raw JSON (Dev Mode)</string>
+    <string name="session_info_raw_agent_state">Agent State</string>
+    <string name="session_info_raw_metadata">Metadata</string>
+    <string name="session_info_raw_session">Full Session Object</string>
+    <!-- useHappyAction's alert -->
+    <string name="session_info_action_error">Error</string>
+    <string name="session_info_unknown_error">Unknown error</string>
+    <!-- happy-ios SessionInfoLoading: the load status group and the bar's menu -->
+    <string name="session_info_load_failed">Unable to load session details</string>
+    <string name="session_info_load_delayed">Session details are taking longer than expected</string>
+    <string name="session_info_copy_diagnostics">Copy diagnostics</string>
+    <!-- Tasks -->
+    <string name="tasks_leave">Leave task</string>
+    <string name="tasks_archive">Archive task</string>
 </resources>

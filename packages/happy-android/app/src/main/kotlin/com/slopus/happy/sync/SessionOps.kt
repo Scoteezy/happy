@@ -139,6 +139,24 @@ class SessionOps internal constructor(
         }
     }
 
+    /**
+     * happy-ios SessionActions.leaveTask: the `leaveTask` RPC takes the task
+     * out of this account's list; it runs on for everyone else in it.
+     */
+    suspend fun leaveTask(sessionId: String): OpResult {
+        val answer = try {
+            rpc.sessionRpc(sessionId, "leaveTask", JsonObject(emptyMap())) as? JsonObject
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return OpResult(false, "Connect to the task’s machine to leave it.")
+        }
+        if ((answer?.get("success") as? JsonPrimitive)?.booleanOrNull == true) return OpResult(true)
+        val refusal = listOf("error", "message").firstNotNullOfOrNull { answer?.string(it)?.trim()?.takeIf(String::isNotEmpty) }
+        // An older Happy Agent that has no such method.
+        return OpResult(false, if (refusal == "Method not found") "Happy Agent on this computer cannot leave tasks yet. Update it and try again." else refusal ?: "Failed to leave task")
+    }
+
     /** ops.ts `sessionDelete`: the session and everything in it, for good. */
     suspend fun delete(sessionId: String): OpResult {
         if (metadata(sessionId)?.bot != null) {

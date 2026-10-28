@@ -204,6 +204,17 @@ class ScreenStack(context: Context) : FrameLayout(context) {
         animateProgress(to = 1f, duration = POP_MS) { completePop() }
     }
 
+    /**
+     * UIKit's popToViewController: the screens between [target] and the top
+     * go at once, then the top pops off to [target].
+     */
+    fun popTo(target: Screen, animated: Boolean = true) {
+        val index = screens.indexOf(target)
+        if (index < 0 || index == screens.lastIndex) return
+        screens.subList(index + 1, screens.size - 1).toList().forEach { s -> screens.remove(s); detach(s) }
+        pop(animated)
+    }
+
     /** Pops everything above the root. */
     fun popToRoot(animated: Boolean = true) {
         if (screens.size < 2) return

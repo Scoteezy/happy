@@ -25,6 +25,8 @@ data class GitStatus(
     val aheadCount: Int? = null,
     val behindCount: Int? = null,
     val stashCount: Int? = null,
+    /** The paths with a change, staged or not, each once: what session info counts as changed files. */
+    val changedFileCount: Int? = null,
 )
 
 /** storage.ts getSessionPathKey: `machineId:path`, or null without both. */
@@ -68,6 +70,7 @@ fun parseGitStatus(porcelainV2: String, unstagedNumStat: String, stagedNumStat: 
         aheadCount = if (tracking) summary.branch.ahead ?: 0 else null,
         behindCount = if (tracking) summary.branch.behind ?: 0 else null,
         stashCount = summary.stashCount,
+        changedFileCount = (summary.files.map { it.path } + summary.notAdded).toSet().size,
     )
 }
 

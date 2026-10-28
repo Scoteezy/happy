@@ -104,7 +104,7 @@ fun SessionMetadata?.gitPresentation(status: GitStatus? = null, files: GitStatus
         return SessionGitPresentation(git.changedFiles, changes)
     }
     val all = files?.let { it.stagedFiles + it.unstagedFiles }
-    val count = all?.map { it.fullPath }?.toSet()?.size?.toLong()
+    val count = all?.map { it.fullPath }?.toSet()?.size?.toLong() ?: status?.changedFileCount?.toLong()
     val live = status != null && status.lastUpdatedAt > 0
     val insertions = if (live) status.linesAdded else all?.sumOf { it.linesAdded.toLong() } ?: 0
     val deletions = if (live) status.linesRemoved else all?.sumOf { it.linesRemoved.toLong() } ?: 0

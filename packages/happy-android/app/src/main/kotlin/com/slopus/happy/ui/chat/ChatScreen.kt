@@ -610,7 +610,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
 
     private fun openInfo() {
         if (state.session == null) return
-        Alerts.show(context, state.session?.title ?: context.getString(R.string.session_new_chat), NOT_PORTED)
+        push(com.slopus.happy.ui.details.SessionInfoScreen(context, graph, sessionId))
     }
 
     override fun onBackPressed(): Boolean {

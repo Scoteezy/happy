@@ -81,6 +81,9 @@ class NavigationBar(context: Context) : ManualLayout(context), ThemeAware {
     private val leadingButtons = mutableListOf<View>()
     private val trailingButtons = mutableListOf<View>()
 
+    /** The button drawn for [actions]' item at [index], for a menu to hang from. */
+    fun actionView(index: Int): View? = trailingButtons.getOrNull(index)
+
     init {
         addView(titleLabel)
         addView(subtitleLabel)
