@@ -106,8 +106,10 @@ const askQuestions = [
         ],
     },
 ]
-const machineId = 'seed-macbook'
-const sessions: SessionSeed[] = [
+/** --machine-only: the computer and no sessions, for the screens an empty account shows (No sessions yet, the new-session screen). */
+const machineOnly = args.includes('--machine-only')
+const machineId = machineOnly ? 'seed-macbook-empty' : 'seed-macbook'
+const sessions: SessionSeed[] = machineOnly ? [] : [
     { tag: 'fix-login', summary: 'Fix the login redirect loop', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 3 },
     {
         tag: 'perm-demo', summary: 'Clean up the build cache', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 1,
@@ -345,9 +347,11 @@ async function main() {
     }
 
     // The transcripts, each written once: the finished turn, and the ones waiting on the person.
-    await writeTranscript(created.find(({ seed }) => seed.tag === 'fix-login')!, transcript())
-    await writeTranscript(created.find(({ seed }) => seed.tag === 'tools-demo')!, toolsTranscript())
-    await writeTranscript(created.find(({ seed }) => seed.tag === 'photo-demo')!, await photoTranscript(created.find(({ seed }) => seed.tag === 'photo-demo')!))
+    if (!machineOnly) {
+        await writeTranscript(created.find(({ seed }) => seed.tag === 'fix-login')!, transcript())
+        await writeTranscript(created.find(({ seed }) => seed.tag === 'tools-demo')!, toolsTranscript())
+        await writeTranscript(created.find(({ seed }) => seed.tag === 'photo-demo')!, await photoTranscript(created.find(({ seed }) => seed.tag === 'photo-demo')!))
+    }
 
     /** The photo-demo chat: the screenshot sealed with the session's blob key and uploaded, as a phone sends it, then the prompt and a reply. */
     async function photoTranscript(chat: { id: string; key: Uint8Array }): Promise<unknown[]> {
@@ -373,7 +377,7 @@ async function main() {
             ...reply(prompt, 'Yes: the header sits under the status bar because the screen ignores the top safe-area inset. Padding the header by the inset fixes it.'),
         ]
     }
-    for (const [tag, turn] of Object.entries(turns)) {
+    for (const [tag, turn] of machineOnly ? [] : Object.entries(turns)) {
         await writeTranscript(created.find(({ seed }) => seed.tag === tag)!, turn.transcript())
     }
     for (const session of created.filter(({ seed }) => seed.chat)) {

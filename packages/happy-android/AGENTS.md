@@ -72,7 +72,8 @@ reference for protocol, sync, crypto and copy, which happy-ios ports too.
    `http://10.0.2.2:3005`) holding fiction from
    `tools/dev/seed-local-server.ts`: a throwaway account, a computer kept
    online and a set of sessions, so the two are compared on identical data
-   without a real account.
+   without a real account. `--machine-only` seeds a second account with the
+   computer and no sessions, for the empty home and the new-session screen.
 4. **The local store is SQLite through the framework API**
    (`SQLiteOpenHelper`, WAL, hand-written SQL in `data/`). Why not a library:
    the schema is a handful of tables whose rows are mostly JSON documents
