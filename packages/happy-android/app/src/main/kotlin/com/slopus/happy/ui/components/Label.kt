@@ -47,6 +47,10 @@ class Label(
     var alignment: Layout.Alignment = alignment
         set(value) { if (field != value) { field = value; invalidateText() } }
 
+    /** Where limited lines are cut: at the end, or in the middle (UIKit's byTruncatingMiddle). */
+    var ellipsize: android.text.TextUtils.TruncateAt = android.text.TextUtils.TruncateAt.END
+        set(value) { if (field != value) { field = value; invalidateText() } }
+
     private var layout: StaticLayout? = null
     private var layoutWidth = -1
     private var layoutKey: Any? = null
@@ -87,7 +91,7 @@ class Label(
         val key = Triple(Theme.isDark, Theme.textScale, Theme.density)
         var l = layout
         if (l == null || layoutWidth != width || layoutKey != key) {
-            l = TextLayouts.build(text, style, px(width), env, Theme.color(color), maxLines, alignment)
+            l = TextLayouts.build(text, style, px(width), env, Theme.color(color), maxLines, alignment, ellipsize)
             layout = l
             layoutWidth = width
             layoutKey = key

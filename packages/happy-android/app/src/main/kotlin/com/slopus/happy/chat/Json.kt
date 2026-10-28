@@ -43,3 +43,12 @@ private val PrettyJson = Json { prettyPrint = true; prettyPrintIndent = "  " }
 
 /** JSON.stringify(value, null, 2): every dump and copy of tool, session and metadata JSON. */
 internal fun prettyJson(element: JsonElement): String = PrettyJson.encodeToString(JsonElement.serializer(), element)
+
+/** A tool's JSON as the chat shows it (happy-ios `ChatToolPresentation.pretty`): two-space indents, each object's keys sorted. */
+internal fun prettyToolJson(element: JsonElement): String = prettyJson(sortedKeys(element))
+
+private fun sortedKeys(element: JsonElement): JsonElement = when (element) {
+    is JsonObject -> JsonObject(element.keys.sorted().associateWith { sortedKeys(element.getValue(it)) })
+    is JsonArray -> JsonArray(element.map(::sortedKeys))
+    else -> element
+}

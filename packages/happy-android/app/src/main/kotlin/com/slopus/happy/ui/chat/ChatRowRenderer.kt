@@ -320,7 +320,9 @@ class ChatRowRenderer(private val resources: Resources) {
             else -> emptyList()
         }.map { it.entry }.takeIf { it.isNotEmpty() }?.let { ChatPiece.stack(it) }
         val expandable = !awaitingDecision && full.isNotEmpty()
-        val tap: ChatRowAction = if (expandable) ChatRowAction.ToggleTool(message.id) else ChatRowAction.OpenMessage(message.id)
+        // The header opens and closes the body. With nothing to open, or while a decision holds it open, it opens the tool's own screen.
+        val open = ChatRowAction.OpenMessage(message.id)
+        val tap: ChatRowAction = if (expandable) ChatRowAction.ToggleTool(message.id) else open
         val footer = if (tool.permission != null && tool.name != "AskUserQuestion") permissionFooter(message, busy, style) else null
         val glyphSize = ToolCardLayout.Metrics.statusIconSize
         val glyph = presentation.statusIcon.takeIf { it != ToolStatusIcon.None }?.let { Size(glyphSize, glyphSize) }
@@ -342,6 +344,7 @@ class ChatRowRenderer(private val resources: Resources) {
                 val (drawn, drawnHits) = body.draw(bodyFrame)
                 items += drawn
                 hits += drawnHits
+                hits += ChatHit(box, open)
             }
             if (footer != null) layout.footer?.let { frame ->
                 val (drawn, drawnHits) = footer.draw(frame)
@@ -388,7 +391,7 @@ class ChatRowRenderer(private val resources: Resources) {
         if (body != null) layout.body?.let { frame ->
             val (drawn, drawnHits) = body.draw(place(frame))
             items += drawn
-            hits = ArrayList(drawnHits + hits + if (form == Form.Inline) emptyList() else listOf(ChatHit(place(frame), ChatRowAction.OpenMessage(message.id))))
+            hits = ArrayList(drawnHits + hits + if (form == Form.Inline) emptyList() else listOf(ChatHit(place(frame), open)))
         }
         if (footer != null) layout.footer?.let { frame ->
             val (drawn, drawnHits) = footer.draw(place(frame))
@@ -547,7 +550,7 @@ class ChatRowRenderer(private val resources: Resources) {
     }
 
     /** TaskView: the sub-agent's last three tool calls and how they went, then how many came before. */
-    private fun taskView(message: ChatMessage.ToolCallMessage, env: ChatTextEnv): ChatStackEntry? {
+    internal fun taskView(message: ChatMessage.ToolCallMessage, env: ChatTextEnv): ChatStackEntry? {
         val calls = message.children.mapNotNull { child ->
             (child as? ChatMessage.ToolCallMessage)?.tool?.takeIf { KnownTools[it.name]?.hidden != true }
         }
@@ -585,7 +588,7 @@ class ChatRowRenderer(private val resources: Resources) {
     private fun pretty(value: JsonElement?): String = when (value) {
         null -> ""
         is JsonPrimitive -> value.content
-        else -> PRETTY.encodeToString(JsonElement.serializer(), value)
+        else -> com.slopus.happy.chat.prettyToolJson(value)
     }
 
     private fun elapsedSize(env: ChatTextEnv): Size =
@@ -633,7 +636,7 @@ class ChatRowRenderer(private val resources: Resources) {
      */
     private fun diffView(kind: ToolViewKind, message: ChatMessage.ToolCallMessage, style: ChatRowStyle, expanded: Map<Int, Set<Int>>, flush: Boolean): ChatStackEntry? {
         val pieces = ToolDiffInputs.chunks(kind, message.tool.input).mapIndexedNotNull { index, chunk ->
-            diffPiece(DiffChunkSource(oldText = chunk.oldText, newText = chunk.newText, fileName = chunk.fileName), index, message.id, style, expanded[index].orEmpty())
+            diffPiece(DiffChunkSource(oldText = chunk.oldText, newText = chunk.newText, fileName = chunk.fileName), index, message.id, style.env, style.showLineNumbers, expanded[index].orEmpty())
         }
         if (pieces.isEmpty()) return null
         return fullWidthSection(ChatPiece.stack(pieces.map { ChatStackEntry(it) }, gap = 8.0), flush, style.env)
@@ -647,18 +650,18 @@ class ChatRowRenderer(private val resources: Resources) {
     }
 
     /** One DiffChunk: diff [index] of tool [toolId], planned once per width it is measured at; null when it draws nothing. */
-    private fun diffPiece(source: DiffChunkSource, index: Int, toolId: String, style: ChatRowStyle, expanded: Set<Int>): ChatPiece? {
+    internal fun diffPiece(source: DiffChunkSource, index: Int, toolId: String, env: ChatTextEnv, showLineNumbers: Boolean, expanded: Set<Int>): ChatPiece? {
         if (source.document().files.isEmpty()) return null
         val plans = ArrayList<Pair<Double, DiffChunkPlan>>(2)
         fun plan(width: Double): DiffChunkPlan = plans.firstOrNull { it.first == width }?.second
-            ?: DiffChunkPlan(source, width, style.env, diffWords, style.showLineNumbers, expanded).also { plans += width to it }
+            ?: DiffChunkPlan(source, width, env, diffWords, showLineNumbers, expanded).also { plans += width to it }
         return ChatPiece(Measurable { plan(it).size }) { frame ->
             listOf(ChatDrawItem.Diff(plan(frame.width), frame, toolId, index)) to emptyList()
         }
     }
 
     /** ToolSectionView: an optional uppercase title, then the content, 12 below. */
-    private fun section(title: String?, content: ChatPiece, env: ChatTextEnv): ChatStackEntry {
+    internal fun section(title: String?, content: ChatPiece, env: ChatTextEnv): ChatStackEntry {
         val entries = ArrayList<ChatStackEntry>()
         if (title != null) {
             val label = MeasuredText(ChatStrings.string(title.uppercase(), Palette.textSecondary), ChatTextStyles.toolSectionTitle.copy(uppercase = false), env)
@@ -669,7 +672,7 @@ class ChatRowRenderer(private val resources: Resources) {
     }
 
     /** CodeView: mono 12/18 on surfaceHigh, wrapped. */
-    private fun codeView(code: String, env: ChatTextEnv): ChatPiece {
+    internal fun codeView(code: String, env: ChatTextEnv): ChatPiece {
         val lines = MeasuredText(ChatStrings.string(code, Palette.text), ChatTextStyles.codeView, env)
         return ChatPiece.stack(
             listOf(ChatStackEntry(ChatPiece.text(lines), padding = LayoutInsets(12, 12, 12, 12), background = ChatBox(Rect.Zero, Palette.surfaceHigh, radius = 6.0))),
@@ -678,26 +681,34 @@ class ChatRowRenderer(private val resources: Resources) {
 
     /** CommandView: a dark terminal panel, "$ " then the command, then the error in red. */
     private fun commandView(command: String, error: String?, env: ChatTextEnv): ChatPiece {
-        val text = MeasuredText(ChatStrings.string(command, Palette.terminalCommand), ChatTextStyles.terminalCommand, env)
-        val prompt = MeasuredText(ChatStrings.string("$ ", Palette.terminalPromptGreen), ChatTextStyles.terminalPrompt, env, maxLines = 1)
-        val line = ChatPiece(Measurable { width -> ChatAccessoryRowLayout(width, prompt.size(width), text.measurable, gap = 0.0, alignment = ChatAccessoryRowLayout.Alignment.Top).size }) { frame ->
-            val layout = ChatAccessoryRowLayout(frame.width, prompt.size(frame.width), text.measurable, gap = 0.0, alignment = ChatAccessoryRowLayout.Alignment.Top)
-            val promptFrame = layout.leading!!.offsetBy(frame.minX, frame.minY)
-            val textFrame = layout.text.offsetBy(frame.minX, frame.minY)
-            listOf(ChatDrawItem.Text(prompt.layout(Rect(0.0, 0.0, frame.width, promptFrame.height)), promptFrame), ChatDrawItem.Text(text.layout(textFrame), textFrame)) to emptyList()
-        }
-        val entries = arrayListOf(ChatStackEntry(line))
+        val entries = arrayListOf(ChatStackEntry(commandLine(ChatStrings.string(command, Palette.terminalCommand), prompt = true, env)))
         if (error != null) {
             val errorText = MeasuredText(ChatStrings.string(error, Palette.terminalError), ChatTextStyles.terminal, env)
             entries += ChatStackEntry(ChatPiece.text(errorText), marginTop = 8.0)
         }
-        return ChatPiece.stack(
-            listOf(ChatStackEntry(ChatPiece.stack(entries), padding = LayoutInsets(16, 16, 16, 16), background = ChatBox(Rect.Zero, Palette.terminalPanel, radius = 8.0))),
-        )
+        return terminalPanel(entries)
     }
 
+    /** CommandView's first line: "$ " (when it ran a command), then the command, wrapping under itself. */
+    internal fun commandLine(command: CharSequence, prompt: Boolean, env: ChatTextEnv): ChatPiece {
+        val text = MeasuredText(command, ChatTextStyles.terminalCommand, env)
+        if (!prompt) return ChatPiece.text(text)
+        val dollar = MeasuredText(ChatStrings.string("$ ", Palette.terminalPromptGreen), ChatTextStyles.terminalPrompt, env, maxLines = 1)
+        return ChatPiece(Measurable { width -> ChatAccessoryRowLayout(width, dollar.size(width), text.measurable, gap = 0.0, alignment = ChatAccessoryRowLayout.Alignment.Top).size }) { frame ->
+            val layout = ChatAccessoryRowLayout(frame.width, dollar.size(frame.width), text.measurable, gap = 0.0, alignment = ChatAccessoryRowLayout.Alignment.Top)
+            val promptFrame = layout.leading!!.offsetBy(frame.minX, frame.minY)
+            val textFrame = layout.text.offsetBy(frame.minX, frame.minY)
+            listOf(ChatDrawItem.Text(dollar.layout(Rect(0.0, 0.0, frame.width, promptFrame.height)), promptFrame), ChatDrawItem.Text(text.layout(textFrame), textFrame)) to emptyList()
+        }
+    }
+
+    /** CommandView's panel: dark in both themes, 16 in, rounded 8. */
+    internal fun terminalPanel(entries: List<ChatStackEntry>): ChatPiece = ChatPiece.stack(
+        listOf(ChatStackEntry(ChatPiece.stack(entries), padding = LayoutInsets(16, 16, 16, 16), background = ChatBox(Rect.Zero, Palette.terminalPanel, radius = 8.0))),
+    )
+
     /** ToolError: the message in a red box, at most 115 tall; a refused call shows only its reason, after a warning sign. */
-    private fun toolError(message: String, env: ChatTextEnv): ChatStackEntry {
+    internal fun toolError(message: String, env: ChatTextEnv): ChatStackEntry {
         val reason = parseToolUseError(message)
         val shown = reason?.ifEmpty { null } ?: message
         val text = MeasuredText(ChatStrings.string(shown, Palette.boxErrorText), ChatTextStyles.toolError, env)
@@ -757,7 +768,6 @@ class ChatRowRenderer(private val resources: Resources) {
 
     companion object {
         const val FOOTER_ID = "chat-footer"
-        private val PRETTY = Json { prettyPrint = true; prettyPrintIndent = "  " }
 
         fun union(a: Rect, b: Rect): Rect {
             val minX = minOf(a.minX, b.minX)

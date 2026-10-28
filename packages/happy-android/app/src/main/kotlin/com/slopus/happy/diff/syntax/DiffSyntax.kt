@@ -225,6 +225,22 @@ class SyntaxService(private val dispatcher: CoroutineDispatcher = Prism.executor
         return DiffSyntax.apply(displayed, plan, outcomes)
     }
 
+    /**
+     * TerminalSyntax.spans: [code]'s spans in [language]. A cached result is
+     * used at once; a missing one is tokenized until [deadlineNanos], or past
+     * it left plain and tokenized in the background into the cache, for the
+     * next plan. Null draws [code] plain: no language, past the limits, or
+     * nothing to colour.
+     */
+    fun codeSpans(code: String, language: String?, deadlineNanos: Long): List<DiffSpan>? {
+        val input = DiffSyntax.planCode(code, language) ?: return null
+        peek(input)?.let { return DiffSyntax.codeSpans(input, it) }
+        val job = background.submit<DiffSyntax.Result> { resultNow(input) }
+        val left = deadlineNanos - System.nanoTime()
+        if (left <= 0) return null
+        return runCatching { job.get(left, java.util.concurrent.TimeUnit.NANOSECONDS) }.getOrNull()?.let { DiffSyntax.codeSpans(input, it) }
+    }
+
     companion object {
         /** Hunks tokenized for [colour], one at a time; Prism itself runs on its own thread. */
         private val background = java.util.concurrent.Executors.newSingleThreadExecutor { task ->

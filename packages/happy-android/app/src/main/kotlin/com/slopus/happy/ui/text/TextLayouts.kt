@@ -59,6 +59,7 @@ object TextLayouts {
         color: Int,
         maxLines: Int = 0,
         alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL,
+        ellipsize: TextUtils.TruncateAt = TextUtils.TruncateAt.END,
     ): StaticLayout {
         val paint = paint(style, env, color)
         val shown = if (style.uppercase) upper(text) else text
@@ -81,7 +82,7 @@ object TextLayouts {
             .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
         if (maxLines > 0) {
-            builder.setMaxLines(maxLines).setEllipsize(TextUtils.TruncateAt.END)
+            builder.setMaxLines(maxLines).setEllipsize(ellipsize)
         }
         return builder.build()
     }

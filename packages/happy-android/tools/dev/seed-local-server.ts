@@ -259,9 +259,9 @@ async function main() {
     const machineDataKey = registered.data.machine?.dataEncryptionKey ? unseal(registered.data.machine.dataEncryptionKey) : machineKey
 
     const created: { id: string; seed: SessionSeed; key: Uint8Array; agentStateVersion: number }[] = []
-    // --reset-chat / --reset-permission: the session holding that transcript
+    // --reset-chat / --reset-permission: the sessions holding those transcripts
     // is deleted and made again, so it is written afresh.
-    const stales = [...(resetChat ? ['fix-login'] : []), ...(resetPermission ? sessions.filter(({ agentState }) => agentState).map(({ tag }) => tag) : [])]
+    const stales = [...(resetChat ? ['fix-login', 'tools-demo'] : []), ...(resetPermission ? sessions.filter(({ agentState }) => agentState).map(({ tag }) => tag) : [])]
     for (const tag of stales) {
         const stale = await axios.post(`${server}/v1/sessions`, {
             tag,
@@ -655,6 +655,13 @@ function toolsTranscript(): unknown[] {
     reply(['toolu_agent'], undefined, [{ type: 'text', text: 'socket.ts drops the event when the reconnect races the auth refresh.' }])
     assistant([{ type: 'tool_use', id: 'toolu_mcp', name: 'mcp__linear__create_issue', input: { title: 'Sync drops reconnect on flaky networks', team: 'APP' } }])
     reply(['toolu_mcp'], undefined, 'Created APP-142')
+    assistant([{ type: 'tool_use', id: 'toolu_log', name: 'Bash', input: { command: 'git log --oneline -4 -- sources/sync/socket.ts', description: 'Recent socket changes' } }])
+    reply(['toolu_log'], undefined, [
+        'a91c2e4 sync: refresh auth before reconnecting',
+        '77f03b1 sync: drop stale listeners on disconnect',
+        '3d5e9a0 sync: log reconnect attempts',
+        'e1b4c72 sync: move socket setup out of the store',
+    ].join('\n'))
     assistant([{ type: 'tool_use', id: 'toolu_todo2', name: 'TodoWrite', input: { todos: todos(1) } }])
     results('toolu_todo2')
     assistant([{

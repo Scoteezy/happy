@@ -52,6 +52,11 @@ class NavigationBar(context: Context) : ManualLayout(context), ThemeAware {
     var title: String? = null
         set(value) { field = value; titleLabel.text = value.orEmpty(); requestLayout() }
 
+    /** How a title too long for the bar is cut. */
+    var titleEllipsize: android.text.TextUtils.TruncateAt
+        get() = titleLabel.ellipsize
+        set(value) { titleLabel.ellipsize = value }
+
     var subtitle: String? = null
         set(value) { field = value; subtitleLabel.text = value.orEmpty(); requestLayout() }
 

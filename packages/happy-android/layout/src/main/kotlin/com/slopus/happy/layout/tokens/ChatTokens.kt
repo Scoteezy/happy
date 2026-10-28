@@ -53,6 +53,14 @@ val Palette.todoInProgress get() = ColorToken("#007AFF")
 val Palette.todoPending get() = ColorToken("#666666")
 val Palette.todoOther get() = ColorToken("#000000")
 
+// ToolFullView.tsx's section glyphs and MultiEditViewFull.
+val Palette.fullViewPurple get() = ColorToken("#5856D6")
+val Palette.fullViewGreen get() = ColorToken("#34C759")
+val Palette.fullViewRed get() = ColorToken("#FF3B30")
+val Palette.fullViewOrange get() = ColorToken("#FF9500")
+val Palette.multiEditSeparator get() = ColorToken("#E5E5EA")
+val Palette.terminalEmptyOutput get() = ColorToken("#6272A4", "#7B7B93")
+
 // AgentInput.tsx's status dot.
 val Palette.sessionStatusDisconnected get() = ColorToken("#999999")
 val Palette.sessionStatusAttention get() = ColorToken("#FF9500")
@@ -146,6 +154,17 @@ object ChatTextStyles {
     /** A TextInput with no font family: the system font. */
     val sheetInput = TextStyle(FontFace.System, 15)
     val sheetError = TextStyle(FontFace.Regular, 14)
+
+    // ToolFullView.tsx and the message screen
+    val fullSectionTitle = TextStyle(FontFace.SystemSemiBold, 17)
+    val fullDescription = TextStyle(FontFace.System, 14, 20)
+    val fullError = TextStyle(FontFace.System, 14, 20)
+    val fullEmptyTitle = TextStyle(FontFace.SystemSemiBold, 16)
+    val fullEmptySubtitle = TextStyle(FontFace.System, 14)
+    val multiEditNumber = TextStyle(FontFace.SystemSemiBold, 14)
+    val multiEditBadge = TextStyle(FontFace.SystemSemiBold, 12)
+    val terminalEmptyOutput = TextStyle(FontFace.MenloItalic, 13, 18)
+    val detailMessage = TextStyle(FontFace.Regular, 16, 24)
     val sheetSubmit = TextStyle(FontFace.SemiBold, 16)
 
     // ChatFooter.tsx

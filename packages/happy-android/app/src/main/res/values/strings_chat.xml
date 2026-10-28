@@ -14,4 +14,6 @@
     <string name="chat_rig_activity_workflows">%1$s workflows</string>
     <string name="chat_rig_activity_processes">%1$s processes</string>
     <string name="chat_rig_activity_tasks">%1$s tasks</string>
+    <!-- happy-ios Strings.Tools.commandNoOutput: the message screen's CommandView with nothing printed. -->
+    <string name="chat_command_no_output">[Command completed with no output]</string>
 </resources>

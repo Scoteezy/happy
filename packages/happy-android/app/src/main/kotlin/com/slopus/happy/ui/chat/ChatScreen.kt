@@ -480,7 +480,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
                 diffExpanded = diffExpanded + (action.toolId to tool + (action.chunk to tool[action.chunk].orEmpty() + action.file))
                 requestPlans(pinning = action.toolId)
             }
-            is ChatRowAction.OpenMessage -> Unit
+            is ChatRowAction.OpenMessage -> push(MessageDetailScreen(context, graph, sessionId, action.id))
         }
     }
 
