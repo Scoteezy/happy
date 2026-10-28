@@ -753,7 +753,7 @@ class SessionInfoScreen(context: Context, private val graph: AppGraph, private v
     }
 
     private fun openDuplicateSheet() {
-        Alerts.show(context, string(R.string.session_duplicate_action), NOT_PORTED)
+        DuplicateSheet.present(this, graph, sessionId)
     }
 
     private fun openChanges() {

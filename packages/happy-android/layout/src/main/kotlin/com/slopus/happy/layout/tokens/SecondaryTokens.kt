@@ -80,6 +80,15 @@ object SecondaryTextStyles {
     /** Item subtitles that ask for Menlo 13 / 12 keep Item's 20pt line; Plex Mono stands in, as for Connect Claude's command. */
     val monoSubtitle = TextStyle(FontFace.Mono, 13.0, 20.0, -0.24)
     val monoSubtitleSmall = TextStyle(FontFace.Mono, 12.0, 20.0, -0.24)
+
+    // DuplicateSheet.tsx sets bare font sizes, so its text is in the system font, not Plex (happy-ios SheetText).
+    val sheetTitle = TextStyle(FontFace.SystemSemiBold, 17)
+    val sheetSubtitle = TextStyle(FontFace.System, 13)
+    val sheetEmpty = TextStyle(FontFace.System, 14)
+    val sheetRow = TextStyle(FontFace.System, 14, 19)
+    val sheetMeta = TextStyle(FontFace.System, 12)
+    val sheetPrimaryButton = TextStyle(FontFace.SystemSemiBold, 15)
+    val sheetSecondaryButton = TextStyle(FontFace.SystemMedium, 15)
 }
 
 /** components/FileIcon.tsx's Seti themes: each Seti colour name, light and dark. */

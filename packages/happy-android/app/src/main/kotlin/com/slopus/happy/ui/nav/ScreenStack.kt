@@ -205,6 +205,31 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     }
 
     /**
+     * UIKit's setViewControllers(dropLast + [screen], animated): [screen]
+     * pushes in over the top, which then leaves the stack. Over the root it
+     * is pushed instead, so the root stays.
+     */
+    fun replaceTop(screen: Screen, animated: Boolean = true) {
+        val replaced = top
+        if (replaced == null || screens.size < 2) {
+            push(screen, animated)
+            return
+        }
+        push(screen, animated)
+        val drop = {
+            if (replaced in screens && replaced !== top) {
+                screens.remove(replaced)
+                detach(replaced)
+                updateBack()
+            }
+        }
+        val running = animating
+        if (running == null) drop() else running.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) = drop()
+        })
+    }
+
+    /**
      * UIKit's popToViewController: the screens between [target] and the top
      * go at once, then the top pops off to [target].
      */

@@ -387,6 +387,13 @@ async function main() {
 
     if (offline) return
 
+    /** What the fork sheets list as rewind points: the turns a session's transcript would hold. */
+    const rewindPrompts = [
+        'Sync loses the reconnect event on flaky networks. Plan a fix, look around first.',
+        'Write the failing test first, then the fix.',
+        'Shorter commit message please, and keep the changelog entry to one line.',
+    ]
+
     // Presence: the computer and its live sessions stay online while this runs.
     const ws = server.replace(/^http/, 'ws')
     const machine: Socket = io(ws, {
@@ -419,7 +426,11 @@ async function main() {
     machine.on('connect', () => {
         beat()
         writeMachineMetadata()
-        for (const method of ['spawn-happy-session', 'resume-happy-session', 'bash', 'stop-session']) {
+        for (const method of [
+            'spawn-happy-session', 'resume-happy-session', 'bash', 'stop-session',
+            'claude-fork-session', 'claude-duplicate-session', 'claude-list-rewind-points',
+            'codex-fork-thread', 'codex-duplicate-thread', 'codex-list-rewind-points',
+        ]) {
             machine.emit('rpc-register', { method: `${machineId}:${method}` })
         }
     })
@@ -444,6 +455,23 @@ async function main() {
             } else {
                 answer = { type: 'error', errorMessage: 'This computer has no record of that session' }
             }
+        } else if (method === 'claude-list-rewind-points' || method === 'codex-list-rewind-points') {
+            // The transcript's turns, oldest first, as the CLI reads them off disk.
+            const idField = method.startsWith('claude') ? 'uuid' : 'itemId'
+            const now = Date.now()
+            answer = {
+                type: 'success',
+                points: rewindPrompts.map((text, index) => ({
+                    [idField]: `turn-${index + 1}`,
+                    text,
+                    timestamp: now - (rewindPrompts.length - index) * 47 * 60_000,
+                })),
+            }
+        } else if (method === 'claude-fork-session' || method === 'claude-duplicate-session') {
+            // A copy of the transcript, which the app then resumes with spawn-happy-session.
+            answer = { type: 'success', newClaudeSessionId: `fork-${randomUUID()}` }
+        } else if (method === 'codex-fork-thread' || method === 'codex-duplicate-thread') {
+            answer = { type: 'success', newCodexThreadId: `fork-${randomUUID()}` }
         } else if (method === 'bash') {
             answer = { success: false, stdout: '', stderr: 'fatal: not a git repository', exitCode: 128 }
         } else {
