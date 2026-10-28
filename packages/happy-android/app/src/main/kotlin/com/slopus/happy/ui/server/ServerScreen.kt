@@ -1,276 +1,182 @@
 package com.slopus.happy.ui.server
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import android.content.Context
+import android.graphics.drawable.GradientDrawable
+import android.text.Layout
+import android.view.View
+import com.slopus.happy.AppGraph
 import com.slopus.happy.R
-import com.slopus.happy.auth.AuthApi.ServerProbe
+import com.slopus.happy.auth.AuthApi
 import com.slopus.happy.config.ServerConfig
-import com.slopus.happy.ui.components.Alert
-import com.slopus.happy.ui.components.AlertButton
-import com.slopus.happy.ui.components.HappyAlert
-import com.slopus.happy.ui.components.HappyTextField
-import com.slopus.happy.ui.components.ItemGroup
-import com.slopus.happy.ui.components.ItemList
+import com.slopus.happy.layout.Measurable
+import com.slopus.happy.layout.Palette
+import com.slopus.happy.layout.RoundButtonDisplay
+import com.slopus.happy.layout.RoundButtonSize
+import com.slopus.happy.layout.ServerFormLayout
+import com.slopus.happy.layout.TextStyles
+import com.slopus.happy.ui.components.Alerts
+import com.slopus.happy.ui.components.GroupedListView
+import com.slopus.happy.ui.components.ItemGroupView
+import com.slopus.happy.ui.components.Label
 import com.slopus.happy.ui.components.RoundButton
-import com.slopus.happy.ui.components.RoundButtonDisplay
-import com.slopus.happy.ui.components.RoundButtonSize
-import com.slopus.happy.ui.components.Screen
-import com.slopus.happy.ui.components.StackHeader
-import com.slopus.happy.ui.components.TitleAlignment
-import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.PlexMono
-import com.slopus.happy.ui.theme.happyTextStyle
+import com.slopus.happy.ui.components.TextField
+import com.slopus.happy.ui.nav.BarScreen
+import com.slopus.happy.ui.text.TextLayouts
+import com.slopus.happy.ui.theme.Theme
+import com.slopus.happy.ui.theme.ThemeAware
+import com.slopus.happy.ui.view.ManualLayout
+import com.slopus.happy.ui.view.dp
+import com.slopus.happy.ui.view.setFrame
 import kotlinx.coroutines.launch
 
-object ServerTags {
-    const val FORM = "server.form"
-    const val LABEL = "server.label"
-    const val INPUT = "server.input"
-    const val ERROR = "server.error"
-    const val SAVE = "server.save"
-    const val RESET = "server.reset"
-    const val STATUS = "server.status"
-}
+/** The custom server form from app/(app)/server.tsx (happy-ios `ServerFormView`), laid out by [ServerFormLayout]. */
+class ServerFormView(context: Context) : ManualLayout(context), ThemeAware {
+    val field = TextField(context, TextStyles.serverInput).apply {
+        urlKeyboard()
+        hint = context.getString(R.string.common_url_placeholder)
+    }
+    val save = RoundButton(context, context.getString(R.string.common_save), RoundButtonSize.Normal)
+    val reset = RoundButton(context, context.getString(R.string.server_reset_to_default), RoundButtonSize.Normal, RoundButtonDisplay.Inverted)
 
-/** server.tsx */
-object ServerSpec {
-    val paddingHorizontal = 16.dp
-    val paddingVertical = 12.dp
-    val labelGap = 8.dp
-    val inputPaddingHorizontal = 14.dp
-    val inputPaddingVertical = 12.dp
-    val inputMinHeight = 44.dp
-    val inputRadius = 10.dp
-    val inputGap = 8.dp
-    val messageGap = 12.dp
-    val buttonGap = 4.dp
-    val buttonsTop = 4.dp
-    val buttonsBottom = 12.dp
-    val label = happyTextStyle(fontSize = 12, letterSpacing = 0.5f, weight = FontWeight.SemiBold)
-    val input = happyTextStyle(fontSize = 15, family = PlexMono)
-    val message = happyTextStyle(fontSize = 12)
-}
+    var error: String? = null
+        set(value) { field = value; apply() }
 
-/**
- * Server URL for self-hosters. Save validates the URL's form, then asks the
- * server for its banner, then confirms; Reset goes back to the default. The
- * voice-server section of happy-app is left out with voice.
- *
- * Spec: one footer-only group holding the form, 16/12 padding. Label 12
- * semibold uppercase (tracking 0.5) 8 above the input; input mono 15,
- * 14/12 padding, at least 44 high, radius 10, 8 below it; error or
- * "validating" line 12, 12 below; normal-size buttons 4 apart with 4 above
- * and 12 below; status line 12, centred.
- */
-@Composable
-fun ServerScreen(
-    customUrl: String?,
-    probe: suspend (String) -> ServerProbe,
-    onSave: (String) -> Unit,
-    onReset: () -> Unit,
-    onBack: () -> Unit,
-) {
-    val colors = HappyTheme.colors
-    val scope = rememberCoroutineScope()
-    var input by rememberSaveable { mutableStateOf(customUrl.orEmpty()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var validating by remember { mutableStateOf(false) }
-    var alert by remember { mutableStateOf<Alert?>(null) }
+    var isValidating = false
+        set(value) { field = value; apply() }
 
-    val strings = ServerStrings(
-        error = stringResource(R.string.common_error),
-        ok = stringResource(R.string.common_ok),
-        cancel = stringResource(R.string.common_cancel),
-        continueLabel = stringResource(R.string.common_continue),
-        reset = stringResource(R.string.common_reset),
-        enterUrl = stringResource(R.string.server_enter_server_url),
-        urlEmpty = stringResource(R.string.server_url_empty),
-        urlProtocol = stringResource(R.string.server_url_protocol),
-        urlInvalid = stringResource(R.string.server_url_invalid),
-        serverError = stringResource(R.string.server_server_returned_error),
-        notHappy = stringResource(R.string.server_not_valid_happy_server),
-        unreachable = stringResource(R.string.server_failed_to_connect_to_server),
-        changeServer = stringResource(R.string.server_change_server),
-        continueWithServer = stringResource(R.string.server_continue_with_server),
-        resetToDefault = stringResource(R.string.server_reset_to_default),
-        resetServerDefault = stringResource(R.string.server_reset_server_default),
+    var isCustomServer = false
+        set(value) { field = value; apply() }
+
+    private val label = Label(context, TextStyles.fieldLabel, Palette.textSecondary, maxLines = 1).apply { text = context.getString(R.string.server_server_url_label) }
+    private val fieldBackground = View(context)
+    private val errorLabel = Label(context, TextStyles.fieldError, Palette.textDestructive)
+    private val validatingLabel = Label(context, TextStyles.fieldError, Palette.statusConnecting).apply { text = context.getString(R.string.server_validating_server) }
+    private val statusLabel = Label(context, TextStyles.fieldStatus, Palette.textSecondary, alignment = Layout.Alignment.ALIGN_CENTER).apply {
+        text = context.getString(R.string.server_currently_using_custom_server)
+    }
+
+    init {
+        listOf(label, fieldBackground, field, errorLabel, validatingLabel, save, reset, statusLabel).forEach(::addView)
+        apply()
+        applyTheme()
+    }
+
+    fun layout(width: Double) = ServerFormLayout(
+        ServerFormLayout.Input(
+            width = width,
+            label = label.measurable,
+            fieldLineHeight = TextLayouts.lineHeight(TextStyles.serverInput, TextLayouts.Env(Theme.density, Theme.textScale)),
+            error = if (error == null) null else errorLabel.measurable,
+            validating = if (isValidating) validatingLabel.measurable else null,
+            save = Measurable { save.layout(it).size },
+            reset = if (isCustomServer) Measurable { reset.layout(it).size } else null,
+            status = if (isCustomServer) statusLabel.measurable else null,
+        ),
     )
 
-    fun save() {
-        val url = input
-        if (url.isBlank()) {
-            alert = Alert(strings.error, strings.enterUrl, listOf(AlertButton(strings.ok)))
-            return
-        }
-        when (ServerConfig.validate(url)) {
-            ServerConfig.Validation.Empty -> error = strings.urlEmpty
-            ServerConfig.Validation.NotHttp -> error = strings.urlProtocol
-            ServerConfig.Validation.Malformed -> error = strings.urlInvalid
-            ServerConfig.Validation.Valid -> scope.launch {
-                validating = true
-                error = null
-                val result = probe(url)
-                validating = false
-                error = when (result) {
-                    ServerProbe.HappyServer -> null
-                    ServerProbe.NotHappyServer -> strings.notHappy
-                    ServerProbe.ServerError -> strings.serverError
-                    ServerProbe.Unreachable -> strings.unreachable
-                }
-                if (result == ServerProbe.HappyServer) {
-                    alert = Alert(
-                        strings.changeServer,
-                        strings.continueWithServer,
-                        listOf(AlertButton(strings.cancel), AlertButton(strings.continueLabel, destructive = true) { onSave(url) }),
-                        // Modal.confirm: only a button answers it.
-                        cancelable = false,
-                    )
-                }
-            }
-        }
+    override fun sizeThatFits(width: Double, height: Double) = layout(width).size
+
+    override fun layoutSubviews(width: Double, height: Double) {
+        val layout = layout(width)
+        label.setFrame(layout.label)
+        fieldBackground.setFrame(layout.field)
+        field.setFrame(layout.field.insetBy(ServerFormLayout.Metrics.fieldPaddingHorizontal, 0.0))
+        layout.error?.let { errorLabel.setFrame(it) }
+        layout.validating?.let { validatingLabel.setFrame(it) }
+        save.setFrame(layout.save)
+        layout.reset?.let { reset.setFrame(it) }
+        layout.status?.let { statusLabel.setFrame(it) }
     }
 
-    fun reset() {
-        alert = Alert(
-            strings.resetToDefault,
-            strings.resetServerDefault,
-            listOf(
-                AlertButton(strings.cancel),
-                AlertButton(strings.reset, destructive = true) {
-                    onReset()
-                    input = ""
-                },
-            ),
-            cancelable = false,
-        )
+    private fun apply() {
+        errorLabel.text = error.orEmpty()
+        errorLabel.visibility = if (error == null) GONE else VISIBLE
+        validatingLabel.visibility = if (isValidating) VISIBLE else GONE
+        field.isEnabled = !isValidating
+        field.alpha = if (isValidating) 0.6f else 1f
+        save.title = context.getString(if (isValidating) R.string.server_validating else R.string.common_save)
+        save.isEnabled = !isValidating
+        reset.visibility = if (isCustomServer) VISIBLE else GONE
+        statusLabel.visibility = if (isCustomServer) VISIBLE else GONE
+        requestLayout()
     }
 
-    Screen(header = { StackHeader(stringResource(R.string.server_title), onBack, TitleAlignment.Center) }) {
-        ItemList {
-            ItemGroup(footer = stringResource(R.string.server_self_host_footer)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = ServerSpec.paddingHorizontal, vertical = ServerSpec.paddingVertical)
-                        .testTag(ServerTags.FORM),
-                ) {
-                    Text(
-                        text = stringResource(R.string.server_server_url_label).uppercase(),
-                        style = ServerSpec.label,
-                        color = colors.textSecondary,
-                        modifier = Modifier.padding(bottom = ServerSpec.labelGap).testTag(ServerTags.LABEL),
-                    )
-                    HappyTextField(
-                        value = input,
-                        onValueChange = {
-                            input = it
-                            error = null
-                        },
-                        placeholder = stringResource(R.string.common_url_placeholder),
-                        textStyle = ServerSpec.input,
-                        contentPadding = PaddingValues(
-                            horizontal = ServerSpec.inputPaddingHorizontal,
-                            vertical = ServerSpec.inputPaddingVertical,
-                        ),
-                        minHeight = ServerSpec.inputMinHeight,
-                        cornerRadius = ServerSpec.inputRadius,
-                        singleLine = true,
-                        enabled = !validating,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-                        modifier = Modifier
-                            .padding(bottom = ServerSpec.inputGap)
-                            .alpha(if (validating) 0.6f else 1f)
-                            .testTag(ServerTags.INPUT),
-                    )
-                    error?.let {
-                        Text(
-                            text = it,
-                            style = ServerSpec.message,
-                            color = colors.textDestructive,
-                            modifier = Modifier.padding(bottom = ServerSpec.messageGap).testTag(ServerTags.ERROR),
-                        )
-                    }
-                    if (validating) {
-                        Text(
-                            text = stringResource(R.string.server_validating_server),
-                            style = ServerSpec.message,
-                            color = colors.status.connecting,
-                            modifier = Modifier.padding(bottom = ServerSpec.messageGap),
-                        )
-                    }
-                    Column(
-                        modifier = Modifier.padding(top = ServerSpec.buttonsTop, bottom = ServerSpec.buttonsBottom),
-                        verticalArrangement = Arrangement.spacedBy(ServerSpec.buttonGap),
-                    ) {
-                        RoundButton(
-                            title = stringResource(if (validating) R.string.server_validating else R.string.common_save),
-                            onClick = ::save,
-                            size = RoundButtonSize.Normal,
-                            enabled = !validating,
-                            modifier = Modifier.testTag(ServerTags.SAVE),
-                        )
-                        if (customUrl != null) {
-                            RoundButton(
-                                title = strings.resetToDefault,
-                                onClick = ::reset,
-                                size = RoundButtonSize.Normal,
-                                display = RoundButtonDisplay.Inverted,
-                                modifier = Modifier.testTag(ServerTags.RESET),
-                            )
-                        }
-                    }
-                    if (customUrl != null) {
-                        Text(
-                            text = stringResource(R.string.server_currently_using_custom_server),
-                            style = ServerSpec.message,
-                            color = colors.textSecondary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().testTag(ServerTags.STATUS),
-                        )
-                    }
-                }
-            }
+    override fun applyTheme() {
+        fieldBackground.background = GradientDrawable().apply {
+            cornerRadius = dp(ServerFormLayout.Metrics.fieldCornerRadius)
+            setColor(Theme.color(Palette.surfaceHigh))
         }
     }
-
-    alert?.let { HappyAlert(alert = it, onDismiss = { alert = null }) }
 }
 
-private class ServerStrings(
-    val error: String,
-    val ok: String,
-    val cancel: String,
-    val continueLabel: String,
-    val reset: String,
-    val enterUrl: String,
-    val urlEmpty: String,
-    val urlProtocol: String,
-    val urlInvalid: String,
-    val serverError: String,
-    val notHappy: String,
-    val unreachable: String,
-    val changeServer: String,
-    val continueWithServer: String,
-    val resetToDefault: String,
-    val resetServerDefault: String,
-)
+/** app/(app)/server.tsx (happy-ios `ServerConfigViewController`). */
+class ServerScreen(context: Context, private val graph: AppGraph) : BarScreen(context) {
+    private val list = GroupedListView(context)
+    private val form = ServerFormView(context)
+
+    override fun createContent(): View {
+        bar.title = context.getString(R.string.server_title)
+        list.sections = listOf(ItemGroupView(context, footer = context.getString(R.string.server_self_host_footer), rows = listOf(form)))
+        val config = graph.serverConfig
+        form.field.setText(if (config.isCustom) config.url.value else "")
+        form.isCustomServer = config.isCustom
+        form.field.onChange = { form.error = null }
+        form.save.action = { save() }
+        form.reset.onTap = { reset() }
+        return list
+    }
+
+    override fun onInsetsChanged() {
+        super.onInsetsChanged()
+        list.safeArea = contentSafeArea.copy(bottom = safeArea.bottom + keyboard)
+    }
+
+    private suspend fun save() {
+        val input = form.field.string
+        if (input.isBlank()) {
+            Alerts.show(context, context.getString(R.string.common_error), context.getString(R.string.server_enter_server_url))
+            return
+        }
+        if (ServerConfig.validate(input) != ServerConfig.Validation.Valid) {
+            form.error = context.getString(R.string.errors_invalid_format)
+            return
+        }
+        form.error = null
+        form.isValidating = true
+        val result = graph.authApi.probeServer(input)
+        form.isValidating = false
+        when (result) {
+            AuthApi.ServerProbe.HappyServer -> {}
+            AuthApi.ServerProbe.ServerError -> { form.error = context.getString(R.string.server_server_returned_error); return }
+            AuthApi.ServerProbe.NotHappyServer -> { form.error = context.getString(R.string.server_not_valid_happy_server); return }
+            AuthApi.ServerProbe.Unreachable -> { form.error = context.getString(R.string.server_failed_to_connect_to_server); return }
+        }
+        val confirmed = Alerts.confirm(
+            context,
+            context.getString(R.string.server_change_server),
+            context.getString(R.string.server_continue_with_server),
+            confirmTitle = context.getString(R.string.common_continue),
+            destructive = true,
+        )
+        if (!confirmed) return
+        graph.serverConfig.set(input)
+        form.isCustomServer = graph.serverConfig.isCustom
+    }
+
+    private fun reset() {
+        scope.launch {
+            val confirmed = Alerts.confirm(
+                context,
+                context.getString(R.string.server_reset_to_default),
+                context.getString(R.string.server_reset_server_default),
+                confirmTitle = context.getString(R.string.common_reset),
+                destructive = true,
+            )
+            if (!confirmed) return@launch
+            graph.serverConfig.set(null)
+            form.field.setText("")
+            form.error = null
+            form.isCustomServer = false
+        }
+    }
+}

@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.chat.AgentState
 import com.slopus.happy.chat.selectPendingCommunications
 import com.slopus.happy.data.MachineRecord
@@ -16,7 +15,6 @@ enum class SessionState { Disconnected, Thinking, Waiting, PermissionRequired, I
  * agentCommunications.ts `selectPendingCommunications`, so the list and the
  * chat agree on "Input required".
  */
-@Immutable
 data class AgentAttention(val permissionRequests: Int, val pendingCommunications: Int) {
     companion object {
         val None = AgentAttention(0, 0)
@@ -43,11 +41,9 @@ fun resolveSessionState(attention: AgentAttention, thinking: Boolean, isOnline: 
 }
 
 /** A project avatar materialized as a local data URI (projectTypes.ts `ProjectAvatar`). */
-@Immutable
 data class ProjectAvatar(val ref: String, val version: Long, val mimeType: String, val thumbhash: String, val uri: String)
 
 /** projectTypes.ts `Project`: decrypted project data. */
-@Immutable
 data class Project(
     val id: String,
     val externalId: String,
@@ -60,7 +56,6 @@ data class Project(
 )
 
 /** storageTypes.ts `Session`, as far as the screens outside the chat read it. */
-@Immutable
 data class Session(
     val id: String,
     val seq: Long,
@@ -109,7 +104,6 @@ data class Session(
 }
 
 /** storageTypes.ts `Machine`. */
-@Immutable
 data class Machine(
     val id: String,
     val seq: Long,

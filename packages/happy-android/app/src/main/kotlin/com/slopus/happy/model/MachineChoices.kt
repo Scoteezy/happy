@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonPrimitive
 
 /** persistence.ts `NewSessionAgentType`; [wire] is the CLI/RPC id. */
@@ -70,7 +69,6 @@ fun Machine.displayName(): String =
  * computer running both Happy CLI and Happy Agent registers two machines;
  * this is the computer, and the daemon follows from the agent.
  */
-@Immutable
 data class MachineChoice(
     /** What a draft stores: Happy CLI's machine whenever this computer has one. */
     val id: String,

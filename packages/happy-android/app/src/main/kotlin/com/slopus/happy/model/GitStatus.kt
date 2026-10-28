@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import java.io.ByteArrayOutputStream
 
 // A checkout's working-tree status as the daemon's shell reports it:
@@ -8,7 +7,6 @@ import java.io.ByteArrayOutputStream
 // sync/git-parsers (parseStatusV2.ts, parseDiff.ts, gitPath.ts).
 
 /** storageTypes.ts GitStatus: one checkout, keyed by [gitStatusKey]. */
-@Immutable
 data class GitStatus(
     val branch: String?,
     val isDirty: Boolean,

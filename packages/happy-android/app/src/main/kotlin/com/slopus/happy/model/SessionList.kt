@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -11,7 +10,6 @@ import java.time.temporal.ChronoUnit
 // utils/flatSessionList.ts and utils/flatSessionRowPresentation.ts.
 
 /** One session as a list row shows it. Plain values only, so equal rows compare equal and the list can diff them. */
-@Immutable
 data class SessionRowData(
     val id: String,
     val botId: String? = null,
@@ -61,7 +59,6 @@ data class SessionRowData(
 )
 
 /** "Today", "Yesterday" or "N days ago" over an archived day (storage.ts relativeDayTitle). */
-@Immutable
 sealed interface DayTitle {
     data object Today : DayTitle
     data object Yesterday : DayTitle
@@ -71,7 +68,6 @@ sealed interface DayTitle {
 enum class ProjectSource { Rig, Happy }
 
 /** storage.ts `SessionListViewItem`, as far as the phone builds it. */
-@Immutable
 sealed interface SessionListItem {
     data class Bots(val sessions: List<SessionRowData>) : SessionListItem
     data class Header(val title: DayTitle, val day: LocalDate) : SessionListItem
@@ -298,7 +294,6 @@ fun hasArchivedSessions(items: List<SessionListItem>): Boolean = items.any { ite
 }
 
 /** utils/flatSessionList.ts: one session with its project and worktree spelled out on the row. */
-@Immutable
 data class FlatSessionRowData(
     val session: SessionRowData,
     val projectName: String,

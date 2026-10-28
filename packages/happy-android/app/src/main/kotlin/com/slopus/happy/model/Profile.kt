@@ -1,16 +1,12 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonObject
 
-@Immutable
 data class GitHubProfile(val id: Double, val login: String, val name: String, val avatarUrl: String, val email: String?, val bio: String?)
 
-@Immutable
 data class ImageRef(val width: Double, val height: Double, val thumbhash: String, val path: String, val url: String)
 
 /** happy-app sync/profile.ts `ProfileSchema`. */
-@Immutable
 data class Profile(
     val id: String,
     val timestamp: Long,

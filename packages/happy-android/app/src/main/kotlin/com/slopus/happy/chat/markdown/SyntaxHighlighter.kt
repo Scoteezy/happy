@@ -1,6 +1,5 @@
 package com.slopus.happy.chat.markdown
 
-import androidx.compose.runtime.Immutable
 
 // SimpleSyntaxHighlighter.tsx's tokenizer: regexes per line, earliest match
 // wins, ties go to the pattern listed first, brackets coloured by nesting.
@@ -13,7 +12,6 @@ enum class SyntaxTokenType {
     val emphasized: kotlin.Boolean get() = this == Keyword || this == ControlFlow || this == Type || this == Function
 }
 
-@Immutable
 data class SyntaxToken(val text: String, val type: SyntaxTokenType, val nestLevel: Int = 0)
 
 private class Pattern(val regex: Regex, val type: SyntaxTokenType, val group: Int = 0)

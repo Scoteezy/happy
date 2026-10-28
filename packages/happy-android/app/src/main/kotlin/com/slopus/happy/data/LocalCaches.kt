@@ -1,8 +1,8 @@
 package com.slopus.happy.data
 
 import android.content.Context
-import com.slopus.happy.ui.attachments.attachmentCacheDir
-import com.slopus.happy.ui.components.HappyImageLoader
+import com.slopus.happy.attachments.attachmentCacheDir
+import com.slopus.happy.images.HappyImageLoader
 
 /**
  * The files this app keeps outside the database: images picked to attach

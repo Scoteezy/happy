@@ -1,8 +1,6 @@
 package com.slopus.happy.resume
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.res.stringResource
+import android.content.res.Resources
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatActions
@@ -21,12 +19,10 @@ import kotlinx.coroutines.CancellationException
 /** What a failed resume says, in the screen's language. */
 data class ResumeTexts(val unexpectedDirectory: String, val unknownError: String)
 
-@Composable
-fun rememberResumeTexts(): ResumeTexts {
-    val unexpectedDirectory = stringResource(R.string.session_info_resume_session_unexpected_directory_prompt)
-    val unknownError = stringResource(R.string.errors_unknown_error)
-    return remember(unexpectedDirectory, unknownError) { ResumeTexts(unexpectedDirectory, unknownError) }
-}
+fun resumeTexts(resources: Resources): ResumeTexts = ResumeTexts(
+    unexpectedDirectory = resources.getString(R.string.session_info_resume_session_unexpected_directory_prompt),
+    unknownError = resources.getString(R.string.errors_unknown_error),
+)
 
 sealed interface ResumeOutcome {
     /** Running again as [sessionId] (the same id when the daemon reconnects it): open it. */

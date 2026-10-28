@@ -1,40 +1,42 @@
 package com.slopus.happy
 
 import android.content.Intent
-import android.graphics.Color
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.slopus.happy.connect.DeepLinks
+import com.slopus.happy.push.ActivityNotificationPermission
 import com.slopus.happy.push.BackgroundSendNotifications
-import com.slopus.happy.ui.HappyApp
-import com.slopus.happy.ui.connect.DeepLinks
+import com.slopus.happy.push.startPushRegistration
+import com.slopus.happy.ui.AppCoordinator
 
 class MainActivity : ComponentActivity() {
     private val graph: AppGraph get() = (application as HappyApplication).graph
+    private lateinit var coordinator: AppCoordinator
+    lateinit var notificationPermission: ActivityNotificationPermission
+        private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        notificationPermission = ActivityNotificationPermission(this)
         if (savedInstanceState == null) DeepLinks.offer(intent)
         BackgroundSendNotifications.start(this, graph)
-        setContent {
-            // System bar icons follow the app's theme, which can differ from the system's.
-            HappyApp(graph, onDarkThemeChange = { dark ->
-                val style = if (dark) {
-                    SystemBarStyle.dark(Color.TRANSPARENT)
-                } else {
-                    SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-                }
-                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
-            })
-        }
+        coordinator = AppCoordinator(this, graph)
+        setContentView(coordinator.root)
+        coordinator.start()
+        startPushRegistration(this, graph, notificationPermission)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         DeepLinks.offer(intent)
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        coordinator.configurationChanged(newConfig)
     }
 
     override fun onStart() {

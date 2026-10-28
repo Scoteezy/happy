@@ -1,6 +1,5 @@
 package com.slopus.happy.chat
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.model.AgentGoal
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -15,7 +14,6 @@ import kotlinx.serialization.json.JsonObject
  * Parsing is per entry: a malformed request or communication is skipped
  * without losing the rest, where zod would reject the whole state.
  */
-@Immutable
 data class AgentState(
     val controlledByUser: Boolean = false,
     val requests: Map<String, PermissionRequest> = emptyMap(),
@@ -27,7 +25,6 @@ data class AgentState(
     /** `agentGoalStatus` while active; null when absent, inactive or malformed, without touching the rest. */
     val agentGoal: AgentGoal? = null,
 ) {
-    @Immutable
     data class PermissionRequest(
         val tool: String,
         val arguments: JsonElement?,
@@ -36,7 +33,6 @@ data class AgentState(
         val toolUseId: String? = null,
     )
 
-    @Immutable
     data class CompletedPermissionRequest(
         val tool: String,
         val arguments: JsonElement?,
@@ -111,9 +107,7 @@ data class AgentState(
  * is percent used. As with zod's `.catch(undefined)`, one malformed window
  * drops the whole snapshot.
  */
-@Immutable
 data class UsageLimits(val capturedAt: Double, val windows: List<Window>) {
-    @Immutable
     data class Window(
         val id: String,
         val label: String? = null,
@@ -147,11 +141,9 @@ data class UsageLimits(val capturedAt: Double, val windows: List<Window>) {
 }
 
 /** One option of an agent question (`AgentQuestionOptionSchema`). */
-@Immutable
 data class AgentQuestionOption(val label: String, val description: String? = null)
 
 /** One question in a `form` communication (`AgentQuestionSchema`). */
-@Immutable
 data class AgentQuestion(
     val id: String,
     val header: String,
@@ -187,7 +179,6 @@ data class AgentQuestion(
 }
 
 /** An answer to one question (`AgentQuestionAnswerSchema`). */
-@Immutable
 data class AgentQuestionAnswer(val options: List<String> = emptyList(), val custom: String? = null)
 
 /**
@@ -195,7 +186,6 @@ data class AgentQuestionAnswer(val options: List<String> = emptyList(), val cust
  * open string: a kind this build does not know is still shown, so the agent
  * is not left waiting on an answer that never comes.
  */
-@Immutable
 data class AgentCommunication(
     val kind: String,
     val createdAt: Long? = null,
@@ -222,7 +212,6 @@ data class AgentCommunication(
     }
 }
 
-@Immutable
 data class CompletedAgentCommunication(
     val communication: AgentCommunication,
     val completedAt: Long? = null,

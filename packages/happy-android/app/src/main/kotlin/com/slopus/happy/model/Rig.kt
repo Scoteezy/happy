@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 
 // The parts of happy-app's sync/rig.ts that read session metadata: who a
 // Happy Agent (Rig) session is, what it is doing, and its git counts.
@@ -24,7 +23,6 @@ private fun nonEmpty(value: String?): String? = value?.takeIf { it.isNotBlank() 
 
 fun qualifyRigModelKey(providerId: String, modelId: String): String = "$providerId:$modelId"
 
-@Immutable
 data class RigModelDescriptor(
     val key: String,
     val id: String,
@@ -92,7 +90,6 @@ fun SessionMetadata?.rigCurrentModel(): RigModelDescriptor? {
     )
 }
 
-@Immutable
 data class RigIdentity(
     val clientName: String,
     val clientVersion: String?,
@@ -114,7 +111,6 @@ fun SessionMetadata?.rigIdentity(): RigIdentity? {
     )
 }
 
-@Immutable
 data class RigActivityIndicator(val key: String, val count: Long, val queued: Long? = null)
 
 /** rig.ts `getRigActivityIndicators` */

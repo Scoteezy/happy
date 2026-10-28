@@ -1,13 +1,11 @@
 package com.slopus.happy.chat
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.model.GitStatus
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.VisibleGitChanges
 import com.slopus.happy.model.rigGitSummary
 
 /** sessionGitPresentation.ts as the chat header reads it: the subtitle and the +/− counts. */
-@Immutable
 data class ChatHeaderGit(val subtitle: String?, val changes: VisibleGitChanges?)
 
 /**

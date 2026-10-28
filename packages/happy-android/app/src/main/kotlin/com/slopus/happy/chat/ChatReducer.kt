@@ -23,7 +23,6 @@ import kotlinx.serialization.json.JsonPrimitive
 // Rows never change their createdAt; only tool state, results, permissions and
 // a pending message's settled position change after creation.
 
-@androidx.compose.runtime.Immutable
 data class TodoItem(val content: String, val status: String, val priority: String? = null, val id: String? = null) {
     companion object {
         private val STATUSES = setOf("pending", "in_progress", "completed")

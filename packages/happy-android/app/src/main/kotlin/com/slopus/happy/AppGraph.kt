@@ -22,9 +22,9 @@ import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatPurchases
 import com.slopus.happy.sync.AccountSync
-import com.slopus.happy.ui.changelog.ChangelogReadMarker
-import com.slopus.happy.ui.home.NewSessionDraftStore
-import com.slopus.happy.ui.home.PrefsReviewStamps
+import com.slopus.happy.changelog.ChangelogReadMarker
+import com.slopus.happy.home.NewSessionDraftStore
+import com.slopus.happy.home.PrefsReviewStamps
 import com.slopus.happy.voice.ElevenLabsTransport
 import com.slopus.happy.voice.StoreVoiceContext
 import com.slopus.happy.voice.VoiceApi
@@ -81,6 +81,10 @@ class AppGraph(
         defaultServerUrl,
     )
     val localSettings = LocalSettings(context.getSharedPreferences(LocalSettings.PREFS_NAME, Context.MODE_PRIVATE))
+    val stemCells = com.slopus.happy.stemcells.StemCellsPreference(
+        com.slopus.happy.config.AppVariant.current,
+        context.getSharedPreferences(com.slopus.happy.stemcells.StemCellsPreference.PREFS_NAME, Context.MODE_PRIVATE),
+    )
 
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

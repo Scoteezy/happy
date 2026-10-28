@@ -1,6 +1,5 @@
 package com.slopus.happy.model.settings
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.R
 import com.slopus.happy.model.CodeOption
 import com.slopus.happy.model.ModelEntry
@@ -17,7 +16,6 @@ import com.slopus.happy.model.rigModels
  * operating mode's `kind`; the provider fields and [defaultThinkingLevel]
  * are a `ModelMode`'s, set for models a Happy Agent session publishes.
  */
-@Immutable
 data class ModeOption(
     val key: String,
     val name: String,
@@ -32,7 +30,6 @@ data class ModeOption(
 )
 
 /** modelModeOptions.ts `ModelModeProviderGroup`: [title] null for models with no provider. */
-@Immutable
 data class ModelProviderGroup(val key: String, val title: String?, val models: List<ModeOption>)
 
 /**

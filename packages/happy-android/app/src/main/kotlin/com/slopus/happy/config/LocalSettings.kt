@@ -4,7 +4,7 @@ import android.content.SharedPreferences
 import com.slopus.happy.model.settings.LocalSettingsValues
 import com.slopus.happy.model.settings.LocalSettingsValues.Companion.wire
 import com.slopus.happy.net.HappyJson
-import com.slopus.happy.ui.theme.ThemePreference
+import com.slopus.happy.config.ThemePreference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

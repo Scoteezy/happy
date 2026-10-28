@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -9,7 +8,6 @@ import kotlinx.serialization.json.longOrNull
 // sessionAvatarTypes.ts and the avatar half of sync.ts applySessions.
 
 /** sessionAvatarTypes.ts `SessionAvatarDescriptor`: an opaque ref and a preview sealed with the session key. */
-@Immutable
 data class SessionAvatarDescriptor(val ref: String, val preview: String, val version: Long) {
     fun toJson(): JsonObject = JsonObject(mapOf("ref" to JsonPrimitive(ref), "preview" to JsonPrimitive(preview), "version" to JsonPrimitive(version)))
 

@@ -1,6 +1,5 @@
 package com.slopus.happy.chat
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.AgentAttention
 import com.slopus.happy.model.Session
@@ -15,7 +14,6 @@ import com.slopus.happy.model.resolveSessionState
  * chat's typed [AgentState] (permission requests and questions in full,
  * where [Session.attention] only counts them).
  */
-@Immutable
 data class ChatSessionInfo(val session: Session, val agentState: AgentState?) {
     val id: String get() = session.id
     val metadata: SessionMetadata? get() = session.metadata

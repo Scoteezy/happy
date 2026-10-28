@@ -7,7 +7,7 @@ import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.net.HappyJson
-import com.slopus.happy.ui.theme.ThemePreference
+import com.slopus.happy.config.ThemePreference
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher

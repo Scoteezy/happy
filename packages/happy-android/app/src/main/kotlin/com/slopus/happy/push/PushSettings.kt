@@ -1,9 +1,6 @@
 package com.slopus.happy.push
 
 import android.util.Log
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.model.settings.PushPermission
@@ -65,19 +62,14 @@ class AppPushRegistration(
     }
 }
 
-/** [AppPushRegistration] for this activity's permission prompt. */
-@Composable
-fun rememberPushRegistration(graph: AppGraph): PushRegistration {
-    val context = LocalContext.current
-    val services = remember(context) { PushServices.get(context) }
-    val permission = rememberNotificationPermission()
-    return remember(services, permission, graph) {
-        AppPushRegistration(
-            permission = permission,
-            supported = { services.fcm.supported },
-            registrar = services.registrar,
-            store = services.store,
-            authToken = { (graph.auth.state.value as? AuthState.SignedIn)?.credentials?.token },
-        )
-    }
+/** [AppPushRegistration] over the activity's permission prompt. */
+fun pushRegistration(context: android.content.Context, graph: AppGraph, permission: NotificationPermission): PushRegistration {
+    val services = PushServices.get(context)
+    return AppPushRegistration(
+        permission = permission,
+        supported = { services.fcm.supported },
+        registrar = services.registrar,
+        store = services.store,
+        authToken = { (graph.auth.state.value as? AuthState.SignedIn)?.credentials?.token },
+    )
 }

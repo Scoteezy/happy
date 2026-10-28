@@ -16,12 +16,11 @@ import com.slopus.happy.data.OutboxState
 import com.slopus.happy.sync.eventually
 import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
-import com.slopus.happy.ui.attachments.attachmentCacheDir
-import com.slopus.happy.ui.changelog.ChangelogReadMarker
-import com.slopus.happy.ui.components.HappyImageLoader
-import com.slopus.happy.ui.home.HomeServices
-import com.slopus.happy.ui.home.NewSessionDraftStore
-import com.slopus.happy.ui.home.PrefsReviewStamps
+import com.slopus.happy.attachments.attachmentCacheDir
+import com.slopus.happy.changelog.ChangelogReadMarker
+import com.slopus.happy.images.HappyImageLoader
+import com.slopus.happy.home.NewSessionDraftStore
+import com.slopus.happy.home.PrefsReviewStamps
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -65,8 +64,8 @@ class LogoutWipeTest {
         graph.serverConfig.url.value.let { assertTrue(it.isNotEmpty()) }
         graph.localSettings.change { it.copy(devModeEnabled = true) }
         graph.changelog.markViewed("1.0")
-        val newSession = HomeServices.of(graph).newSession(context)
-        newSession.setInput("draft for a new session")
+        NewSessionDraftStore(context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE))
+            .change { it.copy(input = "draft for a new session") }
         PrefsReviewStamps(context.getSharedPreferences(PrefsReviewStamps.PREFS_NAME, Context.MODE_PRIVATE)).declinedAt = 1
         val picked = attachmentCacheDir(context).resolve("picked.jpg").apply { writeText("pixels") }
         // Through the app's one loader: it is process-wide, so an earlier test may have built it on another context.
@@ -103,7 +102,7 @@ class LogoutWipeTest {
         assertTrue(context.getSharedPreferences(ChangelogReadMarker.PREFS_NAME, Context.MODE_PRIVATE).all.isEmpty())
         assertTrue(context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE).all.isEmpty())
         assertTrue(context.getSharedPreferences(PrefsReviewStamps.PREFS_NAME, Context.MODE_PRIVATE).all.isEmpty())
-        assertEquals("", newSession.draft.value.input)
+        assertEquals("", NewSessionDraftStore(context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE)).draft.value.input)
         assertFalse(picked.exists())
         assertNull(images.diskCache!!.openSnapshot("cached"))
         assertNull(images.memoryCache!![MemoryCache.Key("cached")])

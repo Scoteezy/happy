@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -95,14 +94,12 @@ internal class DiceBearPrng(private val seed: String) {
 }
 
 /** A fill as the style writes it: a colour of its own, a palette by name, or none. */
-@Immutable
 sealed interface FaceFill {
     data class Literal(val value: String) : FaceFill
     data class Palette(val name: String) : FaceFill
 }
 
 /** The SVG the style draws with: groups, paths and ellipses, each filling or inheriting a fill. */
-@Immutable
 sealed interface FaceShape {
     val fill: FaceFill?
 
@@ -112,21 +109,17 @@ sealed interface FaceShape {
 }
 
 /** A component's variant: what it draws, and how often it is picked against its siblings. */
-@Immutable
 data class FaceVariant(val weight: Double, val shapes: List<FaceShape>)
 
-@Immutable
 data class FaceComponent(val probability: Double, val variants: Map<String, FaceVariant>)
 
 /** Where the canvas places a component: its `translate(x y)`. */
-@Immutable
 data class FaceSlot(val component: String, val x: Float, val y: Float)
 
 /**
  * The parts of a DiceBear style definition Adventurer Neutral uses: the
  * canvas and its components in drawing order, the palettes, and its credit.
  */
-@Immutable
 data class BotFaceStyle(
     val width: Float,
     val height: Float,
@@ -212,14 +205,12 @@ data class BotFaceStyle(
 }
 
 /** One placed component of a face: the variant picked and where the canvas puts it. */
-@Immutable
 data class PlacedFacePart(val component: String, val variant: String, val x: Float, val y: Float, val shapes: List<FaceShape>)
 
 /**
  * A seed's face, resolved: the background colour and the parts in drawing
  * order, with every palette the parts name settled to one colour.
  */
-@Immutable
 data class BotFace(
     val seed: String,
     val width: Float,
@@ -281,7 +272,6 @@ fun describeBotNameProblem(name: String): String? {
  * name, the four faces on offer and the one picked. Memory only: a
  * restarted app offers a session, the ordinary case.
  */
-@Immutable
 data class BotDraft(
     val creating: Boolean = false,
     val name: String = "",

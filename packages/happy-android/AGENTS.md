@@ -1,9 +1,11 @@
 # happy-android
 
-Native Android client for Happy, in Kotlin. A port of the React Native app
-in `packages/happy-app`, which stays the reference for behaviour, protocol and
-design. `packages/happy-ios` is the iOS counterpart; keep the two
-architectures comparable (local store, delta sync, crypto layer).
+Native Android client for Happy, in Kotlin. **The UI is a port of the native
+iOS app, `packages/happy-ios`, one to one**: the same screens, flows, layout
+numbers, timing and data, drawn with Android Views. happy-ios is the
+reference for anything on screen; happy-app (React Native) stays the
+reference for protocol, sync, crypto and copy, which happy-ios ports too.
+`docs/ios-parity.md` is the checklist of what is ported and what is not.
 
 ## Scope
 
@@ -18,51 +20,54 @@ architectures comparable (local store, delta sync, crypto layer).
 - **Offline first.** Everything the account has lives on the phone; the
   server is only asked for what changed since the last sync.
 - **Tool outputs are hidden by default** once the chat UI exists.
-- The port includes auth, offline/live sync, home and session management,
-  chat/composer/tools, attachments, diffs/files, onboarding/connect, settings,
-  push, tablet layouts, purchases and voice. Experimental and social surfaces
-  remain excluded. Store validation needs the existing signing identity,
-  EAS build number and RevenueCat Google SDK key.
+- What happy-ios has, this has, Stem Cells (the Direct connection
+  experiment, development and preview builds only) included. Store
+  validation needs the existing signing identity, EAS build number and
+  RevenueCat Google SDK key.
 
 ## Rules
 
-1. **UI is Jetpack Compose** (Material 3 is fine), with the theme and design
-   tokens taken from happy-app (`sources/theme.ts`, `constants/Typography.ts`).
-   Use the Android branch where theme.ts uses `Platform.select`. Strings are
-   generated from happy-app's catalogs (see Localization); never edit
-   `res/values*/strings.xml` by hand.
+1. **UI is Android Views, laid out by hand. No Jetpack Compose.** happy-ios
+   computes every frame in pure functions (`HappyLayout`) and its views only
+   measure text and apply frames; this app does the same:
+   - `layout/` is a pure Kotlin/JVM module, the port of `HappyLayout`:
+     design tokens (`DesignTokens.kt`, `StemCellsPalette.kt`, generated) and
+     one layout per component or screen, each a function of sizes and
+     `Measurable`s returning frames in dp. Port a Swift layout line for line
+     (same names, same metrics, same comments' facts); never invent
+     numbers in a view.
+   - `icons/` decodes the same vector outlines happy-ios draws
+     (`tools/icons/extract-ios-tables.py` copies its generated tables); no
+     icon fonts.
+   - `app/.../ui` holds the views: `ManualLayout` (a ViewGroup with
+     `sizeThatFits`/`layoutSubviews`, as UIView), `setFrame` snapping dp
+     frames to device pixels, `Label` (StaticLayout with the exact line
+     heights iOS uses), `ScreenStack` and `Screen`/`BarScreen` for
+     UINavigationController and its view controllers, RecyclerView for long
+     lists. Telegram for Android (DrKLO/Telegram, GPL-2.0) is a reference
+     for techniques only: never copy its code.
+   - **Platform idioms where iOS uses its own**: Material's 56dp app bar,
+     back arrow and predictive back instead of UINavigationBar; the
+     platform's dialogs, switches, ripples, progress bars, photo picker and
+     Google Code Scanner; solid pills with elevation where iOS draws liquid
+     glass. Everything else (geometry, copy, order, timing) is iOS's.
+   - Text scales with the system font scale, as iOS's text size does
+     (`TextScale`, with the styles' `maxScale` caps).
+   Strings are generated from happy-app's catalogs (see Localization); never
+   edit `res/values*/strings.xml` by hand. Copy that happy-ios writes inline
+   goes in `res/values/strings_<area>.xml`, English only, as on iOS.
 2. **Gradle with the Kotlin DSL and the version catalog**
    (`gradle/libs.versions.toml`). The wrapper is committed; there is no Gradle
    on PATH.
-3. **Every component and screen has layout tests** that measure sizes and
-   positions against the happy-app spec, and the composable's KDoc states
-   that spec. They are Compose UI tests on the JVM through Robolectric (no
-   device or emulator): see `app/src/test/.../ui`. Tests run on a
-   411x891 dp, xxhdpi phone (`PHONE` in `LayoutTestSupport.kt`), so whole-dp
-   values are whole pixels and comparisons are exact to a third of a dp.
-   Put test tags on the outermost modifier of the measured box (before
-   padding), and look nodes up with `useUnmergedTree = true` (`rule.node`).
-   **Font scale:** text scales with the system font size, uncapped, as RN's
-   does: sizes and line heights in sp (`happyTextStyle`), never dp. Icons,
-   paddings and avatars stay in dp (`Icon` converts its size with `toSp()`,
-   which undoes the non-linear curve). A box that holds text takes its RN
-   height as `heightIn(min = …)`, so it is exact at 1.0 and grows instead of
-   clipping; where RN keeps a fixed height and lets text overflow visibly
-   (the header bar, Home's timestamp slot), keep the height and give the text
-   `wrapContentHeight(unbounded = true)`. The only cap is the onboarding
-   titles' 1.2. `ui/layout/FontScaleLayoutTest` checks screens at 2.0. Under
-   Android 14's non-linear scaling Compose keeps each line height's ratio to
-   its font, where RN converts the line height separately, so at large
-   scales our lines run a few dp taller.
-   **Tablet:** `ui/layout/WindowLayout.kt` answers responsive.ts and
-   layout.ts through `LocalWindowLayout` (the tablet shell is width ≥ 768;
-   the 9-inch diagonal only sets the 800 content max width). Read it, not
-   `LocalConfiguration`, for any `useIsTablet` branch; hold wide content with
-   `Modifier.contentMaxWidth` or `CenteredInputWidth`. `ui/tablet/TabletShell`
-   wraps HappyApp's NavHost; under it `LocalTabletShell` is true and
-   `HeaderBackButton` renders nothing. Tablet tests use
-   `w1280dp-h800dp-xhdpi`; without `ProvideWindowLayout` a composable lays
-   out as an unlimited phone.
+3. **Every layout has exact-frame tests**, ported from happy-ios
+   `Tests/HappyLayoutTests` with the same numbers (`layout/src/test`, plain
+   JUnit, no device). `tools/port/swift-test-to-kotlin.py` drafts a port of
+   an XCTest file; `Support.kt` keeps XCTest's assert names so the ported
+   tests read as the originals. A layout that has no iOS test gets one.
+   Screens are checked on the emulator against happy-ios in the simulator:
+   screenshots and short screen recordings, kept under
+   `.context/evidence/<feature>/` (not committed) and listed in
+   `docs/ios-parity.md`.
 4. **The local store is SQLite through the framework API**
    (`SQLiteOpenHelper`, WAL, hand-written SQL in `data/`). Why not a library:
    the schema is a handful of tables whose rows are mostly JSON documents
@@ -78,9 +83,11 @@ architectures comparable (local store, delta sync, crypto layer).
 crypto/   pure Kotlin/JVM, no Android: every primitive and key derivation of
           happy-app's encryption, byte for byte. BouncyCastle low-level
           classes (no JCA provider), so it behaves the same on every device.
+layout/   pure Kotlin/JVM: happy-ios HappyLayout (tokens and layouts) + its tests
+icons/    pure Kotlin/JVM: happy-ios's icon, file-icon tables and glyph decoding
 app/
   auth/     account auth (POST /v1/auth), credentials in expo-secure-store's format
-  config/   server URL (survives logout), device-only settings (theme)
+  config/   server URL (survives logout), device-only settings (theme), AppVariant
   data/     HappyDatabase (schema), HappyStore (typed access + change ticks)
   sync/     AccountSync (per-account owner), SyncEngine (delta sync), LiveUpdates,
             Presence, MessageSync (history), MessageSender (outbox), MessageMeta,
@@ -88,17 +95,27 @@ app/
             and drafts), HappyAgentGit, RigCapabilities, SyncApi + UpdateTypes
   net/      HappyHttp (OkHttp + kotlinx.serialization, X-Happy-Client header),
             SocketIoClient (the /v1/updates socket)
-  ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
-            onboarding/ welcome, restore, Link Your Computer, onboarding settings
-            connect/    QR scanner and codes, connect flows, terminal screens, deep links
-            troubleshoot/
+  home/ files/ connect/ session/ troubleshoot/ stemcells/
+            screen logic without views (session starts, deep links, QR, …)
+  ui/       the views (happy-ios HappyUI): AppCoordinator, nav/ (ScreenStack,
+            Screen, BarScreen, NavigationBar), view/ (ManualLayout, frames),
+            text/, theme/, components/, and one package per area
   AppGraph  hand-wired object graph; owns the signed-in sync loop
   model/    typed views of the stored JSON: Settings (sync/settings.ts);
             settings/ has agentDefaults.ts, local settings, SettingsRepository
-  text/     Resources.plural / pluralResource, PluralExactNumbers (generated)
+  text/     Resources.plural, PluralExactNumbers (generated)
+tools/icons/         copies happy-ios's generated icon and wordmark tables
+tools/port/          drafts JUnit ports of happy-ios layout tests
+tools/tokens/        generates StemCellsPalette.kt from happy-ios's tokens
 tools/testvectors/   generates crypto and send vectors by running happy-app's TypeScript
 tools/translations/  generates the string resources from happy-app's catalogs
 ```
+
+The sections below on onboarding, push, purchases, images, Mermaid and
+autocomplete describe the logic layers, which the Views UI keeps; where they
+name Compose entry points (`rememberX`, `XEffect`, `LocalX`), those belong to
+the previous Compose UI and are being replaced screen by screen
+(`docs/ios-parity.md`).
 
 ## Localization
 
@@ -383,7 +400,8 @@ its configured Linux runner.
 ```
 cd packages/happy-android
 ./gradlew assembleDebug            # app/build/outputs/apk/debug/app-debug.apk
-./gradlew testDebugUnitTest        # app unit + Robolectric layout tests
+./gradlew testDebugUnitTest        # app unit tests (logic, Robolectric)
+./gradlew :layout:test :icons:test # exact-frame layout tests, icon decoding
 ./gradlew :crypto:test             # crypto, incl. vectors from happy-app's TS
 ```
 
@@ -410,7 +428,7 @@ Build types map to happy-app's variants and application ids: `debug` →
   `pre<Variant>Build`, before R8, rather than at the Play console.
 - Shipping goes through the `release` skill like every other release.
 - CI: `.github/workflows/happy-android.yml` runs `assembleDebug
-  assembleRelease testDebugUnitTest :crypto:test` on changes under
+  assembleRelease testDebugUnitTest :crypto:test :layout:test :icons:test` on changes under
   `packages/happy-android/` (and happy-app's `app.config.js`, which sets the
   version). It has no signing secrets.
 

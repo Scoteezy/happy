@@ -1,12 +1,10 @@
 package com.slopus.happy.voice
 
-import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.flow.StateFlow
 
 enum class VoiceStatus { Disconnected, Connecting, Connected, Error }
 enum class VoiceMode { Idle, AgentSpeaking, UserSpeaking }
 
-@Immutable
 data class VoiceState(
     val status: VoiceStatus = VoiceStatus.Disconnected,
     val mode: VoiceMode = VoiceMode.Idle,

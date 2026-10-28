@@ -1,6 +1,6 @@
 package com.slopus.happy.model.settings
 
-import com.slopus.happy.ui.theme.ThemePreference
+import com.slopus.happy.config.ThemePreference
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject

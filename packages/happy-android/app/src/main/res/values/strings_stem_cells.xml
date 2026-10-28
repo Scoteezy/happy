@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Stem Cells' copy: happy-ios's own (Sources/HappyUI/Strings/StemCells*.swift),
+  English only, as it is there. Not from happy-app's catalogs.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="stem_edit_name">Edit name</string>
+    <string name="stem_add_computer">Add a computer</string>
+    <string name="stem_voice">Voice</string>
+    <string name="stem_connect_terminal">Scan terminal QR code</string>
+    <string name="stem_enter_terminal_url">Enter terminal URL</string>
+    <string name="stem_connect">Connect</string>
+    <string name="stem_connected">Connected</string>
+    <string name="stem_link_title">Link your computer</string>
+    <string name="stem_link_scan_step">Scan the QR code</string>
+    <string name="stem_link_scan_body">This phone connects straight to your computer.</string>
+    <string name="stem_legacy_relay">Connect through legacy relay</string>
+    <string name="stem_experiments">Experiments</string>
+    <string name="stem_direct_connection">Direct connection</string>
+    <string name="stem_direct_experiment_title">Direct connection is an experiment</string>
+    <string name="stem_direct_experiment_detail">Connecting this phone straight to a computer is still experimental. Turn it on to go on; you can turn it off again in Settings, under Experiments.</string>
+    <string name="stem_turn_on">Turn on</string>
+    <string name="stem_relay">Relay</string>
+    <string name="stem_direct">Direct</string>
+    <string name="stem_beta">Beta</string>
+    <string name="stem_pair_computer">Pair computer</string>
+</resources>

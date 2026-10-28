@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
@@ -12,7 +11,6 @@ import kotlinx.serialization.json.JsonObject
 // (`gitBranch`).
 
 /** happy-wire RigBotSchema */
-@Immutable
 data class RigBot(
     val id: String,
     val name: String,
@@ -41,7 +39,6 @@ data class RigBot(
 }
 
 /** `{ id, kind, name }`, the shape of `provider`, `project`, `workspace`, and each entry of `providers`. */
-@Immutable
 data class NamedRef(val id: String, val kind: String, val name: String) {
     companion object {
         val read: FieldReader<NamedRef> = Read.objectOf { f ->
@@ -50,7 +47,6 @@ data class NamedRef(val id: String, val kind: String, val name: String) {
     }
 }
 
-@Immutable
 data class ClientInfo(val id: String, val name: String, val version: String) {
     companion object {
         val read: FieldReader<ClientInfo> = Read.objectOf { f ->
@@ -60,7 +56,6 @@ data class ClientInfo(val id: String, val name: String, val version: String) {
 }
 
 /** One entry of `models` (session and Rig machine catalogs alike). */
-@Immutable
 data class ModelEntry(
     val code: String,
     val value: String,
@@ -103,7 +98,6 @@ data class ModelEntry(
 }
 
 /** `operatingModes` and `thoughtLevels` entries. */
-@Immutable
 data class CodeOption(val code: String, val value: String, val description: String?, val kind: String?) {
     companion object {
         val read: FieldReader<CodeOption> = Read.objectOf { f ->
@@ -118,7 +112,6 @@ data class CodeOption(val code: String, val value: String, val description: Stri
 }
 
 /** RigComposerModeSchema; [text] is set for a RigComposerDraftSchema. */
-@Immutable
 data class RigComposerMode(
     val providerId: String,
     val modelId: String,
@@ -147,10 +140,8 @@ data class RigComposerMode(
     }
 }
 
-@Immutable
 data class ReasoningInfo(val current: String?, val levels: List<String>)
 
-@Immutable
 data class SessionRuntime(
     val status: String,
     val permissionMode: String?,
@@ -158,7 +149,6 @@ data class SessionRuntime(
     val serviceTier: String?,
 )
 
-@Immutable
 data class SessionCapabilities(
     val abort: Boolean,
     val attachmentsEnabled: Boolean,
@@ -178,7 +168,6 @@ data class SessionCapabilities(
     val steering: Boolean,
 )
 
-@Immutable
 data class SessionActivity(
     val subagentsRunning: Double,
     val subagentsQueued: Double,
@@ -192,16 +181,12 @@ data class SessionActivity(
     val tasksTotal: Double,
 )
 
-@Immutable
 data class SessionSummary(val text: String, val updatedAt: Long)
 
-@Immutable
 data class GitCounts(val changedFiles: Long, val countsExact: Boolean, val deletions: Long, val insertions: Long)
 
-@Immutable
 data class McpServerStatus(val name: String, val status: String)
 
-@Immutable
 data class SessionMetadata(
     val raw: JsonObject,
     val bot: RigBot? = null,

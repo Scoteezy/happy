@@ -3,7 +3,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
 
@@ -142,7 +141,6 @@ android {
     }
 
     buildFeatures {
-        compose = true
         buildConfig = true
         resValues = true
     }
@@ -321,20 +319,18 @@ kotlin {
 
 dependencies {
     implementation(project(":crypto"))
+    implementation(project(":layout"))
+    implementation(project(":icons"))
 
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.activity)
     implementation(libs.androidx.exifinterface)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.navigation.compose)
-
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.foundation)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.ui.tooling.preview)
-    debugImplementation(libs.compose.ui.tooling)
-    debugImplementation(libs.compose.ui.test.manifest)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    // Not used directly: libraries bring fragment 1.5, which lint would hold
+    // against registerForActivityResult; pinned to a current one.
+    implementation(libs.androidx.fragment)
+    implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.dynamicanimation)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
@@ -351,17 +347,14 @@ dependencies {
 
     // Push (AGENTS.md "Push"): FCM, configured from google-services.json when it is there.
     implementation(libs.firebase.messaging)
-    implementation(libs.coil.compose)
+    implementation(libs.coil)
     implementation(libs.coil.network.okhttp)
     implementation(libs.revenuecat.purchases)
-    implementation(libs.revenuecat.ui)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
-    testImplementation(platform(libs.compose.bom))
-    testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.coil.test)

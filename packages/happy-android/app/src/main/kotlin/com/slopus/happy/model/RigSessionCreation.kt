@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 
 // sync/rigSessionCreation.ts: a Happy Agent (Rig) machine's published
 // catalog as the new-session pickers offer it, and the spawn it validates.
@@ -8,7 +7,6 @@ import androidx.compose.runtime.Immutable
 // display order.
 
 /** rigSessionCreation.ts `RigMachineModelOption` */
-@Immutable
 data class RigModelOption(
     val key: String,
     val id: String,
@@ -20,11 +18,9 @@ data class RigModelOption(
 )
 
 /** rigSessionCreation.ts `RigMachineModeOption` */
-@Immutable
 data class RigModeOption(val key: String, val name: String, val description: String?, val semanticKind: String?)
 
 /** rigSessionCreation.ts `RigMachineSessionCreation` */
-@Immutable
 data class RigSessionCreation(
     /** In picker order ([sortRigModelsForPicker]). */
     val models: List<RigModelOption>,

@@ -6,8 +6,8 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.MainActivity
-import com.slopus.happy.ui.connect.DeepLink
-import com.slopus.happy.ui.connect.DeepLinks
+import com.slopus.happy.connect.DeepLink
+import com.slopus.happy.connect.DeepLinks
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive

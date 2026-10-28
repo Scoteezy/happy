@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -16,7 +15,6 @@ enum class AgentGoalAction(val wire: String) { Edit("edit"), Stop("stop"), Clear
  * agent accepts. Inactive and unavailable statuses show nothing, so they
  * are not kept.
  */
-@Immutable
 data class AgentGoal(
     val source: String,
     val sourceSessionId: String,

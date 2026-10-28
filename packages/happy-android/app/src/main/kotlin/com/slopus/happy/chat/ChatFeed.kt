@@ -1,6 +1,5 @@
 package com.slopus.happy.chat
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.data.MessageRecord
 import com.slopus.happy.data.OutboxKind
 import com.slopus.happy.data.OutboxState
@@ -24,7 +23,6 @@ import kotlinx.coroutines.flow.onStart
  * collapsed). Rows the chat never shows (thinking, the SDK's command caveat,
  * the user's own echoed slash command) are not rows at all.
  */
-@Immutable
 sealed interface ChatRow {
     val message: ChatMessage
     val key: String get() = message.id
@@ -47,7 +45,6 @@ sealed interface ChatRow {
 }
 
 /** How a user message renders (MessageView.tsx `UserTextBlock`). */
-@Immutable
 sealed interface UserDisplay {
     data class Text(val text: String, val blocks: List<MarkdownBlock>) : UserDisplay
     /** `/goal`: the goal in a bubble, "Sent as goal" under it. */
@@ -57,7 +54,6 @@ sealed interface UserDisplay {
 }
 
 /** Everything the chat screen draws from the store, newest row first. */
-@Immutable
 data class ChatSnapshot(
     val rows: List<ChatRow> = emptyList(),
     val loaded: Boolean = false,
@@ -199,7 +195,6 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
 }
 
 /** Everything the chat screen shows about a session. */
-@Immutable
 data class ChatState(
     val snapshot: ChatSnapshot = ChatSnapshot(),
     /** Null once loaded means the session is not on this device. */

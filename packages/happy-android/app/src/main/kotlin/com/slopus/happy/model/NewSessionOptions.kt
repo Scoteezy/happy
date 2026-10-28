@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.model.settings.AgentDefaultConfig
 import com.slopus.happy.model.settings.AgentDefaultOverrides
 import com.slopus.happy.model.settings.AgentDefaults
@@ -12,7 +11,6 @@ import com.slopus.happy.model.settings.Versions
 // the draft: HomeDock.tsx's derivations and homeDockInteraction.ts.
 
 /** One row of a new-session picker. An [action] (Enter custom path…) is never drawn as chosen. */
-@Immutable
 data class PickerOption(
     val key: String,
     val name: String,
@@ -22,26 +20,21 @@ data class PickerOption(
 )
 
 /** One group of a picker: a heading (a model's provider, say), then its rows. */
-@Immutable
 data class PickerSection(val key: String, val title: String?, val options: List<PickerOption>)
 
 /** The pickers HomeDock opens: the four rows above the composer and the three chips in it. */
 enum class NewSessionPage { Machine, Project, Worktree, Agent, Model, Permission, Effort }
 
 /** A checkout `git worktree list` reported (utils/worktree.ts `WorktreeInfo`). */
-@Immutable
 data class GitWorktree(val path: String, val branch: String)
 
 /** Where git worktrees are listed from: Happy CLI's machine and the draft's directory. */
-@Immutable
 data class WorktreeTarget(val machineId: String, val basePath: String)
 
 /** The worktrees last listed, and for which target; a listing for another target is ignored. */
-@Immutable
 data class WorktreeListing(val target: WorktreeTarget, val worktrees: List<GitWorktree>)
 
 /** The words HomeDock writes into its pickers (English literals in happy-app). */
-@Immutable
 class NewSessionLabels(
     val selectMachine: String = "Select machine",
     val project: String = "Project",
@@ -126,7 +119,6 @@ fun NewSessionDraft.selectingWorktree(key: String): NewSessionDraft = copy(
  * against the computers and sessions as they are now. The keys are what
  * the pickers hand back; [reconcile] says what the draft should become.
  */
-@Immutable
 data class NewSessionOptions(
     val choice: MachineChoice?,
     val resolvedMachineId: String?,

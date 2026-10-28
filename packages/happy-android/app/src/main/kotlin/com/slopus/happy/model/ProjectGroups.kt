@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -10,11 +9,9 @@ import kotlinx.serialization.json.JsonPrimitive
 // through to projects, worktrees and the sessions inside them.
 
 /** One git worktree inside a project. [id] is empty and [name] null for the primary tree, which sorts first. */
-@Immutable
 data class ProjectWorkspaceGroup(val id: String, val name: String?, val sessions: List<SessionRowData>)
 
 /** A project: Rig's durable identity, or a Happy CLI session's machine and working directory. */
-@Immutable
 data class ProjectGroupData(
     val id: String,
     val name: String,

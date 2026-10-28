@@ -1,6 +1,5 @@
 package com.slopus.happy.chat
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
@@ -15,7 +14,6 @@ import kotlinx.serialization.json.JsonObject
  * (typesMessageMeta.ts). Kept as the JSON it arrived in so fields from newer
  * producers survive; the accessors read the ones the app uses.
  */
-@Immutable
 data class MessageMeta(val raw: JsonObject) {
     val sentFrom: String? get() = raw["sentFrom"].str
     val expectsAcceptance: Boolean get() = raw["expectsAcceptance"].bool == true
@@ -35,11 +33,9 @@ data class MessageMeta(val raw: JsonObject) {
  * Who wrote a user-role envelope, for sessions with more than one
  * participant. `owner` marks the account the session belongs to: the reader.
  */
-@Immutable
 data class SessionAuthor(val id: String, val name: String, val owner: Boolean? = null)
 
 /** Model usage from an agent record (typesRaw.ts `usageDataSchema`). */
-@Immutable
 data class UsageData(
     val inputTokens: Long,
     val outputTokens: Long,
@@ -64,7 +60,6 @@ data class UsageData(
 }
 
 /** An agent event (typesRaw.ts `agentEventSchema`). */
-@Immutable
 sealed interface AgentEvent {
     data class Switch(val mode: String) : AgentEvent
     data class Message(val message: String) : AgentEvent
@@ -112,7 +107,6 @@ enum class PermissionDecision(val wire: String) {
     }
 }
 
-@Immutable
 data class ToolPermission(
     /** The request id the CLI expects back in the permission response. */
     val id: String,
@@ -124,7 +118,6 @@ data class ToolPermission(
     val date: Long? = null,
 )
 
-@Immutable
 data class ToolCall(
     /** Provider tool-call id, for joining side-channel state (questions). */
     val callId: String? = null,
@@ -142,7 +135,6 @@ data class ToolCall(
 )
 
 /** One chat row. [sortKey] orders the list (`messageSortKey`). */
-@Immutable
 sealed interface ChatMessage {
     val id: String
     val createdAt: Long

@@ -1,13 +1,11 @@
 package com.slopus.happy.chat
 
-import androidx.compose.runtime.Immutable
 
 // Agent-to-user communications (sync/agentCommunications.ts). A permission
 // gates an action the agent wants to take; a communication asks the user for
 // information the agent does not have. Today the only kind is `form`.
 
 /** A communication the agent is waiting on. */
-@Immutable
 sealed interface PendingAgentCommunication {
     val id: String
     val createdAt: Long
@@ -33,7 +31,6 @@ sealed interface PendingAgentCommunication {
 enum class AgentFormStatus { Pending, Answered, Cancelled }
 
 /** A form joined to its transcript tool call, with its answers once completed. */
-@Immutable
 data class AgentFormCommunication(
     val id: String,
     val createdAt: Long,
@@ -44,7 +41,6 @@ data class AgentFormCommunication(
 )
 
 /** A draft answer while the user fills the form in. */
-@Immutable
 data class AgentQuestionDraft(val options: List<String> = emptyList(), val custom: String = "") {
     companion object {
         val EMPTY = AgentQuestionDraft()

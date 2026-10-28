@@ -1,6 +1,5 @@
 package com.slopus.happy.chat
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.chat.tools.KnownTools
 import com.slopus.happy.chat.tools.isInteractiveQuestionToolName
 
@@ -14,7 +13,6 @@ import com.slopus.happy.chat.tools.isInteractiveQuestionToolName
  * [rows] are in reading order (oldest first), as they draw when expanded.
  * [id] is keyed by the final answer, the one member a turn is sure to have.
  */
-@Immutable
 data class AgentWorkGroup(
     val id: String,
     /** The settled prompt that opened the turn: what "watched" turns are tracked by. */
@@ -27,7 +25,6 @@ data class AgentWorkGroup(
 )
 
 /** useGroupedMessages `DisplayItem`: a row as it is, or a turn's folded work. */
-@Immutable
 sealed interface ChatDisplayItem {
     val key: String
 
@@ -47,7 +44,6 @@ enum class WorkHeaderPlacement { Leading, Trailing }
  * leading header, its rows, then a trailing "Hide" header; the trailing
  * copy lands where the tapped row was, since the inverted list grows upward.
  */
-@Immutable
 sealed interface ChatListItem {
     val key: String
 
@@ -198,7 +194,6 @@ fun isCurrentTurnComplete(thinking: Boolean, agentState: AgentState?): Boolean =
  * turn, and a group with a pending permission or running work, open
  * themselves unless closed by hand. Immutable: each change is a new value.
  */
-@Immutable
 data class WorkGroupExpansion(
     val sessionId: String? = null,
     val expanded: Set<String> = emptySet(),

@@ -1,6 +1,5 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.sync.HappyAgentSpawnTarget
 import com.slopus.happy.sync.rigReasoningSelection
@@ -18,7 +17,6 @@ enum class PendingChatStatus { Starting, Failed }
  * session that arrives first is recognised as this one; [queued] are
  * messages sent before the machine answered, in order.
  */
-@Immutable
 data class PendingChat(
     val id: String,
     val anchorSessionId: String,
@@ -36,7 +34,6 @@ const val PENDING_CHAT_PREFIX = "pending-chat:"
 fun isPendingChatId(id: String): Boolean = id.startsWith(PENDING_CHAT_PREFIX)
 
 /** What a checkout's strip draws: its real chats in tab order, then the stand-ins. */
-@Immutable
 data class WorktreeTabs(val tabs: List<SessionRowData>, val pending: List<PendingChat>)
 
 /**

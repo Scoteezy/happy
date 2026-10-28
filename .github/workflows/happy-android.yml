@@ -34,7 +34,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       # No signing secrets: release builds unsigned, preview debug-signed.
       - name: Build and test
-        run: ./gradlew --console=plain assembleDebug assembleRelease testDebugUnitTest :crypto:test
+        run: ./gradlew --console=plain assembleDebug assembleRelease testDebugUnitTest :crypto:test :layout:test :icons:test
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4

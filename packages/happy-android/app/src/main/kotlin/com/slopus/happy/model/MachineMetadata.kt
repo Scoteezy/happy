@@ -1,12 +1,10 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
 
 /** Which agent CLIs the daemon found on the machine. */
-@Immutable
 data class CliAvailability(
     val claude: Boolean,
     val codex: Boolean,
@@ -19,19 +17,14 @@ data class CliAvailability(
     val detectedAt: Long,
 )
 
-@Immutable
 data class MachineCapabilities(val bots: Boolean?, val newSession: Boolean?, val resume: Boolean?, val worktrees: Boolean?)
 
-@Immutable
 data class RigDefaults(val effort: String?, val modelId: String?, val permissionMode: String?, val providerId: String?)
 
-@Immutable
 data class MachineProvider(val id: String, val kind: String?, val name: String?)
 
-@Immutable
 data class SessionCreation(val idempotencyKey: String?, val pendingRetryAfterMs: Double?, val resultKinds: List<String>?)
 
-@Immutable
 data class ResumeSupport(
     val rpcAvailable: Boolean?,
     val requiresSameMachine: Boolean?,
@@ -44,7 +37,6 @@ data class ResumeSupport(
  * storageTypes.ts `MachineMetadataSchema`. The Rig catalog blocks catch on
  * their own, so a malformed one costs Rig session creation, not the machine.
  */
-@Immutable
 data class MachineMetadata(
     val raw: JsonObject,
     val host: String,
@@ -175,7 +167,6 @@ data class MachineMetadata(
  * The daemon's runtime state (`Machine.daemonState`, `z.any()` in happy-app).
  * Only the fields the machine screen shows are read out of it.
  */
-@Immutable
 data class DaemonState(val raw: JsonObject) {
     val pid: String? get() = scalar("pid")
     val httpPort: String? get() = scalar("httpPort")

@@ -1,6 +1,5 @@
 package com.slopus.happy.chat
 
-import androidx.compose.runtime.Immutable
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.isRig
 import com.slopus.happy.model.isRigV1
@@ -20,7 +19,6 @@ import com.slopus.happy.sync.ComposerMirror
  * and effort chips list and show. The `can*` flags are rig.ts's
  * `isRig*SelectionEnabled`: a Happy Agent session may lock a picker.
  */
-@Immutable
 data class ComposerModes(
     val availableModes: List<ModeOption> = emptyList(),
     val permissionMode: ModeOption? = null,

@@ -1,13 +1,11 @@
 package com.slopus.happy.model
 
-import androidx.compose.runtime.Immutable
 import java.text.Collator
 
 // utils/projectHomeList.ts and utils/sessionDisplayOrder.ts: the home list
 // grouped by project, under the computer the work runs on.
 
 /** One checkout of a project (its own, or a worktree) and the chats in it. */
-@Immutable
 data class ProjectWorktree(
     val id: String,
     val projectId: String,
@@ -30,7 +28,6 @@ data class ProjectWorktree(
 )
 
 /** A project's card: it goes by the project's name and opens the project's own checkout. */
-@Immutable
 data class ProjectHomeEntry(
     val id: String,
     val name: String,
@@ -47,7 +44,6 @@ data class ProjectHomeEntry(
 )
 
 /** The row that ends a project's worktrees: `Show all N` while some are held back, `Show fewer` once out. */
-@Immutable
 data class WorktreeToggle(
     val projectId: String,
     val worktreeCount: Int,
@@ -60,7 +56,6 @@ data class WorktreeToggle(
 
 enum class ProjectHomeSection { Bots, Projects }
 
-@Immutable
 sealed interface ProjectHomeRow {
     val key: String
 

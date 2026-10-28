@@ -1,6 +1,5 @@
 package com.slopus.happy.chat.markdown
 
-import androidx.compose.runtime.Immutable
 
 // happy-app's components/markdown parser (parseMarkdown.ts,
 // parseMarkdownBlock.ts, parseMarkdownSpans.ts): a line-oriented subset of
@@ -9,10 +8,8 @@ import androidx.compose.runtime.Immutable
 
 enum class SpanStyle { Italic, Bold, Semibold, Code }
 
-@Immutable
 data class MarkdownSpan(val styles: Set<SpanStyle>, val text: String, val url: String? = null)
 
-@Immutable
 sealed interface MarkdownBlock {
     data class Text(val content: List<MarkdownSpan>) : MarkdownBlock
     data class Header(val level: Int, val content: List<MarkdownSpan>) : MarkdownBlock
