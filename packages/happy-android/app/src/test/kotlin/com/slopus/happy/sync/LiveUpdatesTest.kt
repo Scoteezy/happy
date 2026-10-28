@@ -41,6 +41,8 @@ class AccountHarness(val server: FakeHappyServer = FakeHappyServer().start(), va
     val store = HappyStore(database)
     val foreground = MutableStateFlow(true)
     private val parent = Job()
+    /** Where the outbox keeps pictures until they are uploaded. */
+    val outboxFiles: java.io.File = java.nio.file.Files.createTempDirectory("outbox").toFile()
     val account = AccountSync(
         http = HappyHttp(OkHttpClient(), serverUrl = { server.url }, clientId = "android/test"),
         okHttp = OkHttpClient(),
@@ -53,6 +55,7 @@ class AccountHarness(val server: FakeHappyServer = FakeHappyServer().start(), va
         foreground = foreground,
         clock = { now },
         reconnectDelayMs = { 50 },
+        outboxFiles = outboxFiles,
     )
 
     fun startAndSync(): AccountHarness {
@@ -67,6 +70,7 @@ class AccountHarness(val server: FakeHappyServer = FakeHappyServer().start(), va
         parent.cancel()
         database.close()
         server.close()
+        outboxFiles.deleteRecursively()
     }
 }
 

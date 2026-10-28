@@ -2,8 +2,7 @@ package com.slopus.happy.home
 
 import com.slopus.happy.attachments.AttachmentNotice
 import com.slopus.happy.attachments.AttachmentPreview
-import com.slopus.happy.attachments.AttachmentUploadResult
-import com.slopus.happy.attachments.prepareAttachmentSend
+import com.slopus.happy.attachments.planAttachmentSend
 import com.slopus.happy.model.GitWorktree
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.sync.AccountSync
@@ -66,13 +65,12 @@ interface FirstMessageSender {
 
 /**
  * [FirstMessageSender] over the signed-in account's composer and sender;
- * attachments go through [prepareAttachmentSend] against the new session's
- * [metadata], uploaded with [upload].
+ * attachments go through [planAttachmentSend] against the new session's
+ * [metadata], into the outbox.
  */
 class LiveFirstMessageSender(
     private val account: () -> AccountSync?,
     private val metadata: suspend (sessionId: String) -> SessionMetadata? = { null },
-    private val upload: suspend (sessionId: String, List<AttachmentPreview>) -> AttachmentUploadResult = { _, list -> AttachmentUploadResult(emptyList(), list.size) },
 ) : FirstMessageSender {
     override suspend fun pinModes(sessionId: String, modes: Map<AgentModeField, String?>) {
         account()?.composer?.setAgentModes(sessionId, modes)
@@ -80,9 +78,10 @@ class LiveFirstMessageSender(
 
     override suspend fun send(sessionId: String, text: String, attachments: List<AttachmentPreview>, isCurrent: () -> Boolean): FirstSend {
         val sender = account()?.sender ?: return FirstSend(false)
-        val plan = prepareAttachmentSend(metadata(sessionId), text, attachments) { upload(sessionId, it) }
-        if (!plan.send || (text.isBlank() && plan.records.isEmpty())) return FirstSend(false, plan.notices)
-        return when (val result = sender.send(sessionId, text, SendOptions(source = "new_session", attachments = plan.records, isCurrent = isCurrent))) {
+        // The outbox copies the pictures and uploads them when it flushes, as on iOS.
+        val plan = planAttachmentSend(metadata(sessionId), text, attachments)
+        if (!plan.send || (text.isBlank() && plan.accepted.isEmpty())) return FirstSend(false, plan.notices)
+        return when (val result = sender.send(sessionId, text, SendOptions(source = "new_session", files = plan.accepted, isCurrent = isCurrent))) {
             is SendResult.Accepted -> FirstSend(true, plan.notices)
             is SendResult.NotSent -> result.message?.let { throw SendException(it) } ?: FirstSend(false, plan.notices)
         }

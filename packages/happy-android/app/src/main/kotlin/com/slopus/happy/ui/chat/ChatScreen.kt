@@ -1,8 +1,9 @@
 package com.slopus.happy.ui.chat
 
+import kotlinx.coroutines.flow.distinctUntilChanged
+import com.slopus.happy.data.OutboxKind
+import com.slopus.happy.data.OutboxState
 import com.slopus.happy.attachments.AttachmentServices
-import com.slopus.happy.attachments.AttachmentUploadResult
-import com.slopus.happy.attachments.readAttachmentBytes
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -112,10 +113,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private val list = ChatListView(context)
     private val header = ChatHeaderView(context)
     private val scrim = ChatScrimView(context)
-    private val composer = ChatComposerView(context, sessionId, actions, scope) { previews ->
-        AttachmentServices.of(graph).transfers?.upload(sessionId, previews, ::readAttachmentBytes)
-            ?: AttachmentUploadResult(emptyList(), previews.size)
-    }
+    private val composer = ChatComposerView(context, sessionId, actions, scope)
     private val scrollButton = ScrollButton(context)
     private val spinner = ProgressBar(context)
     private val inactiveHint = ChatInactiveHintView(context, scope)
@@ -188,6 +186,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         val attachments = AttachmentServices.of(graph)
         attachments.pictures?.let { pictures ->
             view.setTag(R.id.chat_attachments, ChatAttachmentImages(pictures, sessionId) { ref ->
+                // A picture still in the outbox names no blob yet: it shows as one that can't be had, as on iOS.
+                if (ref.isEmpty()) return@ChatAttachmentImages null
                 runCatching { attachments.transfers?.load(sessionId, ref) }.getOrNull()
             })
         }
@@ -215,6 +215,13 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         scope.launch {
             combine(feed, graph.settings.settings, mirror) { state, settings, mirror -> Triple(state, settings, mirror) }
                 .collect { (state, settings, mirror) -> apply(state, settings, mirror) }
+        }
+        scope.launch {
+            // Pictures the outbox gave up on: the composer says so once each.
+            graph.account.flatMapLatest { it?.sender?.outbox(sessionId) ?: flowOf(emptyList()) }
+                .map { rows -> rows.count { it.kind == OutboxKind.ATTACHMENT && it.state == OutboxState.FAILED } }
+                .distinctUntilChanged()
+                .collect(composer::updateFailedAttachments)
         }
         scope.launch {
             HomeServices.of(graph).snapshots.map { it?.machines }.collect { machines ->

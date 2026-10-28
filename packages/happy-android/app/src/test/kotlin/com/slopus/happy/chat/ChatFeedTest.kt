@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -55,6 +56,23 @@ class ChatFeedTest {
         assertEquals(row.message.id, echoed.message.id)
         assertFalse(echoed.message.pending)
         assertEquals(1, reduction.apply(ChatPage(listOf(user("S", "hi", 6, localId = "L"))), info).rows.size)
+    }
+
+    private fun pictureSend(localId: String, ref: String) = OutboxRecord(
+        localId, "s", OutboxKind.ATTACHMENT,
+        """{"role":"session","content":{"type":"session","data":{"id":"$localId","time":5,"role":"user","ev":{"t":"file","ref":"$ref","name":"a.jpg","size":3,"image":{"width":4,"height":3}}}}}""",
+        "", 5, OutboxState.QUEUED, 0, null, null, null,
+    )
+
+    /** happy-ios rebuilds its outbox overlay on each change: a picture that now names its blob shows it, not the empty ref it was queued with. */
+    @Test
+    fun aPictureRewrittenInTheOutboxShowsItsUploadedRef() {
+        val reduction = ChatReduction { 0 }
+        val info = ChatSessionInfo.from(session())
+        fun ref(snapshot: ChatSnapshot) =
+            ((snapshot.rows.single() as ChatRow.Tool).message.tool.input as kotlinx.serialization.json.JsonObject)["ref"]!!.jsonPrimitive.content
+        assertEquals("", ref(reduction.apply(ChatPage(emptyList(), outbox = listOf(pictureSend("L", ""))), info)))
+        assertEquals("sessions/s/attachments/x.enc", ref(reduction.apply(ChatPage(emptyList(), outbox = listOf(pictureSend("L", "sessions/s/attachments/x.enc"))), info)))
     }
 
     @Test

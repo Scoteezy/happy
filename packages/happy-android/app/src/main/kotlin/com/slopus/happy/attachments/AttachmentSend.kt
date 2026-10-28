@@ -24,18 +24,15 @@ sealed interface AttachmentNotice {
  */
 data class AttachmentSendPlan(val send: Boolean, val records: List<JsonObject>, val notices: List<AttachmentNotice>)
 
+/** Which pictures may go, and what to tell the user; [send] false means nothing goes at all. */
+data class AttachmentPick(val send: Boolean, val accepted: List<AttachmentPreview>, val notices: List<AttachmentNotice>)
+
 /**
- * Plans the send ([imageAttachmentSendPlan], the rig policy filter), uploads
- * what may go and builds its file event records. With no attachments it
- * does nothing.
+ * sync.ts sendMessage's attachment plan ([imageAttachmentSendPlan], the rig
+ * policy filter), before anything is uploaded: what the outbox should take.
  */
-suspend fun prepareAttachmentSend(
-    metadata: SessionMetadata?,
-    text: String,
-    attachments: List<AttachmentPreview>,
-    upload: suspend (List<AttachmentPreview>) -> AttachmentUploadResult,
-): AttachmentSendPlan {
-    if (attachments.isEmpty()) return AttachmentSendPlan(send = true, records = emptyList(), notices = emptyList())
+fun planAttachmentSend(metadata: SessionMetadata?, text: String, attachments: List<AttachmentPreview>): AttachmentPick {
+    if (attachments.isEmpty()) return AttachmentPick(send = true, accepted = emptyList(), notices = emptyList())
     val plan = imageAttachmentSendPlan(metadata, text, attachments.size)
     val policy = metadata.rigAttachmentPolicy()
     val effective = when {
@@ -48,12 +45,26 @@ suspend fun prepareAttachmentSend(
     if (plan.shouldShowUnsupportedAlert || rejectedByRig) {
         notices += AttachmentNotice.NotSupported
         if (!plan.shouldSendText || (text.isBlank() && effective.isEmpty())) {
-            return AttachmentSendPlan(send = false, records = emptyList(), notices = notices)
+            return AttachmentPick(send = false, accepted = emptyList(), notices = notices)
         }
     }
-    if (effective.isEmpty()) return AttachmentSendPlan(send = true, records = emptyList(), notices = notices)
-    val result = upload(effective)
-    if (result.failed > 0) notices += AttachmentNotice.UploadFailed(result.failed)
+    return AttachmentPick(send = true, accepted = effective, notices = notices)
+}
+
+/**
+ * Plans the send ([planAttachmentSend]), uploads what may go and builds its
+ * file event records. With no attachments it does nothing.
+ */
+suspend fun prepareAttachmentSend(
+    metadata: SessionMetadata?,
+    text: String,
+    attachments: List<AttachmentPreview>,
+    upload: suspend (List<AttachmentPreview>) -> AttachmentUploadResult,
+): AttachmentSendPlan {
+    val pick = planAttachmentSend(metadata, text, attachments)
+    if (!pick.send || pick.accepted.isEmpty()) return AttachmentSendPlan(send = pick.send, records = emptyList(), notices = pick.notices)
+    val result = upload(pick.accepted)
+    val notices = pick.notices + listOfNotNull(if (result.failed > 0) AttachmentNotice.UploadFailed(result.failed) else null)
     return AttachmentSendPlan(send = true, records = fileEventRecords(result.uploaded), notices = notices)
 }
 

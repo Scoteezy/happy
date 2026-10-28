@@ -44,12 +44,13 @@ class HappyDatabase(context: Context, name: String? = NAME) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion !in 1..3) return startOver(db)
+        if (oldVersion !in 1..4) return startOver(db)
         // Version 1 synced every message from seq 0, so what it stored is
         // complete history: the oldest stored seq is the floor.
         if (oldVersion == 1) MIGRATE_1_TO_2.forEach(db::execSQL)
         if (oldVersion <= 2) MIGRATE_2_TO_3.forEach(db::execSQL)
-        MIGRATE_3_TO_4.forEach(db::execSQL)
+        if (oldVersion <= 3) MIGRATE_3_TO_4.forEach(db::execSQL)
+        MIGRATE_4_TO_5.forEach(db::execSQL)
     }
 
     // Nothing newer can be read safely; everything but the outbox can be fetched again.
@@ -62,7 +63,7 @@ class HappyDatabase(context: Context, name: String? = NAME) :
 
     companion object {
         const val NAME = "happy.db"
-        const val VERSION = 4
+        const val VERSION = 5
 
         // Messages accepted on this device and not yet echoed back by the
         // server. `content` is the ciphertext exactly as it is POSTed (so a
@@ -84,6 +85,26 @@ class HappyDatabase(context: Context, name: String? = NAME) :
             )
         """
         private const val OUTBOX_INDEX = "CREATE INDEX outbox_by_session ON outbox (session_id, position)"
+
+        // Pictures accepted with a message (happy-ios `AttachmentRecord`): the
+        // copy in the account's files (`path`, relative to them) until it is
+        // uploaded, then the server's `ref`. One per ATTACHMENT outbox row,
+        // under the same local id.
+        private const val ATTACHMENTS = """
+            CREATE TABLE attachments (
+                local_id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+                path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                mime_type TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                width INTEGER,
+                height INTEGER,
+                thumbhash TEXT,
+                ref TEXT,
+                created_at INTEGER NOT NULL
+            )
+        """
 
         // The device side of each session's composer (sync/SessionComposer.kt):
         // draft text and picker choices, one JSON document per session.
@@ -155,6 +176,7 @@ class HappyDatabase(context: Context, name: String? = NAME) :
             """,
             OUTBOX,
             OUTBOX_INDEX,
+            ATTACHMENTS,
             COMPOSER,
             // Account-level JSON documents: settings (with the server version),
             // settings changes not yet accepted by the server, and the profile.
@@ -189,7 +211,12 @@ class HappyDatabase(context: Context, name: String? = NAME) :
                 "ALTER TABLE sessions ADD COLUMN avatar_update_seq INTEGER",
             )
 
+        // Pictures upload from the outbox, as on iOS.
+        private val MIGRATE_4_TO_5
+            get() = listOf(ATTACHMENTS).map(String::trimIndent)
+
         private val DROP = listOf(
+            "DROP TABLE IF EXISTS attachments",
             "DROP TABLE IF EXISTS composer",
             "DROP TABLE IF EXISTS outbox",
             "DROP TABLE IF EXISTS messages",

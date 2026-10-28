@@ -376,4 +376,59 @@ class MessageSenderTest {
         assertNull(rows.single().serverId)
         assertTrue(!sender.hasUnsentUserMessage("s1"))
     }
+
+    /** A picked picture, as the composer stages it. */
+    private fun picture(bytes: ByteArray, name: String = "shot.jpg"): com.slopus.happy.attachments.AttachmentPreview {
+        val file = java.io.File.createTempFile("picked", ".jpg").apply { writeBytes(bytes); deleteOnExit() }
+        return com.slopus.happy.attachments.AttachmentPreview(
+            "p1", android.net.Uri.fromFile(file).toString(), 640, 480, "image/jpeg", bytes.size.toLong(), name,
+        )
+    }
+
+    @Test
+    fun aPictureWaitsInTheOutboxAndIsUploadedWhenItFlushes() = runBlocking {
+        // happy-ios: the send is accepted with the picture copied; the upload is the flush's, retried.
+        server.failAttachmentUploads += 503
+        server.failAttachmentUploads += 503
+        h.startAndSync()
+        val bytes = ByteArray(2048) { it.toByte() }
+        val result = sender.send("s1", "look", SendOptions(files = listOf(picture(bytes))))
+        assertTrue(result is SendResult.Accepted)
+        val queued = outbox()
+        assertEquals(listOf(OutboxKind.ATTACHMENT, OutboxKind.USER), queued.map { it.kind })
+        assertEquals("", queued.first().content)
+        assertEquals(1, h.outboxFiles.listFiles()!!.size)
+
+        eventually(timeoutMs = 15_000, message = "both sent") { server.sentRecords("s1").size == 2 }
+        val (fileId, file) = server.sentRecords("s1").first()
+        assertEquals(queued.first().localId, fileId)
+        val ev = file["content"]!!.jsonObject["data"]!!.jsonObject["ev"]!!.jsonObject
+        val ref = ev["ref"]!!.jsonPrimitive.content
+        assertEquals("shot.jpg", ev["name"]!!.jsonPrimitive.content)
+        assertEquals(640, ev["image"]!!.jsonObject["width"]!!.jsonPrimitive.content.toInt())
+        // Sealed under the session's blob key.
+        val key = com.slopus.happy.crypto.AccountEncryption.blobKeyForDataKey(server.dataKey("s1"))
+        assertTrue(bytes.contentEquals(com.slopus.happy.crypto.decryptBlob(server.attachments[ref]!!, key)!!))
+        assertEquals("look", server.sentRecords("s1")[1].second["content"]!!.jsonObject["text"]!!.jsonPrimitive.content)
+        assertEquals(3, server.requestsTo("/v1/sessions/s1/attachments/request-upload").size)
+        // The copy goes once the server has it.
+        assertEquals(0, h.outboxFiles.listFiles()!!.size)
+    }
+
+    @Test
+    fun aPictureTheServerRefusesIsSkippedAndTheTextGoesThenRetrySendsIt() = runBlocking {
+        server.failAttachmentUploads += 400
+        h.startAndSync()
+        sender.send("s1", "look", SendOptions(files = listOf(picture(ByteArray(10) { 7 }))))
+        eventually(message = "text sent") { server.sentRecords("s1").size == 1 }
+        assertEquals("look", server.sentRecords("s1").single().second["content"]!!.jsonObject["text"]!!.jsonPrimitive.content)
+        eventually(message = "text retired") { outbox().none { it.kind == OutboxKind.USER } }
+        val failed = outbox().single()
+        assertEquals(OutboxKind.ATTACHMENT, failed.kind)
+        assertEquals(OutboxState.FAILED, failed.state)
+
+        sender.retry("s1", failed.localId)
+        eventually(message = "picture sent after retry") { server.sentRecords("s1").size == 2 }
+        assertEquals(failed.localId, server.sentRecords("s1").last().first)
+    }
 }

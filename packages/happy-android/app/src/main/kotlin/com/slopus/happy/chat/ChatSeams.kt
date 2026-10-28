@@ -1,5 +1,6 @@
 package com.slopus.happy.chat
 
+import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.MessageRecord
 import com.slopus.happy.data.OutboxRecord
@@ -100,6 +101,8 @@ interface ChatActions {
         meta: JsonObject? = null,
         attachments: List<JsonObject> = emptyList(),
         awaitDelivery: Boolean = false,
+        /** Picked pictures, copied into the outbox and uploaded when it flushes ([SendOptions.files]). */
+        files: List<AttachmentPreview> = emptyList(),
     )
 
     /** A failed send goes back in the queue. */
@@ -183,8 +186,14 @@ object NoLivePresence : ChatPresenceSource {
 /** Actions that only fail, for builds without Sync's sender. */
 object UnavailableChatActions : ChatActions {
     private fun unavailable(): Nothing = throw UnsupportedOperationException("Not signed in")
-    override suspend fun send(sessionId: String, text: String, meta: JsonObject?, attachments: List<JsonObject>, awaitDelivery: Boolean) =
-        unavailable()
+    override suspend fun send(
+        sessionId: String,
+        text: String,
+        meta: JsonObject?,
+        attachments: List<JsonObject>,
+        awaitDelivery: Boolean,
+        files: List<AttachmentPreview>,
+    ) = unavailable()
     override suspend fun abort(sessionId: String) = unavailable()
     override suspend fun answerPermission(sessionId: String, answer: PermissionAnswer) = unavailable()
     override suspend fun answerQuestion(sessionId: String, communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) =
@@ -202,8 +211,15 @@ class SyncChatActions(private val account: () -> AccountSync?) : ChatActions {
     private fun account(): AccountSync = account.invoke() ?: throw SendException("Not signed in")
     private fun ops(): SessionOps = account().sessionOps
 
-    override suspend fun send(sessionId: String, text: String, meta: JsonObject?, attachments: List<JsonObject>, awaitDelivery: Boolean) {
-        val options = SendOptions(extraMeta = meta, attachments = attachments, awaitDelivery = awaitDelivery)
+    override suspend fun send(
+        sessionId: String,
+        text: String,
+        meta: JsonObject?,
+        attachments: List<JsonObject>,
+        awaitDelivery: Boolean,
+        files: List<AttachmentPreview>,
+    ) {
+        val options = SendOptions(extraMeta = meta, attachments = attachments, awaitDelivery = awaitDelivery, files = files)
         val result = account().sender.send(sessionId, text, options)
         if (result is SendResult.NotSent) throw SendException(result.message ?: "The message was not sent.")
     }

@@ -4,9 +4,7 @@ import android.content.Context
 import android.view.HapticFeedbackConstants
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentNotice
-import com.slopus.happy.attachments.AttachmentPreview
-import com.slopus.happy.attachments.AttachmentUploadResult
-import com.slopus.happy.attachments.prepareAttachmentSend
+import com.slopus.happy.attachments.planAttachmentSend
 import com.slopus.happy.chat.AgentInputPrimaryAction
 import com.slopus.happy.chat.ChatActions
 import com.slopus.happy.chat.ChatState
@@ -56,8 +54,6 @@ class ChatComposerView(
     private val sessionId: String,
     private val actions: ChatActions,
     private val scope: CoroutineScope,
-    /** Encrypts and uploads picked pictures under the session; what failed is counted. */
-    private val upload: suspend (List<AttachmentPreview>) -> AttachmentUploadResult = { AttachmentUploadResult(emptyList(), it.size) },
 ) : ManualLayout(context), ThemeAware {
     val card = AgentInputCardView(context)
     private val statusDot = StatusDotView(context)
@@ -288,13 +284,14 @@ class ChatComposerView(
         scope.launch {
             try {
                 // sync.ts: images the agent can't take are named before anything goes; with nothing else to send, nothing does.
-                val plan = prepareAttachmentSend(state?.session?.metadata, text, picked.map { it.preview }, upload)
+                val plan = planAttachmentSend(state?.session?.metadata, text, picked.map { it.preview })
                 plan.notices.forEach(::notice)
-                if (!plan.send || (text.isBlank() && picked.isNotEmpty() && plan.records.isEmpty())) {
+                if (!plan.send) {
                     isSending = false
                     return@launch
                 }
-                actions.send(sessionId, text, attachments = plan.records)
+                // The outbox copies the pictures and uploads them when it flushes.
+                actions.send(sessionId, text, files = plan.accepted)
                 isSending = false
                 // Only clear what was sent: typing may have gone on.
                 if (card.text == text) card.setText("")
@@ -311,6 +308,19 @@ class ChatComposerView(
             }
         }
     }
+
+    /**
+     * The session's failed pictures in the outbox (happy-ios
+     * `newlyFailedAttachments`): the count when the chat opened is known,
+     * and each one that fails after is said once.
+     */
+    fun updateFailedAttachments(count: Int) {
+        val known = knownFailedAttachments
+        knownFailedAttachments = count
+        if (known != null && count > known) notice(AttachmentNotice.UploadFailed(count - known))
+    }
+
+    private var knownFailedAttachments: Int? = null
 
     private fun notice(notice: AttachmentNotice) = when (notice) {
         AttachmentNotice.NotSupported -> Alerts.show(

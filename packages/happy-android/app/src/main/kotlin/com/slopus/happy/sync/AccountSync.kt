@@ -1,7 +1,10 @@
 package com.slopus.happy.sync
 
 import com.slopus.happy.chat.PlanModeFollower
+import com.slopus.happy.attachments.AttachmentApi
+import com.slopus.happy.attachments.SessionBlobKeys
 import com.slopus.happy.crypto.AccountEncryption
+import com.slopus.happy.crypto.encryptBlob
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
@@ -54,6 +57,8 @@ class AccountSync(
     clock: () -> Long = System::currentTimeMillis,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     reconnectDelayMs: (Int) -> Long = { socketIoBackoff(it) },
+    /** Where pictures wait in the outbox until they are uploaded; null takes none. */
+    outboxFiles: java.io.File? = null,
 ) {
     private val job = SupervisorJob(parent)
     private val scope = CoroutineScope(job + io)
@@ -108,6 +113,9 @@ class AccountSync(
     )
 
     /** Sending and the stored outbox (sync.ts sendMessage, flushOutbox). */
+    private val attachmentApi = AttachmentApi(okHttp, serverUrl)
+    private val blobKeys = SessionBlobKeys(store, encryption)
+
     val sender = MessageSender(
         api, store, decoder, messages, composer,
         isThinking = { presence.sessions.value[it]?.thinking == true },
@@ -115,6 +123,15 @@ class AccountSync(
         refreshSessions = ::syncNow,
         io = io,
         clock = clock,
+        files = outboxFiles,
+        uploadAttachment = { sessionId, name, bytes ->
+            // encryptBlob under the session's blob key, then request-upload and PUT (sync.ts uploadAttachmentsForSession).
+            val key = blobKeys.blobKey(sessionId) ?: throw MissingAttachmentException("no blob key for the session")
+            val sealed = encryptBlob(bytes, key)
+            val upload = attachmentApi.requestUpload(token, sessionId, name, sealed.size.toLong())
+            attachmentApi.uploadBlob(upload, sealed, token)
+            upload.ref
+        },
     )
 
     /** The socket's state, as Home's header shows it (homeConnectionStatus.ts). */

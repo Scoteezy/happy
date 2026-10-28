@@ -72,6 +72,8 @@ data class ChatSnapshot(
 class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
     private var reducer = ReducerState(now)
     private val fed = HashSet<String>()
+    /** The outbox records fed last, by local id, to notice one rewritten in place. */
+    private val fedSends = HashMap<String, String?>()
     private val messages = LinkedHashMap<String, ChatMessage>()
     /** The row last built for each message id, with the message it was built from. */
     private val rows = HashMap<String, Pair<ChatMessage, ChatRow?>>()
@@ -90,7 +92,11 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
         val present = records.mapTo(HashSet()) { it.id }
         // A send whose echo arrived is the same message under its server id.
         fed.removeAll { it !in present && it in echoed }
-        if (fed.isNotEmpty() && !present.containsAll(fed)) {
+        // A send rewritten in place (a picture that now names its uploaded blob) is fed again from the start.
+        val rewritten = sends.any { send -> fedSends[send.id]?.let { it != send.contentJson } == true }
+        fedSends.clear()
+        sends.associateTo(fedSends) { it.id to it.contentJson }
+        if (rewritten || (fed.isNotEmpty() && !present.containsAll(fed))) {
             // Records were deleted (or a failed send discarded): start over rather than unwind the reducer.
             reducer = ReducerState(now)
             fed.clear()

@@ -1,7 +1,12 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.attachments.UploadedAttachment
+import com.slopus.happy.attachments.fileEventRecord
+import com.slopus.happy.attachments.getAttachmentDiagnostic
 import com.slopus.happy.chat.ChatNormalizer
 import com.slopus.happy.chat.hasUnreceiptedUserMessage
+import com.slopus.happy.data.AttachmentRecord
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.OutboxKind
 import com.slopus.happy.data.OutboxRecord
@@ -29,6 +34,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.io.File
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -69,6 +76,13 @@ data class SendOptions(
      * retry and delivery rules. Sealed with the session key here.
      */
     val attachments: List<JsonObject> = emptyList(),
+    /**
+     * Picked pictures (happy-ios `OutgoingMessage.attachments`): each is
+     * copied into the outbox's files and queued ahead of the text as a
+     * file event that names no blob yet; the outbox uploads it when it
+     * flushes, so a send made offline keeps its pictures.
+     */
+    val files: List<AttachmentPreview> = emptyList(),
     /** Return only once the server has stored it (or the send failed for good). */
     val awaitDelivery: Boolean = false,
     /** Checked up to the moment of acceptance: false means the user has moved on, and nothing is sent. */
@@ -76,6 +90,9 @@ data class SendOptions(
     /** Called once the message is in the outbox; from then on it is going out. */
     val onAccepted: () -> Unit = {},
 )
+
+/** A picture the outbox can never upload: its copy, its session or its key is gone. */
+class MissingAttachmentException(message: String) : IOException(message)
 
 /** A message that was not queued; the message is for the user. */
 class SendException(message: String) : IllegalStateException(message)
@@ -118,6 +135,12 @@ class MessageSender internal constructor(
     private val clock: () -> Long = System::currentTimeMillis,
     private val newLocalId: () -> String = { UUID.randomUUID().toString() },
     private val sentFrom: String = SENT_FROM,
+    /** Where accepted pictures wait for their upload; null when this sender takes none. */
+    private val files: File? = null,
+    /** Seals [bytes] under the session's blob key and uploads them; returns the blob's ref. */
+    private val uploadAttachment: suspend (sessionId: String, name: String, bytes: ByteArray) -> String = { _, _, _ ->
+        throw MissingAttachmentException("attachments are not available")
+    },
 ) {
     private val flushes = ConcurrentHashMap<String, InvalidateSync>()
 
@@ -187,6 +210,12 @@ class MessageSender internal constructor(
             options.attachments.map { attachment -> Triple(newLocalId(), attachment, cipher.encryptToBase64(attachment)) }
         }
         val content = withContext(io) { cipher.encryptToBase64(record) }
+        // The pictures are copied before anything is queued; a copy that fails sends nothing.
+        val pictures = try {
+            withContext(io) { copyPictures(sessionId, options.files) }
+        } catch (e: IOException) {
+            return SendResult.NotSent(e.message)
+        }
 
         // Nothing suspends between this check and acceptance. A navigation,
         // deletion or Stop must never redirect or replay this send.
@@ -208,16 +237,22 @@ class MessageSender internal constructor(
             )
             store.transaction {
                 // Attachments first, in order, then the text (sync.ts: file events precede the message).
+                // A picture not uploaded yet has no content: the flush seals it once it names its blob.
                 store.enqueueOutbox(
-                    staged.map { (id, json, sealed) -> row(id, OutboxKind.ATTACHMENT, json, sealed) } +
+                    pictures.map { (attachment, json) -> row(attachment.localId, OutboxKind.ATTACHMENT, json, "") } +
+                        staged.map { (id, json, sealed) -> row(id, OutboxKind.ATTACHMENT, json, sealed) } +
                         row(localId, OutboxKind.USER, record, content),
+                    pictures.map { it.first },
                 )
                 // Local activity time: the opt-in activity sort follows the user, not agent output.
                 store.markMessageSent(sessionId, now)
             }
             true
         }
-        if (!accepted) return SendResult.NotSent(null)
+        if (!accepted) {
+            withContext(io) { pictures.forEach { (attachment, _) -> File(files, attachment.path).delete() } }
+            return SendResult.NotSent(null)
+        }
 
         // Accepted is irreversible: what follows runs even if the caller stops waiting.
         withContext(NonCancellable) {
@@ -232,7 +267,8 @@ class MessageSender internal constructor(
 
     /** A failed message goes back in the queue. */
     suspend fun retry(sessionId: String, localId: String) {
-        withContext(io) { store.setOutboxState(sessionId, listOf(localId), OutboxState.QUEUED) }
+        // Its attempts start over (happy-ios retrySend), so a picture gets its full five again.
+        withContext(io) { store.retryOutbox(sessionId, localId) }
         flushFor(sessionId).invalidate()
         maybeStartWatchdog()
     }
@@ -241,7 +277,11 @@ class MessageSender internal constructor(
     suspend fun discard(sessionId: String, localId: String) {
         withContext(io) {
             val row = store.outbox(sessionId).firstOrNull { it.localId == localId }
-            if (row != null && row.state == OutboxState.FAILED) store.deleteOutbox(sessionId, localId)
+            if (row != null && row.state == OutboxState.FAILED) {
+                val path = store.attachment(localId)?.path
+                store.deleteOutbox(sessionId, localId)
+                path?.let { File(files, it).delete() }
+            }
         }
     }
 
@@ -249,6 +289,7 @@ class MessageSender internal constructor(
     suspend fun resume() {
         val sessions = withContext(io) {
             store.requeueInterruptedSends()
+            sweepFiles()
             store.outbox().filter { it.state == OutboxState.QUEUED }.map { it.sessionId }.distinct()
         }
         sessions.forEach { flushFor(it).invalidate() }
@@ -349,15 +390,24 @@ class MessageSender internal constructor(
         while (flushBatch(sessionId)) Unit
     }
 
-    /** One POST of the oldest queued rows; false once there is nothing left to send. */
+    /**
+     * One POST of the oldest queued rows, or the upload of the picture at
+     * their head (rows after a picture wait for it); false once there is
+     * nothing left to send.
+     */
     private suspend fun flushBatch(sessionId: String): Boolean = withContext(io) {
         // Read and claimed in one write transaction: a row failed meanwhile is not picked up again.
         val batch = store.transaction {
-            store.outbox(sessionId).filter { it.state == OutboxState.QUEUED || it.state == OutboxState.SENDING }
-                .take(MAX_BATCH)
-                .also { rows -> store.setOutboxState(sessionId, rows.map { it.localId }, OutboxState.SENDING) }
+            val queued = store.outbox(sessionId).filter { it.state == OutboxState.QUEUED || it.state == OutboxState.SENDING }
+            val head = queued.firstOrNull()
+            val rows = if (head != null && head.awaitsUpload) listOf(head) else queued.takeWhile { !it.awaitsUpload }.take(MAX_BATCH)
+            rows.also { store.setOutboxState(sessionId, it.map { row -> row.localId }, OutboxState.SENDING) }
         }
         if (batch.isEmpty()) return@withContext false
+        batch.singleOrNull()?.takeIf { it.awaitsUpload }?.let {
+            upload(it)
+            return@withContext true
+        }
         val ids = batch.map { it.localId }
         val stored = try {
             api.sendMessages(sessionId, batch.map { ApiOutgoingMessage(it.localId, it.content) })
@@ -387,6 +437,94 @@ class MessageSender internal constructor(
         true
     }
 
+    /**
+     * happy-ios flushOutbox's file leg: the copy is sealed and uploaded, and
+     * the row, now naming its blob, is sealed and queued for the POST. A
+     * failure is tried again with backoff; after [SEND_ATTEMPTS], or when
+     * it can never work, the picture fails and is skipped, and the rest of
+     * the message goes on (a failed upload is skipped like happy-app).
+     */
+    private suspend fun upload(row: OutboxRecord) {
+        val sessionId = row.sessionId
+        try {
+            val attachment = store.attachment(row.localId) ?: throw MissingAttachmentException("the picture is gone")
+            val file = File(files ?: throw MissingAttachmentException("no outbox files"), attachment.path)
+            if (!file.exists()) throw MissingAttachmentException("the picture is gone")
+            val ref = attachment.ref ?: uploadAttachment(sessionId, attachment.name, file.readBytes())
+            val session = store.session(sessionId) ?: throw MissingAttachmentException("the session is gone")
+            val cipher = decoder.cipher(session.wrappedDataKey) ?: throw MissingAttachmentException("the session cannot be encrypted to")
+            val record = fileEventRecord(
+                UploadedAttachment(ref, attachment.name, attachment.size, attachment.width ?: 0, attachment.height ?: 0, attachment.thumbhash),
+                id = row.localId,
+                time = row.createdAt,
+            )
+            store.saveAttachmentUpload(sessionId, row.localId, ref, record.toString(), cipher.encryptToBase64(record))
+            // The server has the bytes now.
+            file.delete()
+        } catch (e: CancellationException) {
+            settleSending(sessionId, listOf(row.localId), OutboxState.QUEUED, null)
+            throw e
+        } catch (e: Exception) {
+            val attempts = row.attempts + 1
+            val status = (e as? HttpStatusException)?.status ?: getAttachmentDiagnostic(e)?.status
+            val permanent = e is MissingAttachmentException || (status != null && status in 400..499 && status !in listOf(408, 409, 429))
+            if (permanent || attempts >= SEND_ATTEMPTS) {
+                settleSending(sessionId, listOf(row.localId), OutboxState.FAILED, e.message)
+                return
+            }
+            settleSending(sessionId, listOf(row.localId), OutboxState.QUEUED, e.message)
+            maybeStartWatchdog()
+            delay(minOf(SEND_RETRY_MAXIMUM_MS, SEND_RETRY_INITIAL_MS shl minOf(attempts - 1, 16)))
+            throw e
+        }
+    }
+
+    /** Copies [previews] into the outbox's files: each picture's record, and its file event naming no blob yet. */
+    private fun copyPictures(sessionId: String, previews: List<AttachmentPreview>): List<Pair<AttachmentRecord, JsonObject>> {
+        if (previews.isEmpty()) return emptyList()
+        val directory = files?.apply { mkdirs() } ?: throw IOException("Attachments are not available.")
+        val now = clock()
+        val copied = mutableListOf<File>()
+        try {
+            return previews.map { preview ->
+                val id = newLocalId()
+                val source = File(android.net.Uri.parse(preview.uri).path ?: throw IOException("Not a file"))
+                val destination = File(directory, id)
+                source.copyTo(destination, overwrite = true)
+                copied += destination
+                val attachment = AttachmentRecord(
+                    localId = id,
+                    sessionId = sessionId,
+                    path = id,
+                    name = preview.name,
+                    mimeType = preview.mimeType,
+                    size = destination.length().takeIf { it > 0 } ?: preview.size,
+                    width = preview.width.takeIf { it > 0 },
+                    height = preview.height.takeIf { it > 0 },
+                    thumbhash = null,
+                    ref = null,
+                    createdAt = now,
+                )
+                attachment to fileEventRecord(UploadedAttachment("", attachment.name, attachment.size, preview.width, preview.height), id = id, time = now)
+            }
+        } catch (e: IOException) {
+            copied.forEach { it.delete() }
+            throw e
+        }
+    }
+
+    /** Copies nothing refers to any more (a session deleted, a send cut off before it was queued) go. */
+    private fun sweepFiles() {
+        val directory = files ?: return
+        val kept = store.attachments().filter { it.ref == null }.map { it.path }.toSet()
+        // A copy made in the last minute may belong to a send about to be queued.
+        val settled = clock() - 60_000
+        directory.listFiles()?.filter { it.name !in kept && it.lastModified() < settled }?.forEach { it.delete() }
+    }
+
+    /** A picture that does not name its blob yet: it is uploaded before anything after it goes. */
+    private val OutboxRecord.awaitsUpload get() = kind == OutboxKind.ATTACHMENT && content.isEmpty()
+
     /** Rows of a failed POST that are still SENDING; one failed meanwhile (the watchdog) stays failed. */
     private fun settleSending(sessionId: String, ids: List<String>, state: OutboxState, error: String?) = store.transaction {
         val sending = store.outbox(sessionId).filter { it.localId in ids && it.state == OutboxState.SENDING }.map { it.localId }
@@ -407,6 +545,11 @@ class MessageSender internal constructor(
 
         /** v3SessionRoutes.ts sendMessagesBodySchema: `messages` holds 1 to 100. */
         const val MAX_BATCH = 100
+
+        /** happy-ios SyncEngine's send options: a picture's upload is tried five times, 1 s doubling to at most 60 s apart. */
+        const val SEND_ATTEMPTS = 5
+        const val SEND_RETRY_INITIAL_MS = 1_000L
+        const val SEND_RETRY_MAXIMUM_MS = 60_000L
 
         private fun failureMessage(e: HttpStatusException) = "Server error: ${e.status}"
 

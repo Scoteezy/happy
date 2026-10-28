@@ -483,8 +483,23 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
 
     // Outbox
 
-    /** Accepts messages for delivery, after any already waiting for the session. */
-    fun enqueueOutbox(records: List<OutboxRecord>) = transaction {
+    /** Accepts messages for delivery, after any already waiting for the session, with the pictures they carry. */
+    fun enqueueOutbox(records: List<OutboxRecord>, attachments: List<AttachmentRecord> = emptyList()) = transaction {
+        for (attachment in attachments) {
+            db.insertWithOnConflict("attachments", null, ContentValues().apply {
+                put("local_id", attachment.localId)
+                put("session_id", attachment.sessionId)
+                put("path", attachment.path)
+                put("name", attachment.name)
+                put("mime_type", attachment.mimeType)
+                put("size", attachment.size)
+                put("width", attachment.width)
+                put("height", attachment.height)
+                put("thumbhash", attachment.thumbhash)
+                put("ref", attachment.ref)
+                put("created_at", attachment.createdAt)
+            }, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE)
+        }
         for (record in records) {
             val position = db.rawQuery("SELECT COALESCE(MAX(position), 0) + 1 FROM outbox", null).use { c ->
                 c.moveToFirst()
@@ -566,6 +581,52 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
 
     fun deleteOutbox(sessionId: String, localId: String) = transaction {
         if (db.delete("outbox", "local_id = ? AND session_id = ?", arrayOf(localId, sessionId)) > 0) dirty().outbox += sessionId
+        db.delete("attachments", "local_id = ? AND session_id = ?", arrayOf(localId, sessionId))
+    }
+
+    /** A failed row goes back in the queue with its attempts cleared. */
+    fun retryOutbox(sessionId: String, localId: String) = transaction {
+        val changed = db.update(
+            "outbox",
+            ContentValues().apply {
+                put("state", OutboxState.QUEUED.name)
+                put("attempts", 0)
+                put("error", null as String?)
+            },
+            "local_id = ? AND session_id = ? AND state = ?",
+            arrayOf(localId, sessionId, OutboxState.FAILED.name),
+        )
+        if (changed > 0) dirty().outbox += sessionId
+    }
+
+    /** The picture an ATTACHMENT outbox row carries. */
+    fun attachment(localId: String): AttachmentRecord? =
+        db.rawQuery("SELECT $ATTACHMENT_COLUMNS FROM attachments WHERE local_id = ?", arrayOf(localId)).use { c ->
+            if (c.moveToFirst()) c.toAttachment() else null
+        }
+
+    /** Every picture still kept, for sweeping files nothing refers to. */
+    fun attachments(): List<AttachmentRecord> =
+        db.rawQuery("SELECT $ATTACHMENT_COLUMNS FROM attachments", null).use { c -> buildList { while (c.moveToNext()) add(c.toAttachment()) } }
+
+    /**
+     * The picture is on the server as [ref]: its row is sealed now ([recordJson]
+     * and [content], the file event naming it) and goes back in the queue.
+     */
+    fun saveAttachmentUpload(sessionId: String, localId: String, ref: String, recordJson: String, content: String) = transaction {
+        db.update("attachments", ContentValues().apply { put("ref", ref) }, "local_id = ? AND session_id = ?", arrayOf(localId, sessionId))
+        val changed = db.update(
+            "outbox",
+            ContentValues().apply {
+                put("record", recordJson)
+                put("content", content)
+                put("state", OutboxState.QUEUED.name)
+                put("error", null as String?)
+            },
+            "local_id = ? AND session_id = ? AND state = ?",
+            arrayOf(localId, sessionId, OutboxState.SENDING.name),
+        )
+        if (changed > 0) dirty().outbox += sessionId
     }
 
     /** At startup: a send interrupted by the process dying is queued again (the server dedupes on localId). */
@@ -627,7 +688,7 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
     }
 
     fun clearAll() = transaction {
-        listOf("composer", "outbox", "messages", "sessions", "machines", "account", "sync_state").forEach { db.delete(it, null, null) }
+        listOf("composer", "attachments", "outbox", "messages", "sessions", "machines", "account", "sync_state").forEach { db.delete(it, null, null) }
         dirty().sessions = true
         dirty().sessionActivity = true
         dirty().machines = true
@@ -779,6 +840,23 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
             daemonStateJson = stringOrNull(8),
             daemonStateVersion = getLong(9),
             wrappedDataKey = getString(10),
+        )
+
+        private const val ATTACHMENT_COLUMNS =
+            "local_id, session_id, path, name, mime_type, size, width, height, thumbhash, ref, created_at"
+
+        private fun Cursor.toAttachment() = AttachmentRecord(
+            localId = getString(0),
+            sessionId = getString(1),
+            path = getString(2),
+            name = getString(3),
+            mimeType = getString(4),
+            size = getLong(5),
+            width = if (isNull(6)) null else getInt(6),
+            height = if (isNull(7)) null else getInt(7),
+            thumbhash = stringOrNull(8),
+            ref = stringOrNull(9),
+            createdAt = getLong(10),
         )
 
         private fun Cursor.toOutbox() = OutboxRecord(

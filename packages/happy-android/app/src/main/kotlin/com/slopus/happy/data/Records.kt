@@ -92,5 +92,24 @@ data class OutboxRecord(
     val serverSeq: Long?,
 )
 
+/**
+ * A picture accepted with a message (happy-ios `AttachmentRecord`): its
+ * copy at [path] (relative to the account's outbox files) until it is
+ * uploaded, then the server's [ref]. [localId] is its outbox row's.
+ */
+data class AttachmentRecord(
+    val localId: String,
+    val sessionId: String,
+    val path: String,
+    val name: String,
+    val mimeType: String,
+    val size: Long,
+    val width: Int?,
+    val height: Int?,
+    val thumbhash: String?,
+    val ref: String?,
+    val createdAt: Long,
+)
+
 /** Whether a session or machine is online, as its stored row says. */
 data class ActivityRow(val id: String, val active: Boolean, val activeAt: Long)

@@ -267,6 +267,7 @@ class AppGraph(
             store = store,
             parent = scope.coroutineContext[Job]!!,
             foreground = foreground,
+            outboxFiles = java.io.File(appContext.filesDir, "outbox"),
         )
         accountState.value = account
         account.start()
