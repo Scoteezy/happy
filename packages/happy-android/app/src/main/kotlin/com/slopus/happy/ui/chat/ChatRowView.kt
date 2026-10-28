@@ -80,6 +80,13 @@ internal class ChatPlanPainter {
                     val baseline = (f.midY * d).toFloat() - (fm.ascent + fm.descent) / 2
                     canvas.drawText(text, (f.maxX * d).toFloat() - width, baseline, paint)
                 }
+                is ChatDrawItem.Pulse -> {
+                    // iOS's opacity animation: 0.18 to 0.52 and back, 0.72s each way, ease in-out.
+                    val t = (SystemClock.uptimeMillis() % PULSE_PERIOD_MS) / PULSE_HALF_MS.toDouble()
+                    val p = if (t <= 1) t else 2 - t
+                    val eased = (1 - kotlin.math.cos(Math.PI * p)) / 2
+                    drawBox(canvas, item.box.copy(alpha = 0.18 + (0.52 - 0.18) * eased), d)
+                }
                 is ChatDrawItem.Scroller, is ChatDrawItem.Spinner -> Unit
             }
         }
@@ -113,6 +120,13 @@ internal class ChatPlanPainter {
     }
 
     fun hasElapsed(items: List<ChatDrawItem>) = items.any { it is ChatDrawItem.Elapsed }
+
+    fun hasPulse(items: List<ChatDrawItem>) = items.any { it is ChatDrawItem.Pulse }
+
+    private companion object {
+        const val PULSE_HALF_MS = 720L
+        const val PULSE_PERIOD_MS = 2 * PULSE_HALF_MS
+    }
 }
 
 /** Draws a plan that scrolls sideways (a code block's strip, a table's grid). */
@@ -147,6 +161,8 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     private val scrollers = ArrayList<Pair<HorizontalScrollView, ChatDrawItem.Scroller>>()
     private val spinners = ArrayList<Pair<ProgressBar, ChatDrawItem.Spinner>>()
     private var ticking = false
+    /** A pulse redraws every frame; a timer every 100ms. */
+    private var pulsing = false
 
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = hit(e, hold = false) != null || hit(e, hold = true) != null
@@ -216,7 +232,8 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
                 else -> Unit
             }
         }
-        ticking = painter.hasElapsed(plan.items)
+        pulsing = painter.hasPulse(plan.items)
+        ticking = pulsing || painter.hasElapsed(plan.items)
         requestLayout()
         invalidate()
         if (ticking) tick()
@@ -225,7 +242,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     private fun tick() {
         if (!ticking || !isAttachedToWindow) return
         invalidate()
-        postOnAnimationDelayed({ tick() }, 100)
+        if (pulsing) postOnAnimation { tick() } else postOnAnimationDelayed({ tick() }, 100)
     }
 
     override fun onAttachedToWindow() {

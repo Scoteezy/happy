@@ -23,6 +23,7 @@ import com.slopus.happy.chat.tools.permissionOptionState
 import com.slopus.happy.chat.tools.permissionOptions
 import com.slopus.happy.chat.tools.presentTool
 import com.slopus.happy.chat.tools.resultText
+import com.slopus.happy.chat.tools.PermissionChoice
 import com.slopus.happy.chat.tools.PermissionOptionState
 import com.slopus.happy.icons.Icon
 import com.slopus.happy.layout.BubblePalette
@@ -95,6 +96,8 @@ data class ChatRowInput(
     val expanded: Boolean = false,
     /** For an agent's message: copied a moment ago, so its button shows a tick. */
     val copied: Boolean = false,
+    /** For a tool waiting on a permission: the button whose answer is being sent. */
+    val permissionBusy: PermissionChoice? = null,
     val style: ChatRowStyle,
 )
 
@@ -112,7 +115,7 @@ class ChatRowRenderer(private val resources: Resources) {
     fun plan(input: ChatRowInput, width: Double): ChatRowPlan = when (val row = input.row) {
         is ChatRow.User -> userText(row, width, input.style)
         is ChatRow.AgentText -> agentText(row, input.copied, width, input.style)
-        is ChatRow.Tool -> toolCall(row.message, input.expanded, width, input.style)
+        is ChatRow.Tool -> toolCall(row.message, input.expanded, input.permissionBusy, width, input.style)
         is ChatRow.Event -> agentEvent(row.message, width, input.style)
     }
 
@@ -239,7 +242,7 @@ class ChatRowRenderer(private val resources: Resources) {
 
     // Tool rows (ToolView.tsx)
 
-    private fun toolCall(message: ChatMessage.ToolCallMessage, expanded: Boolean, width: Double, style: ChatRowStyle): ChatRowPlan {
+    private fun toolCall(message: ChatMessage.ToolCallMessage, expanded: Boolean, busy: PermissionChoice?, width: Double, style: ChatRowStyle): ChatRowPlan {
         val tool = message.tool
         val env = style.env
         val presentation = presentTool(message, toolText, style.compactTools, style.flavor, style.root)
@@ -258,7 +261,7 @@ class ChatRowRenderer(private val resources: Resources) {
         }.map { it.entry }.takeIf { it.isNotEmpty() }?.let { ChatPiece.stack(it) }
         val expandable = !awaitingDecision && full.isNotEmpty()
         val tap: ChatRowAction = if (expandable) ChatRowAction.ToggleTool(message.id) else ChatRowAction.OpenMessage(message.id)
-        val footer = if (tool.permission != null && tool.name != "AskUserQuestion") permissionFooter(message, style) else null
+        val footer = if (tool.permission != null && tool.name != "AskUserQuestion") permissionFooter(message, busy, style) else null
         val glyphSize = ToolCardLayout.Metrics.statusIconSize
         val glyph = presentation.statusIcon.takeIf { it != ToolStatusIcon.None }?.let { Size(glyphSize, glyphSize) }
         val elapsed = if (tool.state == ToolState.Running) elapsedSize(env) else null
@@ -461,8 +464,12 @@ class ChatRowRenderer(private val resources: Resources) {
         )
     }
 
-    /** PermissionFooter: a column of outlined buttons, the answered one shaded, the others faded. */
-    private fun permissionFooter(message: ChatMessage.ToolCallMessage, style: ChatRowStyle): ChatPiece? {
+    /**
+     * PermissionFooter: a column of outlined buttons, the answered one shaded,
+     * the others faded. While an answer is on its way its button pulses and
+     * none takes a tap.
+     */
+    private fun permissionFooter(message: ChatMessage.ToolCallMessage, busy: PermissionChoice?, style: ChatRowStyle): ChatPiece? {
         val tool = message.tool
         val permission = tool.permission ?: return null
         val options = permissionOptions(permission, tool.name, tool.input, style.flavor)
@@ -487,7 +494,10 @@ class ChatRowRenderer(private val resources: Resources) {
                 val selected = states[index] == PermissionOptionState.Selected
                 items += ChatDrawItem.Box(ChatBox(box, if (selected) Palette.surfaceHighest else Palette.surface, Palette.divider, m.buttonBorder, m.buttonRadius, alpha = alpha))
                 items += ChatDrawItem.Text(labels[index].layout(Rect(0.0, 0.0, labelFrame.width, labelFrame.height)), labelFrame, alpha)
-                if (pending) hits += ChatHit(box, ChatRowAction.Permission(message.id, option.answer, option.mode))
+                if (pending && busy == option.choice) {
+                    items += ChatDrawItem.Pulse(ChatBox(box.insetBy(-1.0, -1.0), null, Palette.text, 2.0, m.buttonRadius + 1))
+                }
+                if (pending && busy == null) hits += ChatHit(box, ChatRowAction.Permission(message.id, option.choice, option.answer, option.mode))
             }
             items to hits
         }

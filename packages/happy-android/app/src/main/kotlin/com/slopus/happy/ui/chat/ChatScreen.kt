@@ -29,6 +29,7 @@ import com.slopus.happy.chat.SyncChatActions
 import com.slopus.happy.chat.SyncChatMessagesSource
 import com.slopus.happy.chat.SyncChatPresenceSource
 import com.slopus.happy.chat.resolveChatHeaderGit
+import com.slopus.happy.chat.tools.PermissionChoice
 import com.slopus.happy.icons.Icon
 import com.slopus.happy.layout.BubblePalette
 import com.slopus.happy.layout.LayoutInsets
@@ -39,6 +40,7 @@ import com.slopus.happy.layout.chat.ChatScreenLayout
 import com.slopus.happy.model.Settings
 import com.slopus.happy.model.avatarId
 import com.slopus.happy.model.resolveAvatarHarness
+import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.ui.components.Alerts
 import com.slopus.happy.ui.components.AvatarStyle
@@ -94,6 +96,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
     private var expandedTools = setOf<String>()
     private var copiedMessageId: String? = null
     private var copiedJob: Job? = null
+    /** Tools whose permission answer is on its way, by message id, with the button tapped. */
+    private var permissionBusy = mapOf<String, PermissionChoice>()
     private var dockDetailsVisible = true
     private var loadingOlder = false
     private var listWidth = 0.0
@@ -108,6 +112,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         val rows: List<ChatRow>,
         val expanded: Set<String>,
         val copied: String?,
+        val permissionBusy: Map<String, PermissionChoice>,
         val style: ChatRowStyle,
         val width: Double,
         /** A row the reader just opened or closed. */
@@ -193,14 +198,17 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
 
     private fun requestPlans(pinning: String? = null) {
         if (listWidth <= 0) return
-        planRequests.value = PlanRequest(state.snapshot.rows, expandedTools, copiedMessageId, style(), listWidth, pinning)
+        planRequests.value = PlanRequest(state.snapshot.rows, expandedTools, copiedMessageId, permissionBusy, style(), listWidth, pinning)
     }
 
     /** On [planner]: every row's plan, made again only where its input or the width changed. */
     private fun plan(request: PlanRequest): Planned {
         val seen = HashSet<String>(request.rows.size)
         val rows = request.rows.map { row ->
-            val input = ChatRowInput(row, expanded = row.key in request.expanded, copied = row.key == request.copied, style = request.style)
+            val input = ChatRowInput(
+                row, expanded = row.key in request.expanded, copied = row.key == request.copied,
+                permissionBusy = request.permissionBusy[row.key], style = request.style,
+            )
             val key = PlanKey(input, request.width)
             seen += row.key
             plans[row.key]?.takeIf { it.first == key }?.second ?: renderer.plan(input, request.width).also { plans[row.key] = key to it }
@@ -255,16 +263,27 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             is ChatRowAction.OpenLink -> open(action.url)
             is ChatRowAction.Option -> scope.launch { runCatching { actions.send(sessionId, action.text) } }
             is ChatRowAction.Retry -> scope.launch { runCatching { actions.retry(sessionId, action.localId) } }
-            is ChatRowAction.Permission -> scope.launch {
-                try {
-                    actions.answerPermission(sessionId, action.answer)
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Alerts.show(context, context.getString(R.string.common_error), e.message)
-                }
-            }
+            is ChatRowAction.Permission -> answer(action)
             is ChatRowAction.OpenMessage -> Unit
+        }
+    }
+
+    /**
+     * Sends a permission answer, then switches the session's mode when the
+     * button asks for it. A failed answer leaves the buttons as they were,
+     * so the reader can try again.
+     */
+    private fun answer(action: ChatRowAction.Permission) {
+        if (action.toolId in permissionBusy) return
+        permissionBusy = permissionBusy + (action.toolId to action.choice)
+        requestPlans()
+        scope.launch {
+            val sent = runCatching { actions.answerPermission(sessionId, action.answer) }
+            if (sent.isSuccess && action.mode != null) {
+                runCatching { actions.setModes(sessionId, mapOf(AgentModeField.PERMISSION_MODE to action.mode)) }
+            }
+            permissionBusy = permissionBusy - action.toolId
+            requestPlans()
         }
     }
 

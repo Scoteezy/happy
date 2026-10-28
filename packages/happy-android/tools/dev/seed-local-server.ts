@@ -7,7 +7,7 @@
  * Run from packages/happy-cli, against `pnpm --filter happy-server standalone:dev`
  * (--reset-chat writes the transcript again):
  *
- *     npx tsx ../happy-android/tools/dev/seed-local-server.ts --server http://localhost:3005 [--secret <base64url>] [--offline] [--reset-chat]
+ *     npx tsx ../happy-android/tools/dev/seed-local-server.ts --server http://localhost:3005 [--secret <base64url>] [--offline] [--reset-chat] [--reset-permission]
  *
  * It prints the account's secret key; sign in on a device with "Restore with
  * secret key". Pass the same --secret again to reuse the account. --offline
@@ -23,6 +23,7 @@ import {
     decodeBase64,
     encodeBase64,
     encodeBase64Url,
+    decryptWithDataKey,
     encryptWithDataKey,
     getRandomBytes,
     libsodiumEncryptForPublicKey,
@@ -44,6 +45,7 @@ const option = (name: string) => {
 const server = option('server') ?? 'http://localhost:3005'
 const offline = args.includes('--offline')
 const resetChat = args.includes('--reset-chat')
+const resetPermission = args.includes('--reset-permission')
 const secret = option('secret') ? decodeBase64(option('secret')!, 'base64url') : getRandomBytes(32)
 const client = { 'X-Happy-Client': 'cli/seed-local-server' }
 
@@ -55,12 +57,22 @@ type SessionSeed = {
     archived?: boolean
     /** Minutes ago the session last did anything. */
     minutesAgo: number
+    /** The agent state it is created with (a pending permission request). */
+    agentState?: object
 }
 
 const home = '/Users/sam'
 const machineId = 'seed-macbook'
 const sessions: SessionSeed[] = [
     { tag: 'fix-login', summary: 'Fix the login redirect loop', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 3 },
+    {
+        tag: 'perm-demo', summary: 'Clean up the build cache', path: `${home}/code/happy`, flavor: 'claude', minutesAgo: 1,
+        agentState: {
+            controlledByUser: false,
+            requests: { toolu_rm: { tool: 'Bash', arguments: { command: 'rm -rf .cache/build', description: 'Remove the stale build cache' }, createdAt: Date.now() } },
+            completedRequests: {},
+        },
+    },
     { tag: 'dark-mode', summary: 'Add dark mode to settings', path: `${home}/code/happy/.dev/worktree/dark-mode`, flavor: 'claude', minutesAgo: 12 },
     { tag: 'api-docs', summary: 'Write API docs for sessions', path: `${home}/code/happy-server`, flavor: 'codex', minutesAgo: 47 },
     { tag: 'flaky-tests', summary: 'Investigate flaky sync tests', path: `${home}/code/happy/.dev/worktree/flaky-tests`, flavor: 'claude', minutesAgo: 95 },
@@ -116,12 +128,13 @@ async function main() {
         return opened
     }
 
-    const created: { id: string; seed: SessionSeed; key: Uint8Array }[] = []
-    // --reset-chat: the session holding the transcript is deleted and made
-    // again, so a changed transcript is written afresh.
-    if (resetChat) {
+    const created: { id: string; seed: SessionSeed; key: Uint8Array; agentStateVersion: number }[] = []
+    // --reset-chat / --reset-permission: the session holding that transcript
+    // is deleted and made again, so it is written afresh.
+    const stales = [...(resetChat ? ['fix-login'] : []), ...(resetPermission ? ['perm-demo'] : [])]
+    for (const tag of stales) {
         const stale = await axios.post(`${server}/v1/sessions`, {
-            tag: 'fix-login',
+            tag,
             metadata: encodeBase64(encryptWithDataKey({}, getRandomBytes(32))),
             agentState: null,
             dataEncryptionKey: seal(getRandomBytes(32)),
@@ -143,25 +156,30 @@ async function main() {
                 flavor: seed.flavor,
                 summary: { text: seed.summary, updatedAt: Date.now() - seed.minutesAgo * 60_000 },
             }, key)),
-            agentState: null,
+            agentState: seed.agentState ? encodeBase64(encryptWithDataKey(seed.agentState, key)) : null,
             dataEncryptionKey: seal(key),
         }, { headers })
         const id: string = response.data.session.id
-        created.push({ id, seed, key: unseal(response.data.session.dataEncryptionKey) })
+        created.push({ id, seed, key: unseal(response.data.session.dataEncryptionKey), agentStateVersion: response.data.session.agentStateVersion ?? 0 })
         if (seed.archived) {
             await axios.post(`${server}/v1/sessions/${id}/archive`, {}, { headers })
         }
     }
 
-    // One transcript, on the newest session, written once.
-    const chat = created.find(({ seed }) => seed.tag === 'fix-login')!
-    const existing = await axios.get(`${server}/v3/sessions/${chat.id}/messages?after_seq=0&limit=1`, { headers })
-    if ((existing.data.messages ?? []).length === 0) {
+    // The transcripts, each written once: the finished turn, and one waiting on a permission.
+    for (const [tag, records] of [['fix-login', transcript()], ['perm-demo', permissionTranscript()]] as const) {
+        await writeTranscript(created.find(({ seed }) => seed.tag === tag)!, records)
+    }
+
+    /** Writes [records]; unless [append], only into a session that has none yet. */
+    async function writeTranscript(chat: { id: string; key: Uint8Array }, records: unknown[], append = false) {
+        const existing = await axios.get(`${server}/v3/sessions/${chat.id}/messages?after_seq=0&limit=1`, { headers })
+        if (!append && (existing.data.messages ?? []).length > 0) return
         // One at a time, a few milliseconds apart: the apps order a chat by
         // when each record was written, and a batch writes them all at once.
         // An envelope carries its own time, from when it was mapped, where a
         // user record takes the server's, so each envelope is stamped now.
-        for (const built of transcript() as { role: string; content: object }[]) {
+        for (const built of records as { role: string; content: object }[]) {
             const content = built.role === 'session' ? { ...built, content: { ...built.content, time: Date.now() } } : built
             const record = { content: encodeBase64(encryptWithDataKey(content, chat.key)), localId: randomUUID() }
             await axios.post(`${server}/v3/sessions/${chat.id}/messages`, { messages: [record] }, { headers })
@@ -197,6 +215,62 @@ async function main() {
         })
     }
     machine.on('connect', beat)
+    // The server takes no agent state when a session is made: a session with
+    // one sets it over its own socket, once (or again with --reset-permission),
+    // and answers the app's permission RPC as the CLI does: the request moves
+    // to completedRequests and, approved, the command "runs".
+    created.filter(({ seed }) => !seed.archived).forEach((session, index) => {
+        if (!session.seed.agentState) return
+        const socket = live[index]
+        let version = session.agentStateVersion
+        let agentState = session.seed.agentState as { requests: Record<string, object>; completedRequests: Record<string, object> }
+        const writeState = () => new Promise<void>((resolve) => {
+            socket.emit('update-state', {
+                sid: session.id,
+                expectedVersion: version,
+                agentState: encodeBase64(encryptWithDataKey(agentState, session.key)),
+            }, (answer: { result: string; version?: number }) => {
+                if (answer.version !== undefined) version = answer.version
+                console.error('agent state', session.seed.tag, answer.result, version)
+                resolve()
+            })
+        })
+        socket.on('connect', () => {
+            socket.emit('rpc-register', { method: `${session.id}:permission` })
+            if (version === 0 || resetPermission) {
+                agentState = {
+                    ...agentState,
+                    requests: Object.fromEntries(Object.entries(agentState.requests).map(([id, request]) => [id, { ...request, createdAt: Date.now() }])),
+                }
+                void writeState()
+            }
+        })
+        socket.on('rpc-request', async (data: { method: string; params: string }, callback: (response: string) => void) => {
+            const answer = decryptWithDataKey(decodeBase64(data.params), session.key) as { id: string; approved: boolean; reason?: string; mode?: string; allowTools?: string[] }
+            console.error('permission answer', JSON.stringify(answer))
+            // A CLI takes a moment to answer; the tapped button pulses meanwhile.
+            await new Promise((resolve) => setTimeout(resolve, 1500))
+            const request = agentState.requests[answer.id]
+            if (request) {
+                const requests = { ...agentState.requests }
+                delete requests[answer.id]
+                agentState = {
+                    ...agentState,
+                    requests,
+                    completedRequests: {
+                        ...agentState.completedRequests,
+                        [answer.id]: {
+                            ...request, completedAt: Date.now(), status: answer.approved ? 'approved' : 'denied',
+                            reason: answer.reason, mode: answer.mode, allowTools: answer.allowTools, allowedTools: answer.allowTools,
+                        },
+                    },
+                }
+                await writeState()
+                if (answer.approved) await writeTranscript(session, permissionResult(), true)
+            }
+            callback(encodeBase64(encryptWithDataKey({}, session.key)))
+        })
+    })
     setInterval(beat, 15_000)
     console.error('keeping the computer and its sessions online; Ctrl-C to stop')
 }
@@ -283,6 +357,56 @@ function transcript(): unknown[] {
     user('Yes please, and keep it short.')
     assistant([{ type: 'text', text: 'Added `expired session does not loop` to `guard.test.ts`. It fails on the old code and passes now.' }])
     emit(closeClaudeTurnWithStatus(state, 'completed').envelopes)
+    return records
+}
+
+/** The permission chat's protocol state, shared by its transcript and the turn's end once approved. */
+const permissionState: ClaudeSessionProtocolState = {
+    currentTurnId: null,
+    uuidToProviderSubagent: new Map(),
+    taskPromptToSubagents: new Map(),
+    providerSubagentToSessionSubagent: new Map(),
+    subagentTitles: new Map(),
+    bufferedSubagentMessages: new Map(),
+    hiddenParentToolCalls: new Set(),
+    startedSubagents: new Set(),
+    activeSubagents: new Set(),
+}
+
+/** A Claude turn stopped on a Bash call that needs the person's permission. */
+function permissionTranscript(): unknown[] {
+    const records: unknown[] = []
+    const state = permissionState
+    records.push({ role: 'user', content: { type: 'text', text: 'The build keeps picking up stale output. Clear the build cache.' }, meta: { sentFrom: 'ios' } })
+    const mapped = mapClaudeLogMessageToSessionEnvelopes({
+        uuid: randomUUID(),
+        type: 'assistant',
+        message: {
+            role: 'assistant', model: 'claude-sonnet-4-5', content: [
+                { type: 'text', text: 'The stale output lives in `.cache/build`. I will remove it.' },
+                { type: 'tool_use', id: 'toolu_rm', name: 'Bash', input: { command: 'rm -rf .cache/build', description: 'Remove the stale build cache' } },
+            ],
+        },
+    } as never, state)
+    state.currentTurnId = mapped.currentTurnId
+    mapped.envelopes.forEach((content: unknown) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
+    return records
+}
+
+/** The approved command's result and Claude's last word, closing the turn. */
+function permissionResult(): unknown[] {
+    const records: unknown[] = []
+    const state = permissionState
+    const push = (envelopes: unknown[]) => envelopes.forEach((content) => records.push({ role: 'session', content, meta: { sentFrom: 'cli' } }))
+    for (const line of [
+        { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_rm', content: '' }] } },
+        { type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-4-5', content: [{ type: 'text', text: 'Removed `.cache/build`. The next build starts clean.' }] } },
+    ]) {
+        const mapped = mapClaudeLogMessageToSessionEnvelopes({ uuid: randomUUID(), ...line } as never, state)
+        state.currentTurnId = mapped.currentTurnId
+        push(mapped.envelopes)
+    }
+    push(closeClaudeTurnWithStatus(state, 'completed').envelopes)
     return records
 }
 

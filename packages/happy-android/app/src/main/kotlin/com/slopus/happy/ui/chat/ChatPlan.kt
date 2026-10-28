@@ -35,6 +35,8 @@ sealed interface ChatDrawItem {
     class Spinner(val frame: Rect, val tint: ColorToken) : ChatDrawItem
     /** A running tool's timer, counting from [since] (ms). */
     class Elapsed(val since: Long, val frame: Rect, val env: ChatTextEnv) : ChatDrawItem
+    /** A ring breathing around the permission button whose answer is on its way. */
+    class Pulse(val box: ChatBox) : ChatDrawItem
 }
 
 /** What a tap on a row does. */
@@ -50,7 +52,12 @@ sealed interface ChatRowAction {
     data class Retry(val localId: String) : ChatRowAction
     data class ToggleGroup(val id: String) : ChatRowAction
     /** A permission footer button: the answer, and the mode the session switches to locally. */
-    data class Permission(val toolId: String, val answer: com.slopus.happy.chat.PermissionAnswer, val mode: String?) : ChatRowAction
+    data class Permission(
+        val toolId: String,
+        val choice: com.slopus.happy.chat.tools.PermissionChoice,
+        val answer: com.slopus.happy.chat.PermissionAnswer,
+        val mode: String?,
+    ) : ChatRowAction
 }
 
 class ChatHit(val frame: Rect, val action: ChatRowAction, val hold: Boolean = false)
