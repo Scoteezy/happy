@@ -13,6 +13,8 @@ import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.LocalCaches
+import com.slopus.happy.model.settings.ConnectApi
+import com.slopus.happy.model.settings.HttpConnectApi
 import com.slopus.happy.model.settings.LanguageController
 import com.slopus.happy.model.settings.SettingsRepository
 import com.slopus.happy.net.ConnectionStatus
@@ -119,6 +121,9 @@ class AppGraph(
     /** The UI language (text/index.ts), from the synced preferredLanguage at start. */
     val language = LanguageController(context, context.getSharedPreferences(LanguageController.PREFS_NAME, Context.MODE_PRIVATE))
         .also { it.follow(settings.settings, scope) }
+
+    /** Connected accounts (Settings › Claude Code, GitHub) for the signed-in account. */
+    val connect: ConnectApi = HttpConnectApi(http) { (auth.state.value as? AuthState.SignedIn)?.credentials?.token }
 
     /** The newest What's New entry the user has seen (changelog/storage.ts). */
     val changelog = ChangelogReadMarker(context.getSharedPreferences(ChangelogReadMarker.PREFS_NAME, Context.MODE_PRIVATE))

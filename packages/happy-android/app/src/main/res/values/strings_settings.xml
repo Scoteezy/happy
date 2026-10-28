@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Settings copy that happy-ios writes inline (Strings.swift and
+  Strings/SettingsPages.swift, Strings/SupportUs.swift), English only.
+  strings.xml is generated from happy-app's catalogs; this file is not.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- SettingsView.tsx:381 -->
+    <string name="links_github_detail">slopus/happy</string>
+    <!-- SettingsView.tsx:275 -->
+    <string name="settings_claude_code">Claude Code</string>
+    <!-- Strings.Voice.subtitle -->
+    <string name="settings_voice_row_subtitle">Talk to your coding agents</string>
+
+    <!-- settings/connect/claude.tsx OAuthViewUnsupported -->
+    <string name="connect_claude_screen_title">Connect to Claude</string>
+    <string name="connect_claude_title">Connect Claude</string>
+    <string name="connect_claude_instruction">Run the following command in your terminal:</string>
+    <string name="connect_claude_command">happy connect claude</string>
+
+    <!-- happy-ios SupportUsViewController: the interim purchase page -->
+    <string name="support_us_subscriptions">Subscriptions</string>
+    <string name="support_us_subscribe">Subscribe</string>
+    <string name="support_us_restore">Restore purchases</string>
+    <string name="support_us_not_available">Unavailable</string>
+    <string name="support_us_restore_unavailable">Restoring purchases is unavailable right now. Please try again later.</string>
+    <string name="support_us_status_unavailable">Subscription status is unavailable in this version. Manage existing subscriptions in the store where you subscribed.</string>
+    <string name="support_us_manage">Manage subscriptions</string>
+    <string name="support_us_store">Google Play</string>
+    <string name="support_us_manage_footer">Google Play opens subscriptions for your Google Account. For subscriptions bought elsewhere, use the original store.</string>
+    <string name="support_us_link_failed">Couldn\'t open the link. Please try again.</string>
+
+    <!-- settings/agents.tsx -->
+    <string name="agents_machines">Machines</string>
+    <string name="agents_no_machines">No connected machines</string>
+    <string name="agents_no_machines_subtitle">Run Happy on a computer to connect it</string>
+    <string name="agents_defaults">Defaults</string>
+    <string name="agents_clear_overrides">Clear Overrides</string>
+    <string name="agents_clear_overrides_subtitle">Return every agent to code defaults</string>
+    <string name="agents_use_code_default">Use code default</string>
+    <string name="agents_custom_model">Custom model…</string>
+    <string name="agents_custom_model_subtitle">Enter an exact model ID</string>
+    <string name="agents_custom_model_title">Custom Codex model</string>
+    <string name="agents_custom_model_message">Enter an exact model ID. Availability depends on your Codex account or API configuration.</string>
+    <string name="agents_custom_model_placeholder">model-id</string>
+
+    <!-- settings/account.tsx's push rows, hard-coded English there -->
+    <string name="push_title">Push Notifications</string>
+    <string name="push_footer">Shows every push token registered on your account. Tap an old token to delete it.</string>
+    <string name="push_permission">Permission</string>
+    <string name="push_request_again">Request Permission Again</string>
+    <string name="push_enabled">Push notifications are enabled for this device.</string>
+    <string name="push_open_settings_title">Open Settings</string>
+    <string name="push_opened_settings">The system will not show the permission prompt again, so Happy opened Settings instead.</string>
+    <string name="push_not_granted">Push notification permission was not granted.</string>
+    <string name="push_request_failed">Failed to request push notification permission.</string>
+    <string name="push_registered_tokens">Registered Tokens (%1$d)</string>
+    <string name="push_tokens_footer">Current-device metadata comes from this phone. Older tokens use their token fingerprint plus server timestamps.</string>
+    <string name="push_no_tokens">No registered push tokens</string>
+    <string name="push_no_tokens_subtitle">Once this device is registered, it will appear here.</string>
+    <string name="push_delete_title">Delete Push Token</string>
+    <string name="push_delete_message">Remove %1$s from your account?</string>
+    <string name="push_delete_failed">Failed to delete push token.</string>
+    <string name="push_load_failed">Failed to load push notification settings.</string>
+    <string name="push_reregister">Re-register This Device</string>
+    <string name="push_refreshed">This device push token was refreshed.</string>
+    <string name="push_not_enabled_yet">Push notifications are not enabled for this device yet.</string>
+    <string name="push_refresh_failed">Failed to refresh this device push token.</string>
+    <string name="push_this_device">This device</string>
+    <string name="push_reregister_subtitle">Fetches the current Expo token and registers it again.</string>
+    <string name="push_reregister_current">Current token %1$s</string>
+</resources>

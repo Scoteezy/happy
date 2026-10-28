@@ -2,7 +2,6 @@ package com.slopus.happy.ui.onboarding
 
 import android.content.Context
 import android.view.View
-import android.widget.Switch
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
@@ -25,8 +24,6 @@ import kotlinx.coroutines.launch
 class OnboardingSettingsScreen(
     context: Context,
     private val graph: AppGraph,
-    /** Opened from home's gear until Settings is ported: the footer, about an empty account, does not apply. */
-    private val standIn: Boolean = false,
 ) : BarScreen(context) {
     private val list = GroupedListView(context)
 
@@ -55,7 +52,7 @@ class OnboardingSettingsScreen(
         ) { push(ServerScreen(context, graph)) }
         val sections = mutableListOf<View>(ItemGroupView(context, rows = listOf(server)))
         if (graph.stemCells.isAvailable) {
-            val toggle = Switch(context).apply {
+            val toggle = ItemRowView.switch(context).apply {
                 isChecked = graph.stemCells.directConnection
                 contentDescription = "stem-settings-toggle:direct-connection"
                 setOnCheckedChangeListener { _, on -> graph.stemCells.directConnection = on }
@@ -77,7 +74,7 @@ class OnboardingSettingsScreen(
                 isDestructive = true,
             ) { logout() }
             logout.showsChevron = false
-            sections += ItemGroupView(context, footer = if (standIn) null else context.getString(R.string.onboarding_logout_footer), rows = listOf(logout))
+            sections += ItemGroupView(context, footer = context.getString(R.string.onboarding_logout_footer), rows = listOf(logout))
         }
         list.sections = sections
     }

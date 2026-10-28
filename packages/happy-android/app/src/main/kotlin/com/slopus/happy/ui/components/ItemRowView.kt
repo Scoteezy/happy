@@ -227,6 +227,14 @@ class ItemRowView(
 
         private val ColorDrawableMask = android.graphics.drawable.ColorDrawable(0xFFFFFFFF.toInt())
 
+        /** The platform's switch, in the app's appearance rather than the system's. */
+        fun switch(context: Context): Switch = Switch(
+            android.view.ContextThemeWrapper(
+                context,
+                if (Theme.isDark) android.R.style.Theme_DeviceDefault else android.R.style.Theme_DeviceDefault_Light,
+            ),
+        )
+
         /** A row with a switch, the way appearance.tsx builds most of its rows. The switch changes on its own; [onChange] hears about it. */
         fun toggle(
             context: Context,
@@ -237,12 +245,7 @@ class ItemRowView(
             onChange: (Boolean) -> Unit,
         ): ItemRowView {
             val row = ItemRowView(context, title, subtitle, icon = icon)
-            // The platform's switch, in the app's appearance rather than the system's.
-            val themed = android.view.ContextThemeWrapper(
-                context,
-                if (Theme.isDark) android.R.style.Theme_DeviceDefault else android.R.style.Theme_DeviceDefault_Light,
-            )
-            val toggle = Switch(themed).apply {
+            val toggle = switch(context).apply {
                 isChecked = isOn
                 setOnCheckedChangeListener { _, checked -> onChange(checked) }
             }

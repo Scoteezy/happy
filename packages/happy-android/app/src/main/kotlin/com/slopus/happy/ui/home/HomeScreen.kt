@@ -43,6 +43,8 @@ import com.slopus.happy.ui.nav.Screen
 import com.slopus.happy.ui.onboarding.LinkComputerContentView
 import com.slopus.happy.ui.onboarding.OnboardingScreenView
 import com.slopus.happy.ui.onboarding.OnboardingSettingsScreen
+import com.slopus.happy.ui.settings.ChangelogScreen
+import com.slopus.happy.ui.settings.SettingsScreen
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.stemcells.StemCellsLinkScreen
 import com.slopus.happy.ui.theme.Theme
@@ -269,17 +271,14 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
             when (item.itemId) {
                 FLAT -> graph.settings.change { it.copy(sessionListGrouping = SessionListGrouping.Flat) }
                 PROJECT -> graph.settings.change { it.copy(sessionListGrouping = SessionListGrouping.Project) }
-                APPEARANCE -> notPorted(context.getString(R.string.sessions_filter_appearance_settings))
+                APPEARANCE -> push(com.slopus.happy.ui.settings.AppearanceScreen(context, graph))
             }
             true
         }
         popup.show()
     }
 
-    private fun openSettings() {
-        // Settings is not ported yet; the onboarding settings hold the server and logout meanwhile.
-        push(OnboardingSettingsScreen(context, graph, standIn = true))
-    }
+    private fun openSettings() = push(SettingsScreen(context, graph))
 
     private fun notPorted(title: String) = Alerts.show(context, title, NOT_PORTED)
 
@@ -307,7 +306,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
 
     override fun openTroubleshoot() = notPorted(context.getString(R.string.onboarding_offline_troubleshoot))
 
-    override fun openWhatsNew() = notPorted(context.getString(R.string.update_banner_whats_new))
+    override fun openWhatsNew() = push(ChangelogScreen(context, graph))
 
     override fun openStore() = Alerts.open(context, "market://details?id=${context.packageName}")
 

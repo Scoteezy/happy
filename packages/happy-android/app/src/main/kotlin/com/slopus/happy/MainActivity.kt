@@ -1,8 +1,10 @@
 package com.slopus.happy
 
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.LocaleList
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import com.slopus.happy.connect.DeepLinks
@@ -16,6 +18,15 @@ class MainActivity : ComponentActivity() {
     private lateinit var coordinator: AppCoordinator
     lateinit var notificationPermission: ActivityNotificationPermission
         private set
+
+    /** The UI language (text/index.ts): the synced choice, else the device's, else English, on every Android version. */
+    override fun attachBaseContext(newBase: Context) {
+        val language = (newBase.applicationContext as? HappyApplication)?.graph?.language?.language?.value
+        if (language == null) return super.attachBaseContext(newBase)
+        val config = Configuration(newBase.resources.configuration)
+        config.setLocales(LocaleList(language.locale))
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()

@@ -78,14 +78,14 @@ object PushText {
         permission.status == PushPermissionStatus.Unsupported -> "Push notification permissions are only managed on mobile devices."
         permission.granted -> "This device can receive push notifications."
         permission.canAskAgain -> "The system prompt can still be shown again from the app."
-        else -> "iOS has stopped prompting. Open system settings to enable notifications again."
+        else -> "Android has stopped prompting. Open system settings to enable notifications again."
     }
 
     /** The "Request Permission Again" row's subtitle. */
     fun requestSubtitle(permission: PushPermission?): String = when {
         permission?.status == PushPermissionStatus.Unsupported -> "Push notification permissions are only available on iPhone and Android."
-        permission?.canAskAgain == true -> "Shows the system prompt again if iOS still allows it."
-        else -> "Opens system settings when iOS will not prompt again."
+        permission?.canAskAgain == true -> "Shows the system prompt again if Android still allows it."
+        else -> "Opens system settings when Android will not prompt again."
     }
 
     /** buildPushTokenSubtitle, with `toLocaleString` as the default locale's medium date and time. */

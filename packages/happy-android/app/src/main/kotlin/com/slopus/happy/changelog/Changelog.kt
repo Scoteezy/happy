@@ -94,3 +94,83 @@ class ChangelogReadMarker(private val prefs: SharedPreferences) {
         const val LAST_VIEWED_KEY = "changelog-last-viewed-title"
     }
 }
+
+/**
+ * The markdown CHANGELOG.md entries use, as changelog.tsx's MarkdownView
+ * shows it (happy-ios `ChangelogMarkdown`): bullet items (`- ` or `* `) and
+ * paragraphs (consecutive lines joined by a space), with bold runs and links.
+ */
+object ChangelogMarkdown {
+    sealed interface Span {
+        data class Text(val text: String, val bold: Boolean) : Span
+        data class Link(val label: String, val url: String) : Span
+    }
+
+    sealed interface Block {
+        val spans: List<Span>
+
+        data class Bullet(override val spans: List<Span>) : Block
+        data class Paragraph(override val spans: List<Span>) : Block
+    }
+
+    fun parse(markdown: String): List<Block> {
+        val blocks = mutableListOf<Block>()
+        val paragraph = mutableListOf<String>()
+        fun flushParagraph() {
+            if (paragraph.isEmpty()) return
+            blocks += Block.Paragraph(spans(paragraph.joinToString(" ")))
+            paragraph.clear()
+        }
+        for (rawLine in markdown.split("\n")) {
+            val line = rawLine.trim(' ', '\t')
+            when {
+                line.isEmpty() -> flushParagraph()
+                line.startsWith("- ") || line.startsWith("* ") -> {
+                    flushParagraph()
+                    blocks += Block.Bullet(spans(line.substring(2)))
+                }
+                else -> paragraph += line
+            }
+        }
+        flushParagraph()
+        return blocks
+    }
+
+    /** Inline spans. Unclosed markers are kept as text. */
+    fun spans(text: String): List<Span> {
+        val spans = mutableListOf<Span>()
+        val plain = StringBuilder()
+        var bold = false
+        var index = 0
+        fun flush() {
+            if (plain.isEmpty()) return
+            spans += Span.Text(plain.toString(), bold)
+            plain.clear()
+        }
+        while (index < text.length) {
+            if (text.startsWith("**", index) && (bold || text.indexOf("**", index + 2) >= 0)) {
+                flush()
+                bold = !bold
+                index += 2
+                continue
+            }
+            if (text[index] == '[') {
+                val close = text.indexOf("](", index)
+                val end = if (close >= 0) text.indexOf(')', close + 2) else -1
+                if (close >= 0 && end >= 0) {
+                    val label = text.substring(index + 1, close)
+                    if (!label.contains(']')) {
+                        flush()
+                        spans += Span.Link(label, text.substring(close + 2, end))
+                        index = end + 1
+                        continue
+                    }
+                }
+            }
+            plain.append(text[index])
+            index += 1
+        }
+        flush()
+        return spans
+    }
+}

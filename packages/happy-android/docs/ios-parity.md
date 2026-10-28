@@ -63,7 +63,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 
 ### Foundation
 
-- [~] `:layout` module: geometry, `Measurable`, design tokens (`Palette`, `TextStyles`, `Spacing`, `Radius`; Stem Cells palette generated). Ported so far: round button, onboarding, checklists, wordmark, navigation bar, Stem Cells link, item rows/groups, grouped list, settings header, secret key card, restore, server form; the rest come with their screens
+- [~] `:layout` module: geometry, `Measurable`, design tokens (`Palette`, `TextStyles`, `Spacing`, `Radius`; Stem Cells palette generated). Ported so far: round button, onboarding, checklists, wordmark, navigation bar, Stem Cells link, item rows/groups, grouped list, settings header, secret key card, restore, server form, settings pages (profile header, dropdown and options, bubble preview, connect command, changelog); the rest come with their screens
 - [x] Session list sync: `changedSince` deltas, live `delete-session`, and a full listing that drops sessions deleted elsewhere. That listing runs on first sync and daily, as on iOS, and also after every socket connect (`SyncEngine.requestFullListing`). The last is a deliberate departure: iOS keeps a session deleted while the app was offline until its next daily reconcile, which showed as duplicates on Home. Evidence: `session-deletion/before-after-reconnect.png` (stale copies gone on connect), `session-deletion/live-delete.png`
 - [x] `:icons` module: Ionicons/Octicons/etc. outlines from the iOS generated tables, `GlyphOutline` decoder
 - [x] Fonts: IBM Plex Sans/Mono, Bricolage Grotesque; `TextStyle` → `TextPaint`, exact line heights
@@ -84,13 +84,13 @@ Rules carried over from iOS (see `AGENTS.md`):
 
 ### Home
 
-- [~] Home header: account glyph (dev/preview) or logo, "Sessions" + connection status, filter menu as a `PopupMenu` (Grouping, Flat List / Group by Project, Appearance Settings), settings. Evidence: `home/compare-list.png`, `home/compare-filter.png`, `home/10-filter-menu-*.png`. Settings opens the onboarding settings until Settings is ported; Appearance says not available yet; the account picture is not loaded yet (glyph only)
+- [~] Home header: account glyph (dev/preview) or logo, "Sessions" + connection status, filter menu as a `PopupMenu` (Grouping, Flat List / Group by Project, Appearance Settings), settings. Evidence: `home/compare-list.png`, `home/compare-filter.png`, `home/10-filter-menu-*.png`. Settings and Appearance open their screens; the account picture is not loaded yet (glyph only)
 - [~] Home states: loading, link, offline, no sessions, list, cross-faded in 250 ms; the link state keeps the onboarding bar, the rest float the header over the content (`home/home-restore.mp4`: restore → list). No sessions and the offline checklist are built but not yet exercised on the emulator
 - [~] Flat session list (live rows, archive toggle, archived by day), rows with status, draft glyph, line counts, generated avatars, faded rows when the computer is offline. Evidence: `home/compare-list.png` (vs `ios-ref/20-home-list.png`), `home/compare-offline-list.png`, `home/home-interact.mp4`, `home/home-offline.mp4`. A tap opens the chat
 - [x] Project grouping (computer header, Projects, worktrees, archived chats at 0.6), expanded projects in local settings. Evidence: `home/compare-grouped.png`, `home/compare-dark-grouped.png`, `home/07-grouped.png`
 - [ ] Archive by swipe and long press; the "Session" actions (details, resume, fork, duplicate, archive)
 - [ ] Tasks and bots rows
-- [~] Update banner and offline machines banner: offline plaque and What's new shown (`home/compare-offline-list.png`); the Play Store update check and the What's new screen are to do
+- [~] Update banner and offline machines banner: offline plaque and What's new shown (`home/compare-offline-list.png`); What's new opens the changelog; the Play Store update check is to do
 - [~] Home dock: resting capsule with the placeholder and send button, its fade-in and the list scrim (`:layout` `HomeDockLayout`, focus layout, motion, fade and refusal with the iOS tests)
 - [~] Dock composer (`ui/home/HomeDockController.kt`, `HomeDockFocusView.kt`): opens over home with the dim and a faint blur (RenderEffect, Android 12+), the shell growing from the capsule and the rows and card revealing in turn (`HomeDockFocusMotion`), rides the IME, closes on the backdrop or Back. Machine, project (with Enter custom path), worktree and harness pickers and the permission, model and effort chips open `ChoiceMenu` (iOS's inline-section UIMenu as a popup window that keeps the keyboard up); Send runs `SessionStarter` with the progress line, the stop hint, Stop, refusal shakes and flash, then opens the chat. Project + and No Sessions' Start New Session open it too. Evidence: `dock/d12-open.png`, `d20-project-menu.png`, `d22-starting.png`, `d23-chat.png`, `dock-open-menus.mp4`, `dock-start-session.mp4` vs `ios-ref/41-dock-open.png` … `45-dock-harness-menu.png`. Bots (Session | Bot, faces), tasks and pictures are to do; the text heights are measured on the main thread
 - [ ] Pending chats placeholder
@@ -120,17 +120,17 @@ Rules carried over from iOS (see `AGENTS.md`):
 
 ### Settings
 
-- [ ] Settings index
-- [ ] Account: profile, public id, secret key backup, linked devices, GitHub, logout, delete
-- [ ] Account switcher
-- [ ] Appearance
-- [ ] Language
-- [ ] Agents
-- [ ] Voice settings, voice language
-- [ ] Connect Claude
-- [ ] What's new
-- [ ] Support us
-- [ ] Push notification rows
+- [x] Settings index (`ui/settings/SettingsScreen.kt`, iOS `SettingsViewController`): the HAPPY logo card (or the profile header), scan / enter terminal URL, Support us, Connected Accounts (Claude Code, GitHub with connect and disconnect), Features (Account, Appearance, Agents, Voice Assistant), About (What's New, GitHub, Report an Issue, Privacy, Terms, Version; ten taps on Version toggle dev mode). EULA is iOS-only and left out. Every pushed bar is opaque in the grouped background, as `AppCoordinator.applyAppearance` makes them. Evidence: `settings/01-index-top.png`, `02-index-mid.png` vs `ios-ref/81-settings-top.png`, `81-settings-mid.png`; `settings/settings-walk.mp4`
+- [~] Account: account information (analytics and public id, long press copies), Link New Device, profile (name, GitHub with picture), connected services with disconnect, Backup (reveal, the secret key card, tap to copy with the Success alert), Analytics, push rows, Logout. Evidence: `settings/10-account.png`, `11-account-bottom.png`, `13-account-secret.png` vs `ios-ref/82-account*.png`. The Accounts group (switcher, Add Account) comes with several accounts (Platform)
+- [ ] Account switcher (with several accounts, Platform)
+- [x] Appearance: theme cycle, language, quota and bubble colour (the inline dropdown with previews), avatar style and black-and-white, usage status, grouping, compact tool calls, file diffs, group tool calls and the rest of the display switches; the switches are the platform's. iOS's Home and Chat list renderer rows are iOS-only and left out. Evidence: `settings/20-appearance.png`, `21-appearance-bottom.png`, `22-appearance-bubble-open.png` vs `ios-ref/83-appearance*.png`. Home's filter menu opens it
+- [x] Language: Automatic plus the ten catalogs, a checkmark, the restart confirmation; the choice applies through the activity's configuration. Evidence: `settings/80-language.png`
+- [~] Agents: machines (online and offline, show offline), Clear Overrides, per-agent permission, model and effort with the inline options and the custom Codex model, computed off main. Evidence: `settings/30-agents.png` vs `ios-ref/84-agents.png`. A machine row does not open the machine screen yet (Secondary)
+- [x] Voice settings and voice language: usage (spinner, then the unavailable row that retries), Upgrade Voice, preferred language with the searchable list, ElevenLabs agent id, direct connection. Evidence: `settings/40-voice.png`, `41-voice-later.png` vs `ios-ref/85-voice.png`. The bring-your-own footer is happy-app's English catalog text, longer than iOS's inline English
+- [x] Connect Claude (`settings/70-connect-claude.png`)
+- [x] What's new: the bundled changelog planned off main, bold and links, long press copies; opening it marks the latest entry read (home's What's new banner opens it too). Evidence: `settings/50-whatsnew.png` vs `ios-ref/87-whatsnew.png` (iOS's bar shows only the picture; the title view's label is there in its source, so Android shows both)
+- [x] Support us: iOS's interim page with Google Play for managing subscriptions. Evidence: `settings/60-support.png` vs `ios-ref/86-support.png`
+- [x] Push notification rows: permission, request again, re-register, registered tokens with delete; the copy says Android where happy-app says iOS
 
 ### Secondary
 

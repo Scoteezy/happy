@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.View
 import com.slopus.happy.layout.LayoutInsets
 import com.slopus.happy.layout.NavigationBarLayout
+import com.slopus.happy.layout.Palette
 import com.slopus.happy.layout.Rect
 import com.slopus.happy.ui.view.ManualLayout
 import com.slopus.happy.ui.view.setFrame
@@ -15,7 +16,8 @@ import com.slopus.happy.ui.view.setFrame
  * whenever there is a screen beneath.
  */
 abstract class BarScreen(context: Context) : Screen(context) {
-    val bar = NavigationBar(context)
+    /** Opaque in the grouped background, as AppCoordinator.applyAppearance makes every pushed bar. */
+    val bar = NavigationBar(context).apply { fill = Palette.groupedBackground }
 
     /** The safe area with the bar's height on top: what the content keeps clear. */
     val contentSafeArea: LayoutInsets

@@ -107,7 +107,8 @@ app/
             text/, theme/, components/, and one package per area
   AppGraph  hand-wired object graph; owns the signed-in sync loop
   model/    typed views of the stored JSON: Settings (sync/settings.ts);
-            settings/ has agentDefaults.ts, local settings, SettingsRepository
+            settings/ has agentDefaults.ts, local settings, SettingsRepository,
+            and the Settings pages' models (SettingsPages, AgentsPage, Push)
   text/     Resources.plural, PluralExactNumbers (generated)
 tools/icons/         copies happy-ios's generated icon and wordmark tables
 tools/port/          drafts JUnit ports of happy-ios layout tests

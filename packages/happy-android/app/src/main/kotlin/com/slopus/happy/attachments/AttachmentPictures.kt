@@ -90,7 +90,8 @@ class AttachmentPictures(val maxCount: Int = DEFAULT_MAX_COUNT, val maxCost: Int
         /** Decoded, a picture can take a few megabytes where useAttachmentImage keeps a data URI, so this bounds bytes as well. */
         const val DEFAULT_MAX_COST = 48 * 1024 * 1024
 
-        private fun thumbhashBitmap(thumbhash: String): Bitmap? {
+        /** A thumbhash decoded to its small picture, or null when it is not one. */
+        fun thumbhashBitmap(thumbhash: String): Bitmap? {
             val image = com.slopus.happy.images.ThumbHash.decode(thumbhash) ?: return null
             val colors = IntArray(image.width * image.height) { i ->
                 val r = image.rgba[i * 4].toInt() and 0xFF

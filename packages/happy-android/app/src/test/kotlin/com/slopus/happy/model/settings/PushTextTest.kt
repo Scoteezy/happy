@@ -22,7 +22,7 @@ class PushTextTest {
         assertEquals("Allowed", PushText.label(PushPermission(PushPermissionStatus.Granted, true, false)))
         assertEquals("Denied", PushText.label(PushPermission(PushPermissionStatus.Denied, false, true)))
         assertEquals("The system prompt can still be shown again from the app.", PushText.subtitle(PushPermission(PushPermissionStatus.Denied, false, true)))
-        assertEquals("Opens system settings when iOS will not prompt again.", PushText.requestSubtitle(PushPermission.Undetermined))
+        assertEquals("Opens system settings when Android will not prompt again.", PushText.requestSubtitle(PushPermission.Undetermined))
     }
 
     @Test
