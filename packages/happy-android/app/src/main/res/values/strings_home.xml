@@ -79,6 +79,19 @@
     <string name="home_dock_creating_worktree">Creating worktree…</string>
     <string name="home_dock_starting">Starting %1$s…</string>
     <string name="home_dock_opening">Opening session…</string>
+    <!-- new/index.tsx on a phone -->
+    <string name="home_new_session_search_machines">search machines...</string>
+    <string name="home_new_session_search_worktrees">search worktrees...</string>
+    <string name="home_new_session_search_workspaces">search workspaces...</string>
+    <string name="home_new_session_search_agents">search agents...</string>
+    <string name="home_new_session_no_results">no results</string>
+    <string name="home_new_session_path_placeholder">Enter project path</string>
+    <string name="home_new_session_using_project">using project %1$s</string>
+    <string name="home_new_session_using_custom_path">using custom path above</string>
+    <string name="home_new_session_recent">Recent</string>
+    <string name="home_new_session_no_recent_projects">no recent projects yet</string>
+    <string name="home_new_session_voice_input">Voice input</string>
+    <string name="home_new_session_agent">Agent: %1$s</string>
     <!-- useStartSessionFromDraft.ts -->
     <string name="home_create_directory_title">Create Directory?</string>
     <string name="home_create_directory_message">The directory \'%1$s\' does not exist. Would you like to create it?</string>

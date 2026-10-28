@@ -54,6 +54,7 @@ import com.slopus.happy.ui.view.setFrame
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import com.slopus.happy.ui.newsession.NewSessionScreen
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
@@ -209,8 +210,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
                 view.showArchived.onTap = { showArchive() }
             }
             Kind.NoSessions -> NoSessionsView(context).also { view ->
-                // The new-session screen is a later stage of the port; the dock's composer starts one meanwhile.
-                view.startNewSession.onTap = { dockController.openFocus() }
+                view.startNewSession.onTap = { push(NewSessionScreen(context, graph)) }
                 view.showArchived.onTap = { showArchive() }
             }
             Kind.List -> SessionListView(context, this).also { list = it }
@@ -301,7 +301,8 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
     override fun createWorkspace(entry: ProjectHomeEntry) {
         val origin = (entry.session ?: entry.avatarSession)?.let(::workspaceOrigin) ?: return
         dockController.services.prepareWorkspace(origin.machineId, origin.projectId, origin.path)
-        dockController.openFocus()
+        // The new-session screen on it when the dock can't open.
+        if (!dockController.openFocus()) push(NewSessionScreen(context, graph))
     }
 
     override fun openTroubleshoot() = notPorted(context.getString(R.string.onboarding_offline_troubleshoot))

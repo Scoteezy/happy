@@ -144,6 +144,16 @@ data class NewSessionOptions(
     val effort: PickerOption?,
     /** The computer's Happy Agent can make bots (`capabilities.bots`): the composer offers Session | Bot. */
     val supportsBots: Boolean = false,
+    // What the new-session screen reads besides (NewSessionChoices on iOS).
+    val homeDir: String? = null,
+    /** The computers behind [machines], in their order. */
+    val machineChoices: List<MachineChoice> = emptyList(),
+    /** The computer's places; no `~` row of its own while the draft names no path. */
+    val sessionPlaces: List<SessionPlace> = emptyList(),
+    val sessionWorkspaces: List<SessionWorkspace> = emptyList(),
+    val canCreateWorktree: Boolean = false,
+    /** git's worktrees for [worktreeTarget], when the listing is for it. */
+    val gitWorktrees: List<GitWorktree> = emptyList(),
 ) {
     val hasHarness: Boolean get() = agents.isNotEmpty()
 
@@ -204,7 +214,8 @@ fun resolveNewSessionOptions(
     // A person picks a computer, not a daemon: the Happy CLI and Happy Agent pair is offered once.
     val choices = collectMachineChoices(machines)
     val choice = findMachineChoice(choices, draft.selectedMachineId)
-    val machineOptions = choices.sortedByDescending { it.online }.map {
+    val sortedChoices = choices.sortedByDescending { it.online }
+    val machineOptions = sortedChoices.map {
         PickerOption(it.id, it.name, if (it.online) labels.online else labels.lastSeen(it.activeAt))
     }
     val currentMachine = resolvePickerOption(machineOptions, listOf(choice?.id))
@@ -249,10 +260,12 @@ fun resolveNewSessionOptions(
     } else {
         null
     }
+    val sessionWorkspaces = collectSessionWorkspaces(placeMachineIds, selectedProjectId, sessions)
+    val gitWorktrees = worktrees?.takeIf { it.target == worktreeTarget }?.worktrees.orEmpty()
     val existing = if (picksWorkspaces) {
-        collectSessionWorkspaces(placeMachineIds, selectedProjectId, sessions).map { PickerOption(it.key, it.name, it.path) }
+        sessionWorkspaces.map { PickerOption(it.key, it.name, it.path) }
     } else {
-        worktrees?.takeIf { it.target == worktreeTarget }?.worktrees.orEmpty().map { PickerOption(it.path, it.branch, it.path) }
+        gitWorktrees.map { PickerOption(it.path, it.branch, it.path) }
     }
     val createsNativeWorkspace = agentType == AgentType.Rig && picksWorkspaces && rigCreation != null
     val canCreateWorktree = createsNativeWorkspace ||
@@ -318,5 +331,11 @@ fun resolveNewSessionOptions(
         efforts = efforts,
         effort = effort,
         supportsBots = rigSelection?.supportsBots == true,
+        homeDir = homeDir,
+        machineChoices = sortedChoices,
+        sessionPlaces = if (draft.selectedPath == null) collectSessionPlaces(placeMachineIds, sessions) else places,
+        sessionWorkspaces = sessionWorkspaces,
+        canCreateWorktree = canCreateWorktree,
+        gitWorktrees = gitWorktrees,
     )
 }
