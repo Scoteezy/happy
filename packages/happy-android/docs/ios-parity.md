@@ -69,28 +69,28 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [ ] Text measurement off the main thread (`StaticLayout`), font scale as RN scales it
 - [x] `ScreenStack` navigation with push/pop animation and predictive back (`BarScreen` + Material app bar)
 - [~] Theme: light/dark from `themePreference`, edge-to-edge insets, system bar icons follow the app theme
-- [~] Components: `ItemRowView`, `ItemGroupView`, `GroupedListView`, `RoundButton`, `NavigationBar`, alerts (platform dialogs), `SegmentedControl`, `TextField`, `QrCodeView` done; checklist, terminal block, avatar, bot faces to do
+- [~] Components: `ItemRowView`, `ItemGroupView`, `GroupedListView`, `RoundButton`, `NavigationBar`, alerts (platform dialogs), `SegmentedControl`, `TextField`, `QrCodeView`, terminal block, `AvatarView` (brutalist, gradient, pixel, bot chip, picture, harness badge) done; bot faces to do
 
 ### Onboarding and sign-in
 
 - [~] Welcome: wordmark, title, value props, Create account, Restore, Get help, Relay | Direct switch (dev/preview). Evidence: `onboarding/01-stem-link-relay.png`, `02-stem-link-direct.png` (vs `ios-ref/04-welcome.png`). Production Welcome's "Pair computer" bar button waits for Direct pairing
 - [x] Create account (against the local `happy-server standalone:dev`; `onboarding/onboarding-flow.mp4`, `09-signed-in-home.png`)
 - [~] Restore with QR (shows the code, `06-restore-qr.png`), restore with the secret key (`07-restore-key.png`, bad key `08-restore-invalid.png`). Approval from a second device not exercised yet
-- [~] Custom server screen (`onboarding/03-server.png`, confirm `04-server-confirm.png`, custom `05-server-custom.png`, in `onboarding-flow.mp4`); onboarding settings to do (the link screen's gear opens the server meanwhile)
-- [ ] Link Your Computer, offline checklist, troubleshoot (selectable terminal lines)
+- [x] Custom server screen (`onboarding/03-server.png`, confirm `04-server-confirm.png`, custom `05-server-custom.png`, in `onboarding-flow.mp4`); onboarding settings: server, Direct connection toggle, "Log out and start over" with its confirmation (`home/03-onboarding-settings.png`)
+- [~] Link Your Computer (`home/02-link.png`: checklist ticks kept in local settings, Scan enabled once both are ticked, paste link, approve the terminal, busy until the computer arrives or 10 s, inline failure line). Offline checklist built (title per computer count, terminal block, Troubleshoot, Link another, Show archived) but not yet seen on the emulator; troubleshoot screen to do. Terminal lines are not selectable yet
 - [ ] Connect a terminal by QR or URL; `happy://terminal` deep links
 - [ ] Server confirmation for imported accounts
 
 ### Home
 
-- [ ] Home header: logo/avatar, "Sessions" + connection status, filter menu, settings
-- [ ] Home states: loading, link, offline, no sessions, list
-- [ ] Flat session list (live rows, archive toggle, archived by day), rows with status, draft glyph, line counts, pictures
-- [ ] Project grouping, expanded projects
+- [~] Home header: account glyph (dev/preview) or logo, "Sessions" + connection status, filter menu as a `PopupMenu` (Grouping, Flat List / Group by Project, Appearance Settings), settings. Evidence: `home/compare-list.png`, `home/compare-filter.png`, `home/10-filter-menu-*.png`. Settings opens the onboarding settings until Settings is ported; Appearance says not available yet; the account picture is not loaded yet (glyph only)
+- [~] Home states: loading, link, offline, no sessions, list, cross-faded in 250 ms; the link state keeps the onboarding bar, the rest float the header over the content (`home/home-restore.mp4`: restore → list). No sessions and the offline checklist are built but not yet exercised on the emulator
+- [~] Flat session list (live rows, archive toggle, archived by day), rows with status, draft glyph, line counts, generated avatars, faded rows when the computer is offline. Evidence: `home/compare-list.png` (vs `ios-ref/20-home-list.png`), `home/compare-offline-list.png`, `home/home-interact.mp4`, `home/home-offline.mp4`. Opening a chat waits for the chat stage
+- [x] Project grouping (computer header, Projects, worktrees, archived chats at 0.6), expanded projects in local settings. Evidence: `home/compare-grouped.png`, `home/compare-dark-grouped.png`, `home/07-grouped.png`
 - [ ] Archive by swipe and long press; the "Session" actions (details, resume, fork, duplicate, archive)
 - [ ] Tasks and bots rows
-- [ ] Update banner and offline machines banner
-- [ ] Home dock: capsule, opening composer, machine/project/worktree/harness menus, start session, bots, pictures
+- [~] Update banner and offline machines banner: offline plaque and What's new shown (`home/compare-offline-list.png`); the Play Store update check and the What's new screen are to do
+- [~] Home dock: resting capsule with the placeholder and send button, its fade-in and the list scrim (`:layout` `HomeDockLayout`, focus layout, motion, fade and refusal with the iOS tests). Opening the composer, the menus, starting a session, bots and pictures are to do
 - [ ] Pending chats placeholder
 
 ### Chat

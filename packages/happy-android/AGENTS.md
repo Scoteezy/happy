@@ -67,7 +67,12 @@ reference for protocol, sync, crypto and copy, which happy-ios ports too.
    Screens are checked on the emulator against happy-ios in the simulator:
    screenshots and short screen recordings, kept under
    `.context/evidence/<feature>/` (not committed) and listed in
-   `docs/ios-parity.md`.
+   `docs/ios-parity.md`. Both apps run against the same local server
+   (`pnpm --filter happy-server standalone:dev`; the emulator reaches it at
+   `http://10.0.2.2:3005`) holding fiction from
+   `tools/dev/seed-local-server.ts`: a throwaway account, a computer kept
+   online and a set of sessions, so the two are compared on identical data
+   without a real account.
 4. **The local store is SQLite through the framework API**
    (`SQLiteOpenHelper`, WAL, hand-written SQL in `data/`). Why not a library:
    the schema is a handful of tables whose rows are mostly JSON documents
