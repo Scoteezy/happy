@@ -36,5 +36,8 @@ include(":app")
 include(":crypto")
 include(":layout")
 include(":icons")
+// Dev only (./gradlew -Pprobe :probe:installInjectDebug :probe:installListDebug): injects touch gestures
+// with exact timing to measure scrolling against stock apps.
+if (providers.gradleProperty("probe").isPresent) include(":probe")
 include(":elevenlabs")
 project(":elevenlabs").projectDir = file("vendor/elevenlabs")

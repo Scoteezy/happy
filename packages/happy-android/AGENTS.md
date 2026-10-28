@@ -90,6 +90,9 @@ crypto/   pure Kotlin/JVM, no Android: every primitive and key derivation of
           classes (no JCA provider), so it behaves the same on every device.
 layout/   pure Kotlin/JVM: happy-ios HappyLayout (tokens and layouts) + its tests
 icons/    pure Kotlin/JVM: happy-ios's icon, file-icon tables and glyph decoding
+probe/    dev only, built with -Pprobe: FlingProbe injects finger drags with exact
+          16 ms timestamps (adb input swipe is too uneven to judge flings by),
+          and a stock RecyclerView in its own package to compare lists with
 app/
   auth/     account auth (POST /v1/auth), credentials in expo-secure-store's format
   config/   server URL (survives logout), device-only settings (theme), AppVariant
@@ -410,7 +413,14 @@ cd packages/happy-android
 ./gradlew testDebugUnitTest        # app unit tests (logic, Robolectric)
 ./gradlew :layout:test :icons:test # exact-frame layout tests, icon decoding
 ./gradlew :crypto:test             # crypto, incl. vectors from happy-app's TS
+./gradlew -Pprobe :probe:installInjectDebug :probe:installListDebug  # fling probe
 ```
+
+To compare scrolling, drag with
+`adb shell am instrument -w -e x 540 -e from 1500 -e to 1200 -e ms 100 -e stamped 1 com.slopus.happy.probe/.FlingProbe`
+on the screen under test and on `com.slopus.happy.probe.list/com.slopus.happy.probe.ReferenceListActivity`.
+On 2026-10-28 home, chat and changes moved within a few percent of the stock
+list from 750 to 4700 px/s.
 
 Build types map to happy-app's variants and application ids: `debug` →
 `com.slopus.happy.dev`, `preview` → `com.slopus.happy.preview`, `release` →
