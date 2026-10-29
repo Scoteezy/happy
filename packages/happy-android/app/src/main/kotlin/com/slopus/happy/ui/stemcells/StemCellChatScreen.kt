@@ -84,6 +84,8 @@ class StemCellChatScreen(
     creation: StemCellCreation? = null,
     /** New work made from the dock's "+": the sheet comes up over it as it opens. */
     attaching: Boolean = false,
+    /** A held-row preview may read history, but never reads, edits drafts or discards work. */
+    private val previewing: Boolean = false,
 ) : Screen(context), BackInterceptor {
     /** The conversation's own line of work, one coroutine at a time, as the store's. */
     private val conversationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
@@ -139,6 +141,35 @@ class StemCellChatScreen(
     private lateinit var jump: StemCellChatJumpButton
     private lateinit var card: AgentInputCardView
     private lateinit var header: StemCellChatHeaderView
+    private val previewTitle by lazy {
+        com.slopus.happy.ui.components.Label(context, com.slopus.happy.layout.TextStyle(com.slopus.happy.layout.FontFace.SystemSemiBold, 17.0), Palette.text, maxLines = 1).apply {
+            text = title
+            followsTextSize = false
+            tag = "stem-preview-title"
+            elevation = dp(3.0)
+        }
+    }
+    private val previewPill by lazy {
+        View(context).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Theme.color(com.slopus.happy.layout.StemCellsPalette.stemCellsHoldMenu))
+                cornerRadius = dp(22.0)
+            }
+            elevation = dp(2.0)
+        }
+    }
+    private val previewFade by lazy {
+        object : View(context) {
+            val paint = android.graphics.Paint()
+            override fun onDraw(canvas: android.graphics.Canvas) {
+                if (height <= 0) return
+                val color = Theme.rgba(Palette.surface)
+                paint.shader = android.graphics.LinearGradient(0f, 0f, 0f, height.toFloat(),
+                    intArrayOf(color.argb, color.argb, color.withAlpha(0.0).argb), floatArrayOf(0f, 54f / 78f, 1f), android.graphics.Shader.TileMode.CLAMP)
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            }
+        }
+    }
 
     private val rowViews = HashMap<String, ChatRowView>()
     private var plans: List<ChatRowPlan> = emptyList()
@@ -218,6 +249,7 @@ class StemCellChatScreen(
 
     private inner class Root(context: Context) : ManualLayout(context), ThemeAware {
         override fun layoutSubviews(width: Double, height: Double) = layoutScreen(width, height)
+        override fun onInterceptTouchEvent(event: android.view.MotionEvent): Boolean = previewing || super.onInterceptTouchEvent(event)
 
         override fun applyTheme() {
             setBackgroundColor(Theme.color(Palette.surface))
@@ -253,6 +285,14 @@ class StemCellChatScreen(
         root.addView(jump)
         root.addView(card)
         root.addView(header)
+        if (previewing) {
+            root.tag = "stem-preview"
+            for (child in listOf(card, composerScrim, header, jump)) child.visibility = View.GONE
+            scroll.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            root.addView(previewFade)
+            root.addView(previewPill)
+            root.addView(previewTitle)
+        }
         root.applyTheme()
         return root
     }
@@ -274,7 +314,7 @@ class StemCellChatScreen(
         card.tag = "stem-input"
         card.onTextChanged = {
             updatePrimary()
-            if (!showingDraft) draftEdited(card.text)
+            if (!previewing && !showingDraft) draftEdited(card.text)
         }
         card.onHeightChanged = {
             if (card.animatesHeightChange && card.height > 0) growCard() else root.requestLayout()
@@ -311,10 +351,11 @@ class StemCellChatScreen(
         unwatch = session.watch { follow(it) }
         scope.launch { conversation.updates.collect { apply(it) } }
         conversation.start()
-        conversationScope.launch { conversation.useDrafts(session.drafts) }
+        if (!previewing) conversationScope.launch { conversation.useDrafts(session.drafts) }
     }
 
     override fun onAppear() {
+        if (previewing) return
         conversation.setVisible(true)
         // New work: the keyboard comes up with the screen.
         if (attachPending) {
@@ -330,6 +371,7 @@ class StemCellChatScreen(
     }
 
     override fun onDisappear() {
+        if (previewing) return
         conversation.setVisible(false)
         conversation.flushDraft()
     }
@@ -360,6 +402,7 @@ class StemCellChatScreen(
 
     /** New work left with nothing in it goes: off the sidebar and off the computer. */
     private fun putAwayIfEmpty() {
+        if (previewing) return
         val spaceId = spaceId ?: return
         if (!untouched || kept || !chat.loaded || chat.items.isNotEmpty() || card.hasContent || pictures.images.isNotEmpty()) return
         putAway = true
@@ -398,6 +441,7 @@ class StemCellChatScreen(
         if (title != row.label) {
             title = row.label
             header.text = row.label
+            if (previewing) previewTitle.text = row.label
         }
         val next = when (val mark = row.mark) {
             is StemCellsRow.Mark.StemCell -> StemCellIntroView.Mark.StemCell(mark.seed)
@@ -728,6 +772,16 @@ class StemCellChatScreen(
 
     private fun layoutScreen(width: Double, height: Double) {
         replan()
+        if (previewing) {
+            val layout = com.slopus.happy.layout.stemcells.StemCellsPreviewLayout(Size(width, height), previewTitle.measure(width))
+            previewPill.setFrame(layout.pill)
+            previewTitle.setFrame(layout.title)
+            scroll.setInsets(layout.listTop, layout.listBottom)
+            scroll.setFrame(Rect(0.0, 0.0, width, height))
+            layoutTranscript()
+            previewFade.setFrame(Rect(0.0, 0.0, width, layout.fadeOpaque))
+            return
+        }
         header.safeTop = safeArea.top
         val headerLayout = header.layout(width)
         header.setFrame(Rect(0.0, 0.0, width, headerLayout.scrim.height))
@@ -766,7 +820,7 @@ class StemCellChatScreen(
         heights += waiting.map { it.size.height }
         if (waiting.isNotEmpty()) heights += StemCellWorkingLayout.Metrics.height
         // The intro stays under the bar, as desktop's leading header.
-        val pins = introLayout != null
+        val pins = introLayout != null && !previewing
         val first = if (introLayout == null) 0 else 1
         fun row(id: String): Int? {
             val index = settled.indexOfFirst { it.id == id }
@@ -829,6 +883,12 @@ class StemCellChatScreen(
             // Shorter than the place it was read at (a section folded): no gap under the end.
             scroll.contentOffset > newest && !scroll.isDragging && !scroll.isDecelerating -> scroll.setContentOffset(newest)
         }
+        if (previewing) {
+            val last = (listOf(introView) + plans.mapNotNull { rowViews[it.id] }).lastOrNull { (frames[it]?.height ?: 0.0) > 0 }
+            val frame = last?.let { frames[it] }
+            if (frame != null && frame.minY - scroll.contentOffset < scroll.insetTop) scroll.setContentOffset(frame.minY - scroll.insetTop)
+            previewFade.visibility = if (scroll.contentOffset <= -scroll.insetTop + 0.5) View.GONE else View.VISIBLE
+        }
         updateJump()
         updateScrims()
     }
@@ -849,6 +909,7 @@ class StemCellChatScreen(
      * height from the newest message, and shimmers while the working line spins.
      */
     private fun updateJump() {
+        if (previewing) return
         val viewport = px(root.height) - scroll.insetTop - scroll.insetBottom
         val away = StemCellChatFootLayout.showsJump(newestOffset - scroll.contentOffset, viewport)
         jump.working = away && StemCellChatJumpButton.spins(chat.activity)
@@ -1007,7 +1068,7 @@ class StemCellChatScreen(
 
     companion object {
         /** A row's conversation, as home opens it: its name in the bar, its mark in the intro. Null for rows without one. */
-        fun forRow(context: Context, session: StemCellsSession, row: StemCellsRow): StemCellChatScreen? {
+        fun forRow(context: Context, session: StemCellsSession, row: StemCellsRow, previewing: Boolean = false): StemCellChatScreen? {
             if (row.kind != StemCellsRow.Kind.Space && row.kind != StemCellsRow.Kind.Session) return null
             if (row.targetKind == "surface" || row.targetKind == "artifacts") return null
             val agentId = row.agentId ?: return null
@@ -1017,7 +1078,7 @@ class StemCellChatScreen(
                 is StemCellsRow.Mark.Clay -> StemCellIntroView.Mark.Clay(mark.slug)
                 else -> null
             }
-            return StemCellChatScreen(context, session, agentId, row.label, row.spaceId, intro).also { it.wire() }
+            return StemCellChatScreen(context, session, agentId, row.label, row.spaceId, intro, previewing = previewing).also { if (!previewing) it.wire() }
         }
 
         /** New work as the dock made it: up at once, before the daemon has made it, the keyboard with it. */
