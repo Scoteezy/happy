@@ -349,7 +349,7 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
         logo.setFrame(l.logo.offsetBy(-l.logoControl.minX, -l.logoControl.minY))
         actions.setFrame(l.actions)
         val o = l.actions
-        accessory?.setFrame(Rect(0.0, 0.0, width, height + accessoryOverhang))
+        accessory?.setFrame(Rect(0.0, 0.0, width, maxOf(height, l.size.height + accessoryOverhang)))
         // The pill's slots: filter and settings, or a computer's search alone.
         filterButton.setFrame(l.filterButton.offsetBy(-o.minX, -o.minY))
         searchButton.setFrame(l.filterButton.offsetBy(-o.minX, -o.minY))

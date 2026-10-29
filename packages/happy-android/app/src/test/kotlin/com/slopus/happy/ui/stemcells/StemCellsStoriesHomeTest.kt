@@ -75,6 +75,8 @@ class StemCellsStoriesHomeTest {
             assertSame(stories.view, home.header.accessory)
             assertNotNull(stories.view.photos)
             assertEquals(3, stories.view.items.size)
+            assertTrue("Android accessibility clips descendants to their parent's actual bounds",
+                home.header.height >= stories.view.pager.bottom)
             assertTrue(stories.unlocked)
             assertEquals(96.0, stories.inset, .001)
             val closedTop = list.insetTop - stories.inset

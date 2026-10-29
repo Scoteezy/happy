@@ -286,7 +286,10 @@ class StemCellsDirectHomeScreen(
         override fun layoutSubviews(width: Double, height: Double) {
             val layout = HomeScreenLayout(Size(width, height), safeArea, HomeDockLayout.Metrics.contentInset)
             header.safeTop = safeArea.top
-            header.setFrame(layout.header)
+            // Unlike UIKit, Android accessibility clips child bounds to the
+            // actual parent frame even when drawing/touches may overhang it.
+            // Keep the chrome in its original layout; only its container grows.
+            header.setFrame(layout.header.copy(height = layout.header.height + header.accessoryOverhang))
             stemCells.safeArea = safeArea
             stemCells.keyboardHeight = keyboard
             stemCells.contentInsets = layout.insets
