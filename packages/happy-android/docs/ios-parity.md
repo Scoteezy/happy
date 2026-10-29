@@ -48,10 +48,78 @@ item once it exists.
   Screen 15 shows the final sharp vector pairing mark; screen 16 shows Stories
   appearing on the first cold-start Settings open, without a carousel switch.
   No release was made.
-- Remaining next slices after the home Stories milestone below:
-  inline story conversation cards, proposal cards,
-  header rename. These remain separate unchecked/partial
+- Remaining next slices after the inline Stories milestone below:
+  proposal cards and header rename. These remain separate unchecked/partial
   features below; wiring the real shell does not mark them complete.
+
+## Real conversation inline Stories verification (2026-10-29)
+
+- `413f81294` connects the actual conversation planner/row renderer to
+  `StoryInlineView`, reusing cards by story ID and releasing discarded cards.
+  The real chat supplies its per-computer Stories session and owns editor/
+  viewer presentations. Leaving or replacing the screen closes even an
+  opening modal, releases callbacks and restores system bars. Forced editor
+  cleanup removes only its own temporary media; it never silently posts.
+- `aa0ebf701` supplies `draft_story` only for the isolated debug shell's
+  `shell-fixture-stories-*` computers, preserving the rest of the fixture.
+  No normal app account, real daemon, or production fixture hook is used.
+- `e3cad25a9` hides covered window branches from accessibility while a
+  full-screen Stories modal is presented and restores their previous flags
+  afterward. Before-fix assertions are retained in
+  `inline-story/modal-a11y-before-tests.xml`. Device checks use compressed
+  trees (`editor-a11y-compressed.xml`, `viewer-a11y-compressed.xml`, and
+  `returned-a11y.xml`): modal-only controls, then chat controls after return.
+  Raw uncompressed dumps include nonimportant covered Views; the files
+  named `editor-a11y-fixed.xml` and `inline-modal-uncompressed-diagnostic.mp4`
+  are diagnostic, not evidence of a failed TalkBack repair. Spoken TalkBack
+  output is not verified. `fa9fe57ce` labels the viewer's More action.
+- Five `StemCellsInlineStoryTest` cases cover actual draft Post and viewer
+  origin, Edit and forced owner cleanup without posting, activity destruction
+  while opening, card reuse/removal, and the same card following Stories
+  off/on and deletion. They also check modality flag restoration and More's
+  label. Focused home/preview regression checks passed during iteration.
+- Inspected real MainActivity recordings under `inline-story/`:
+  `inline-story-edit-post.mp4` (91.029 s: Edit, caption change, Save draft,
+  Posted); `inline-story-viewer-route.mp4` (15.674 s: viewer replaced by a
+  real pairing route, new synthetic account home and editor);
+  `inline-story-modal-compressed.mp4` (42.563 s: editor replaced by pairing,
+  new account Post, viewer and return). Corresponding `*-frames.png` contact
+  sheets were inspected. The first `inline-story-delete.mp4` (39.749 s)
+  ends at the first Delete menu, before confirmation; its separate
+  `12-deleted-card.png` proves the later deleted state, not the movie.
+- Final-build recheck: `inline-story-final-delete.mp4` (42.205 s) and its
+  inspected contact sheet show actual Post, viewer opening, More, Delete,
+  confirmation and the same card's deleted state. `final-viewer-a11y.xml`
+  includes More and excludes covered chat; `final-deleted-a11y.xml` restores
+  chat controls. `final-viewer.png`, `final-confirm.png` and
+  `final-deleted.png` are the corresponding stills. Only fresh synthetic
+  computer 8's story was removed; a new fixture can recreate it. The first
+  fixed-delay attempt produced an empty root (`final-first-empty-root.xml`)
+  and safely shut down without claiming success. Its exact cause is not
+  established; the final script awaits actual pairing, home and card labels.
+  No production code changed between those attempts. Both captures' cleanup
+  verified no own happy36 qemu remained.
+- Native reference: only the ignored reference host changes, using the
+  actual Direct home, production tablet container and conversation with the
+  same draft tool result. The UI driver passed in 410.977 s.
+  `ios-inline-story.mp4` is 273.253 s, not the whole driver duration;
+  inspected `ios-editor-edge.png` (0–9.5 s) and `ios-viewer-edge.png`
+  (192–211 s) confirm the editor and posted draft viewer; the timeline also
+  shows autoplay and return. The later screenshot named
+  `ios-viewer-requested.png` arrives after autoplay and is not viewer proof.
+  Fixture media artwork differs between platforms; compare UI around it.
+  Only HappyRef 17 Pro ran, with Android off; it was shut down afterward.
+- Full milestone batch passed at exact code HEAD
+  `fa9fe57ce0264776cf665303f3b624a0b79d7a43`:
+  `.context/scripts/g.sh testDebugUnitTest :layout:test :crypto:test :icons:test :app:compileReleaseKotlin :app:assembleDebug -Phappy.shellHarness=true --console=plain`.
+  XML totals: **1894 tests in 290 suites**, zero failures, errors or skips
+  (app 1261/176, layout 591/107, crypto 36/5, icons 6/2). App tests executed;
+  unchanged layout/crypto/icons were up-to-date, not re-executed. Production
+  Kotlin compilation and isolated debug assembly passed. Both simulators
+  were off; the required wrapper kept three workers, parallel projects off,
+  bounded Gradle/Kotlin JVMs and two test forks with two processors each.
+  Own Gradle/Kotlin PIDs 57880/57975 were stopped and checked absent.
+  This remains fake-backed verification, not successful live Tailcat access.
 
 ## Real Direct-home Stories verification (2026-10-29)
 
@@ -108,8 +176,8 @@ item once it exists.
   only HappyRef 17 Pro was booted and it was shut down afterward. Android
   was off throughout the native build/capture. Four Android video contact
   sheets and their passing step screenshots were also inspected.
-- Inline story cards, proposal cards and header rename remain separate
-  partial features; this milestone does not complete them.
+- Inline story cards are addressed in their later milestone above;
+  proposal cards and header rename remain separate partial features.
 - Full milestone batch passed at exact code HEAD
   `ac70aa5b595162e118b14f6acb94e4012f07e00c`:
   `.context/scripts/g.sh testDebugUnitTest :layout:test :crypto:test :icons:test :app:compileReleaseKotlin :app:assembleDebug -Phappy.shellHarness=true --console=plain`.
@@ -493,5 +561,5 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [x] Stem Cells search (`StemCellsSearchScreen`, iOS `StemCellsSearchViewController`), from home's search mark or desktop's Search row: the raised field under the bar taking the keyboard as it opens, every row of the sidebar (folded away or not) whose name holds the query, case and accents aside, drawn flat by the sidebar's own view; a result opens as its row does, over the search; scrolling puts the keyboard away; the clear circle once there is text. Evidence: `search/side-by-side-search.png` (empty and "re", Android, iOS), `03-opened.png`. Verified against fakes only
 - [~] Direct pairing and real app shell: `AppGraph.direct` shares the Keystore-backed secure store with relay auth, restores at startup, follows foreground/background, and owns one sync/offline directory and local preferences per computer. `AppCoordinator` opens `StemCellsDirectHomeScreen`; relay sync pauses while Direct is selected. Switching, removing a computer and falling back to remaining accounts are wired. `DirectPairingScreen` ports the connecting → four emoji → confirmation/wait flow, expiry/background/back cancellation, and error states; only a verified daemon MAC yields saved credentials. Core crypto/wire/storage/outbox tests remain in `direct/` and `:crypto`; `DirectShellTest` covers restoration, per-account preferences, directory removal and relay sign-out isolation. Device evidence so far is fake-backed real-shell verification, **not a real daemon connection**. Tailcat is linked from the source-built, gitignored AAR (818e7f171); release/preview require it. The existing device probe verified library loading, malformed-address rejection (26 ms), an unreachable synthetic address timing out (3.014 s), and transport timeout (10 s), not a successful tunnel (`tailcat-probe.png`). No second daemon or real user account/device was used.
 - [~] Stories row, viewer, viewers sheet (`ui/stories/`, `stories/` with iOS's StoriesStore/StoriesRow/StoryDraft/wire tests, `:layout` `stories/` with iOS's layout tests). The row in the home header: open under it, closed into the title as overlapping avatars, the list's pull opening it and scrolling closing it, put away remembered per account, the one-time tooltip, closing by itself once everything is seen. The viewer grows out of the tapped circle and shrinks back into it: segments, taps by thirds, hold to pause, the cube between authors, drag down to close, captions with Show more, text / link / emoji / reaction / sticker overlays (Lottie for animated stickers), the heart and its long-press picker with the burst, the author's ⋯ (delete) and views; the viewers sheet with reactions, paging and its half and full heights. Earlier verification used the standalone fake computer (`StoriesHarnessActivity`, iOS's `-screen stories` fixture). Evidence: `stories/a-home-fresh.png` vs `ios-ref/140-stories-open.png`, `cmp-144.png` … `cmp-151.png` (each Android left, iOS right: second story with caption, caption open, after close, my story, viewers sheet, Ana, reaction picker, reacted), `j-reacting.png` (the burst), `k-tooltip.png` (the one-time tooltip), `l-held.png` (held: paused, chrome hidden), `m-more.png`, `m-delete-confirm.png`, `m-deleted.png` (⋯, Delete, the viewer moving on), `video-1-row-open-close.mp4`, `video-2-viewer.mp4`. Video frames play from byte ranges (see the editor's `video-frames.mp4`). The real Direct-home row, viewer entry/return, pairing cleanup, actual setting and cached cold restoration are now checked in the real MainActivity shell; see `stories-home/` and the verification record above. This remains fake-backed, not live-daemon verification; offline media playback is unverified.
-- [~] Inline story card (`StoryInlineView`, read through `StoriesProviding`): a draft's Post (spinner, refusal alert) and Edit, Posted after the ring, deleted or unavailable with the struck-through mark, each change crossfading, the viewer growing out of the card and closing back into it. Verified against the harness's fake computer (`--ez card true`, iOS's `-storiesCard`). Evidence in `stories/`: `n-card-draft.png`, `o-card-posted.png`, `q-card-deleted.png` vs `ios-ref/160`–`162`, `p-card-viewer.png`, `r-card-edit.png`, `video-3-card.mp4`. Not yet: placed in a conversation (it waits for Stem Cells chat, where `draft_story` presents it)
+- [~] Inline story card (`StoryInlineView`, read through `StoriesProviding`): a draft's Post (spinner, refusal alert) and Edit, Posted after the ring, deleted or unavailable with the struck-through mark, each change crossfading, the viewer growing out of the card and closing back into it. Earlier standalone evidence in `stories/`: `n-card-draft.png`, `o-card-posted.png`, `q-card-deleted.png` vs `ios-ref/160`–`162`, `p-card-viewer.png`, `r-card-edit.png`, `video-3-card.mp4`. Now placed in actual Direct conversations for `draft_story`, with real MainActivity edit/save/post/viewer and account-route cleanup verification; see the inline Stories milestone and `inline-story/` evidence above. The earlier chat paragraph's inline-story gap is superseded by this integration. This is isolated fake transport verification, not live-daemon or spoken TalkBack verification.
 - [~] Story editor, sticker picker, text entry (`StoryEditorView`, `StickerPickerSheet`, `StoryTextEntryView`, `StoriesEditorPresenter`, `StoriesMediaChooser`): the canvas with drag / pinch / rotate, snapping guides and the angle line, the bin, the dashed selection with its handles; text with its size slider, colour, fill style, alignment and font; the picker's search with emoji chips, LINK and the reaction bubble, Recently used with its ✕, packs (Lottie animated) and the Emoji tab, half and full; the link prompt; the caption; frames; Post, Save draft, Discard / Keep editing; editing a draft. Verified against the debug harness's fake computer (`--ez compose true`, `harness-edit-draft`), not a live daemon. Evidence in `editor/`: `a-compose.png` … `d-text.png` vs `ios-ref/152`–`155` (open, picker, placed, text), `e-fonts.png`, `f-styled.png`, `g-text-done.png`, `h-dragging.png` (bin and guides), `i-emoji-tab.png`, `j-emoji-full.png`, `k-reaction-emoji.png`, `l-reaction.png`, `m-link-ask.png`, `n-link.png`, `p-posted.png`, `q-viewer-posted.png` (the posted story with its four overlays in the viewer), `r-search.png`, `s-captioned.png`, `u-edit-draft.png`, `w-discard-alert.png`, `video-editor.mp4`; `x-pinched.png` (a two-finger pinch and turn injected by `:probe`'s `PinchProbe`: scale 0.40 → 0.72, rotation 0.611 rad); `z1-photo-picker.png`, `z2-frames-added.png` (two photos and a 6 s clip from the system photo picker, pushed to the emulator), `z4`–`z7-viewer-frame*.png` and `video-frames.mp4` (posted, the four frames in the viewer, the video streamed by byte ranges and shown for its length). The harness's fake keeps an uploaded video as the daemon does (API.md: kind `video`, size and length `null` for the player to read, black background, single byte ranges)

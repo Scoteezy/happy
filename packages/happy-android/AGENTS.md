@@ -970,8 +970,9 @@ after verification. This hook is debug-only and never proves Tailcat access.
 Development and preview builds, over a Direct computer (happy-ios
 `Stories`). The wire, client routes, store, row and draft are in
 `stories/` and `direct/` (plain Kotlin, iOS's tests); the views are in
-`ui/stories/`. Nothing in the app shows them yet: they wait for Stem Cells
-home, so for now they run in the debug harness below.
+`ui/stories/`. The real Direct home owns the row, and Direct conversations
+render `draft_story` cards through `ChatDrawItem.Story`. The standalone
+harness below remains useful for focused editor and media checks.
 
 - `StoriesHomeController` puts the row in `HomeHeaderView`'s `accessory`
   and drives it from the list's pull. The list must scroll as UIScrollView
@@ -1002,7 +1003,17 @@ home, so for now they run in the debug harness below.
   from the system photo picker (`StoriesMediaChooser`).
 - `StoryInlineView`, the story card in a conversation, finds its session
   through `StoriesProviding` on a parent view or the activity, as iOS
-  walks the responder chain.
+  walks the responder chain. The chat root also owns presentation callbacks:
+  disappearing/destroyed chats dismiss their editor/viewer even during
+  opening, and discarded row views close their card subscriptions. Read-only
+  previews must not present either modal. A forced editor dismissal cleans
+  only its own temporary media and never posts or saves a draft implicitly.
+- Full-screen Stories presenters save the covered window branches'
+  accessibility flags, hide those branches from accessibility while shown,
+  and restore the exact previous flags on removal. For device checks use a
+  compressed UI automation dump: the raw tree includes nonimportant Views
+  and is not a faithful list of TalkBack targets. Neither tree inspection nor
+  Robolectric assertions prove spoken TalkBack behavior.
 - Inside a `TextPaint(...).apply { }` block, `density` is the paint's own
   field (1.0), not `ui/view`'s: write `Theme.density` there.
 
