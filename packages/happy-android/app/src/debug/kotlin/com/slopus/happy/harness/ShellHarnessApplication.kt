@@ -35,12 +35,7 @@ class ShellHarnessApplication : HappyApplication() {
                             it.drawStickers(StoriesHarnessActivity.stickers())
                         }
                     } else null
-                    val computerFixture = if (stories == null) namedFixture else {
-                        val root = kotlinx.serialization.json.Json.parseToJsonElement(namedFixture) as kotlinx.serialization.json.JsonObject
-                        val settings = root["settings"] as kotlinx.serialization.json.JsonObject
-                        kotlinx.serialization.json.JsonObject(root + ("settings" to kotlinx.serialization.json.JsonObject(settings +
-                            (com.slopus.happy.stories.STORIES_SETTING_KEY to kotlinx.serialization.json.JsonPrimitive(true))))).toString()
-                    }
+                    val computerFixture = if (stories == null) namedFixture else StoriesShellFixture.apply(namedFixture)
                     val computer = StemCellsHarnessTransport(computerFixture, fixtureScope,
                         fallback = stories,
                         drawMedia = { color, label, width, height ->
