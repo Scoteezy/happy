@@ -51,8 +51,8 @@ reference for protocol, sync, crypto and copy, which happy-ios ports too.
      platform's dialogs, switches, ripples, progress bars, photo picker and
      Google Code Scanner; solid pills with elevation where iOS draws liquid
      glass. Everything else (geometry, copy, order, timing) is iOS's.
-   - Text scales with the system font scale, as iOS's text size does
-     (`TextScale`, with the styles' `maxScale` caps).
+   - Text scales with the system font scale where iOS's follows its text
+     size (`TextScale`, with the styles' `maxScale` caps; see Text size).
    Strings are generated from happy-app's catalogs (see Localization); never
    edit `res/values*/strings.xml` by hand. Copy that happy-ios writes inline
    goes in `res/values/strings_<area>.xml`, English only, as on iOS.
