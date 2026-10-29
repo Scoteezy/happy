@@ -886,6 +886,18 @@ window detach must finish without restoring focus into a departing screen,
 even while a cancelled gesture is still settling. Keep the chat root
 focusable so clearing its only editor cannot immediately focus it again.
 
+`StemCellsHomeView` owns `StoriesHomeController`, routing list drag events
+and carrying state to it. A held inset change must not move the content
+under the finger; a released change can settle. Keep the header's actual
+View bounds large enough for its Stories accessory: drawing outside a
+parent does not prevent Android accessibility from clipping avatar bounds.
+Changing accounts clears old circles immediately and dismisses even a
+still-opening viewer. Cancel its transition animators too, or they can
+reattach old presentation state. `AppCoordinator` destroys its owned screens
+on Activity destruction; stack View detachment alone may be reparenting.
+The application-scoped per-computer session survives Activity recreation,
+but the old screen's subscriptions and scopes must not survive it.
+
 For fake-backed verification of the **real MainActivity shell**, build debug
 with `-Phappy.shellHarness=true`. This changes only debug's application ID to
 `com.slopus.happy.dev.shellharness`, so fixtures cannot share normal app data.
@@ -904,6 +916,13 @@ handshake for a `shell-fixture-*` address (port 1234, token 32 bytes of 7).
 Tests and videos using it establish shell/handshake behavior, never successful
 Tailcat/real-daemon connectivity. Do not inject these credentials into a
 normal development, preview or production application.
+
+Only `shell-fixture-stories-*` addresses also serve the Stories fixture and
+enable its computer setting. For a cold-cache test, the isolated harness
+activity accepts `offlineComputer` (a `shell-fixture-*` address) and boolean
+`offline`; this rejects requests and new streams, not an existing stream.
+Background to flush, then restart only the fixture APK. Restore the flag
+after verification. This hook is debug-only and never proves Tailcat access.
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one
