@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- What the camera app is handed to write a taken picture into (ui/composer/ComposerImagePicker.kt takePhoto). -->
+<!-- What other apps are handed: the camera writes a taken picture into camera/ (ui/composer/ComposerImagePicker.kt takePhoto); a file a conversation presented is opened from media/ (ui/stemcells/StemCellChatScreen.kt). -->
 <paths>
     <cache-path name="camera" path="camera/" />
+    <cache-path name="media" path="media/" />
 </paths>

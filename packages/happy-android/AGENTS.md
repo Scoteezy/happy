@@ -767,7 +767,12 @@ the screen, which opens `StemCellPickerPresenter`'s panels over its root;
 the dock's pick for new work. The "+" opens `StemCellAttachSheet` over
 the screen's root (its pictures through `ComposerImagePicker`'s library,
 files and camera, the camera app writing into `cache/camera` through the
-`${applicationId}.files` FileProvider).
+`${applicationId}.files` FileProvider). A tapped picture opens
+`StemCellPictureViewer`, a recording `StemCellVideoPlayer`, both added
+over the screen's root raised above its shadows; any other file is kept
+in `cache/media` and handed to another app with `ACTION_VIEW`. The
+harness serves a fixture item's `asset` as its bytes (the recording and
+the PDF under `assets/harness/`); the rest it draws.
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one

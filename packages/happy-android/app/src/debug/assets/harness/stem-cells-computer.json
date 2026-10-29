@@ -234,7 +234,9 @@
   "media": {
     "tcshots/0": { "color": "#FF8D28", "label": "Home" },
     "tcshots/1": { "color": "#0088FF", "label": "Chat" },
-    "tcshots/2": { "color": "#34C759", "label": "Settings" }
+    "tcshots/2": { "color": "#34C759", "label": "Settings" },
+    "tcpreview/0": { "asset": "harness/store-preview.mp4" },
+    "tcpreview/1": { "asset": "harness/release-checklist.pdf" }
   },
   "artifacts": {
     "arnotes": {
@@ -339,6 +341,12 @@
                 { "type": "text", "text": "Here are the store notes for 2.5:" },
                 { "type": "tool_call", "id": "tcnotes", "name": "update_artifact", "status": "completed",
                   "presentation": { "type": "artifact", "artifactId": "arnotes", "artifactType": "markdown", "title": "Store notes", "version": 2, "shows": "latest" } },
+                { "type": "text", "text": "The store preview and the checklist:" },
+                { "type": "tool_call", "id": "tcpreview", "name": "present_files", "status": "completed",
+                  "presentation": { "type": "media", "items": [
+                    { "kind": "video", "name": "store-preview.mp4", "mimeType": "video/mp4", "size": 62124, "source": { "path": "store/store-preview.mp4", "absolutePath": "/Users/you/Happy/Tasks/android_2_5_release/store/store-preview.mp4" } },
+                    { "kind": "document", "name": "release-checklist.pdf", "mimeType": "application/pdf", "size": 12671, "source": { "path": "release-checklist.pdf", "absolutePath": "/Users/you/Happy/Tasks/android_2_5_release/release-checklist.pdf" } }
+                  ], "layout": null } },
                 { "type": "text", "text": "Building the bundle for the preview track now." }
               ] }
           ]

@@ -60,6 +60,7 @@
     <string name="stem_proposal_loading">Loading the proposed sidebar…</string>
     <string name="stem_proposal_missing">This proposal is no longer available.</string>
     <string name="stem_picture">Picture</string>
+    <string name="stem_picture_number">%1$d of %2$d</string>
     <string name="stem_video">Video</string>
     <string name="stem_media_label">%1$s: %2$s</string>
     <string name="stem_media_loading">loading</string>

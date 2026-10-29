@@ -47,6 +47,8 @@ class StemCellsHarnessTransport(
     private val scope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
     private val drawMedia: (color: Int, label: String, width: Int, height: Int) -> ByteArray = { _, _, _, _ -> ByteArray(0) },
+    /** A recording or document the fixture serves as it is, by its asset path. */
+    private val asset: (path: String) -> ByteArray? = { null },
     private val fallback: DirectTransport? = null,
     /** How long each request takes, as over a link. */
     private val latencyMs: Long = 0,
@@ -322,6 +324,7 @@ class StemCellsHarnessTransport(
                 val index = parts.getOrNull(6)?.toIntOrNull() ?: return error(404, "not_found", "No such media.")
                 val item = toolItems[toolCallId]?.getOrNull(index) ?: return error(404, "not_found", "No such media.")
                 val look = media.obj("$toolCallId/$index")
+                look.str("asset")?.let { path -> asset(path)?.let { return served(it, item.str("mimeType") ?: "application/octet-stream", headers) } }
                 val color = look.str("color")?.removePrefix("#")?.toLong(16)?.let { (0xFF000000 or it).toInt() } ?: 0xFF8E8E93.toInt()
                 // Drawn small, the shape of the file it stands for.
                 val width = ((item.num("width") ?: 1080.0) / 4).toInt()

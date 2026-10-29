@@ -77,6 +77,7 @@ class StemCellsHarnessActivity : ComponentActivity() {
             fixture, engineScope,
             now = { epoch + (System.currentTimeMillis() - started) },
             drawMedia = ::drawMedia,
+            asset = { path -> runCatching { assets.open(path).use { it.readBytes() } }.getOrNull() },
             latencyMs = extras.getLong("latency", 0),
         )
         engine = DirectSyncEngine(DirectAgentClient(transport, "harness"), directory, engineScope)
