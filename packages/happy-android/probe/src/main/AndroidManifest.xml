@@ -9,4 +9,7 @@
     <instrumentation
         android:name=".PinchProbe"
         android:targetPackage="com.slopus.happy.probe" />
+    <instrumentation
+        android:name=".HoldDragProbe"
+        android:targetPackage="com.slopus.happy.probe" />
 </manifest>
