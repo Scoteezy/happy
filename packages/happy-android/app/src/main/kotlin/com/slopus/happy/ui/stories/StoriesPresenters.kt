@@ -32,6 +32,19 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
+/** Full-screen native Views are modal to accessibility as well as touch. */
+private class StoriesModalAccessibility(root: ViewGroup) {
+    private val covered = (0 until root.childCount).map { root.getChildAt(it) }.map { view ->
+        (view to view.importantForAccessibility).also {
+            view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        }
+    }
+
+    fun restore() {
+        covered.forEach { (view, previous) -> view.importantForAccessibility = previous }
+    }
+}
+
 /**
  * Opens the full-screen viewer on an author of the row (happy-ios
  * `StoriesViewerPresenter`), grown out of their circle, and closes it back
@@ -40,7 +53,7 @@ import kotlin.math.min
  * closes it.
  */
 object StoriesViewerPresenter {
-    private class Presented(val viewer: StoryViewerController, val root: ViewGroup, val back: OnBackPressedCallback?, val bars: WindowInsetsControllerCompat?, val lifecycle: DefaultLifecycleObserver?)
+    private class Presented(val viewer: StoryViewerController, val root: ViewGroup, val back: OnBackPressedCallback?, val bars: WindowInsetsControllerCompat?, val lifecycle: DefaultLifecycleObserver?, val accessibility: StoriesModalAccessibility)
 
     private val shown = HashMap<StoryViewerController, Presented>()
 
@@ -66,7 +79,7 @@ object StoriesViewerPresenter {
                 override fun onDestroy(owner: LifecycleOwner) = viewer.dismissViewer(animated = false)
             }.also { observer -> it.lifecycle.addObserver(observer) }
         }
-        shown[viewer] = Presented(viewer, root, back, bars, lifecycle)
+        shown[viewer] = Presented(viewer, root, back, bars, lifecycle, StoriesModalAccessibility(root))
         StoriesHaptics.play(StoriesHaptics.Moment.Open, host)
         root.addView(viewer, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         // The pages keep clear of the cutout and the navigation, under a hidden status bar.
@@ -114,6 +127,7 @@ object StoriesViewerPresenter {
             presented.bars?.show(WindowInsetsCompat.Type.statusBars())
             presented.root.removeView(viewer)
             shown.remove(viewer)
+            presented.accessibility.restore()
             done()
         }
         if (animated) StoriesViewerTransition.close(viewer, presented.root, remove) else {
@@ -290,7 +304,7 @@ object StoriesViewerTransition {
  * over its black; back closes what is over it first, then it.
  */
 object StoriesEditorPresenter {
-    private class Presented(val root: ViewGroup, val back: OnBackPressedCallback?, val bars: WindowInsetsControllerCompat?, val wasLight: Boolean?, val lifecycle: DefaultLifecycleObserver?)
+    private class Presented(val root: ViewGroup, val back: OnBackPressedCallback?, val bars: WindowInsetsControllerCompat?, val wasLight: Boolean?, val lifecycle: DefaultLifecycleObserver?, val accessibility: StoriesModalAccessibility)
     private val shown = HashMap<StoryEditorView, Presented>()
 
     /** The editor up over [root], if any. */
@@ -329,7 +343,7 @@ object StoriesEditorPresenter {
                 override fun onDestroy(owner: LifecycleOwner) = dismiss(editor, animated = false)
             }.also { observer -> it.lifecycle.addObserver(observer) }
         }
-        shown[editor] = Presented(root, back, bars, wasLight, lifecycle)
+        shown[editor] = Presented(root, back, bars, wasLight, lifecycle, StoriesModalAccessibility(root))
         root.addView(editor, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val insets = ViewCompat.getRootWindowInsets(root)
         val top = insets?.getInsets(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout())?.top ?: 0
@@ -355,6 +369,7 @@ object StoriesEditorPresenter {
             presentation.lifecycle?.let { (editor.context as? ComponentActivity)?.lifecycle?.removeObserver(it) }
             presentation.wasLight?.let { presentation.bars?.isAppearanceLightStatusBars = it }
             presentation.root.removeView(editor)
+            presentation.accessibility.restore()
             editor.onDismiss = null
             editor.done()
         }

@@ -2,6 +2,7 @@ package com.slopus.happy.ui.stemcells
 
 import android.os.Looper
 import android.view.View
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import com.slopus.happy.direct.*
 import com.slopus.happy.harness.StemCellsHarnessTransport
@@ -39,6 +40,7 @@ class StemCellsInlineStoryTest {
         val destroyActivity: () -> Unit,
     ) {
         val card: StoryInlineView get() = chat.view.findViewWithTag("story-inline:d1")
+        val underlay: View get() = (activity.window.decorView as ViewGroup).getChildAt(0)
     }
 
     private suspend fun TestScope.await(message: String, condition: () -> Boolean) {
@@ -73,6 +75,7 @@ class StemCellsInlineStoryTest {
         val chat = StemCellChatScreen.forRow(activity, session, row)!!
         val stack = ScreenStack(activity)
         activity.setContentView(stack)
+        (activity.window.decorView as ViewGroup).getChildAt(0).importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         try {
             engine.start()
             stack.setScreens(listOf(chat))
@@ -113,10 +116,13 @@ class StemCellsInlineStoryTest {
             val viewer = StoriesViewerPresenter.presented(activity.window.decorView)
             assertNotNull(viewer)
             assertSame(canvas, viewer!!.origin)
+            assertEquals("TalkBack must not reach the chat under a full-screen viewer", View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
+                underlay.importantForAccessibility)
             stack.setScreens(emptyList())
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
             assertNull("No old-account viewer can remain or finish opening", StoriesViewerPresenter.presented(activity.window.decorView))
             assertNull(viewer.parent)
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, underlay.importantForAccessibility)
         }
     }
 
@@ -126,10 +132,13 @@ class StemCellsInlineStoryTest {
             val editor = StoriesEditorPresenter.presented(activity.window.decorView)
             assertNotNull(editor)
             assertEquals("d1", editor!!.draft.original?.id)
+            assertEquals("TalkBack must not reach the chat under a full-screen editor", View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
+                underlay.importantForAccessibility)
             stack.setScreens(emptyList())
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
             assertNull(StoriesEditorPresenter.presented(activity.window.decorView))
             assertNull(editor.parent)
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_YES, underlay.importantForAccessibility)
             assertFalse(requests.any { it.first == "POST" && it.second.startsWith("/v0/stories/") })
         }
     }
@@ -156,6 +165,21 @@ class StemCellsInlineStoryTest {
             row.bind(ChatRowPlan(plan.id, plan.size, emptyList()))
             assertNull(card.parent)
             assertNull(row.findViewWithTag<View>("story-inline:d1"))
+        }
+    }
+
+    @Test fun existingCardFollowsStoriesDisabledRestoredAndDeletedStates() = runTest {
+        withChat {
+            val original = card
+            session.stories.store.setEnabled(false)
+            await("Disabling Stories must remove the draft's actions") { card.state == "gone" }
+            assertEquals(View.GONE, card.findViewWithTag<View>("story-inline-post").visibility)
+            session.stories.store.setEnabled(true)
+            await("Re-enabling Stories must restore the card without reopening chat") { card.state.startsWith("draft#") }
+            session.stories.store.delete("d1")
+            await("Deleting the story must update its existing conversation card") { card.state == "deleted" }
+            assertSame(original, card)
+            assertEquals(View.GONE, card.findViewWithTag<View>("story-inline-edit").visibility)
         }
     }
 }
