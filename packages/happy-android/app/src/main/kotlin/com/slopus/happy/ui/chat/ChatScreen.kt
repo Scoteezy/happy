@@ -87,6 +87,7 @@ import com.slopus.happy.layout.Size
 import com.slopus.happy.layout.chat.ChatScreenLayout
 import com.slopus.happy.model.Settings
 import com.slopus.happy.model.avatarId
+import com.slopus.happy.model.isTask
 import com.slopus.happy.model.resolveAvatarHarness
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
@@ -650,6 +651,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
                 style = AvatarStyle.normalize(settings.avatarStyle),
                 monochrome = !state.online || settings.avatarMonochrome,
                 isBot = metadata?.bot != null,
+                isTask = it.session.isTask,
                 harness = if (settings.showHarnessIconInSessionHeader) resolveAvatarHarness(metadata?.flavor, metadata?.client?.id) else null,
             )
         }

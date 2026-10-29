@@ -110,6 +110,7 @@ class ShellHarnessActivity : ComponentActivity() {
                 }
                 preferences.edit().putBoolean("seeded", true).apply()
             }
+            if (intent.getBooleanExtra("relayTasks", false)) RelayTasksShellFixture.seed(this@ShellHarnessActivity, graph)
             startActivity(Intent(this@ShellHarnessActivity, MainActivity::class.java))
             finish()
         }

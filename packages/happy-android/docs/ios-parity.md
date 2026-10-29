@@ -109,6 +109,10 @@ item once it exists.
 
 ## Current-source parity audit (2026-10-29, continuing)
 
+- Fixed baseline and consolidated inventory:
+  [parity-audit-2026-10-29.md](parity-audit-2026-10-29.md). This inventory
+  supersedes stale historical gap wording below, including unported Bot mode,
+  proposal Loading-only cards, missing inline Stories and header rename.
 - The old “rename in the chat header” gap is stale: native
   `StemCellChatHeaderView.swift:57` routes the whole capsule to details and
   disables title interaction; no `titleView.onRename` assignment exists in
@@ -116,10 +120,11 @@ item once it exists.
   Renaming belongs in the detail screen, which both platforms implement;
   its complete current flow will be verified separately, not replaced with
   a new header behavior absent from the reference.
-- Relay Home task/bot rendering is a real remaining gap: native
-  `HomeRowDrawing.swift:190` and `TabletHomeRowDrawing.swift` handle these
-  row kinds; native `HomeDockScreens.swift` also has Bot/Task creation modes.
-  Direct's existing task/bot sidebar does not complete these relay features.
+- Relay Home Task rendering and dock Task mode are real remaining gaps.
+  Further inspection found Bot grouping and Session/Bot creation already
+  implemented in Android; bot face choices remain absent. Native
+  `HomeRowDrawing.swift:190` and `HomeDockScreens.swift` are the reference.
+  Direct's existing task/bot sidebar does not complete relay Task features.
 
 ## Real conversation inline Stories verification (2026-10-29)
 
@@ -556,7 +561,10 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [~] Flat session list (live rows, archive toggle, archived by day), rows with status, draft glyph, line counts, generated avatars, faded rows when the computer is offline. Evidence: `home/compare-list.png` (vs `ios-ref/20-home-list.png`), `home/compare-offline-list.png`, `home/home-interact.mp4`, `home/home-offline.mp4`. A tap opens the chat
 - [x] Project grouping (computer header, Projects, worktrees, archived chats at 0.6), expanded projects in local settings. Evidence: `home/compare-grouped.png`, `home/compare-dark-grouped.png`, `home/07-grouped.png`
 - [x] Archive by swipe and long press; the "Session" actions (`ui/components/SwipeActions.kt`, `ui/home/HomeSessionActions.kt`, `SessionQuickActionsTest` with iOS's SessionQuickActionsTests): a live flat row drags left over iOS 26's red capsule with the archive glyph and "Archive Session" under it (UIKit's trailing swipe action without a full swipe: past half way or a flick it stays open, a tap on the capsule archives, a tap elsewhere, a scroll or a drag back closes it and does nothing else); TalkBack gets it as the row's custom action. The row leaves at once and comes back only if the machine and the server both refuse, with iOS's messages. A long press opens the "Session" alert (a platform list dialog, Archive in red): Details, Resume (or why it can't), Fork and Duplicate with the continuation experiment, the two metadata copies in dev mode, Archive; as on iOS there is no worktree prompt from home. Grouped rows don't swipe, as iOS. Tasks' Leave waits for task rows. The seed computer keeps its sessions alive, so an archived seed session comes back on the next sync. Evidence: `home-actions/01-swipe-open.png` vs `ios-ref/100-home-swipe.png`, `03-session-alert.png` vs `ios-ref/100-home-session-actions.png`, `02-swipe-archived.png`, `04-alert-archived.png`, `home-actions-walk.mp4` (open, close by a tap, a short drag springing back, archive from the capsule, the alert's Details and Archive)
-- [ ] Tasks and bots rows
+- [~] Relay Bot rows already exist in `ProjectHomeRows` and `SessionListView`.
+  Task classification, ordering, retired-task exclusion and glyph are in
+  progress, not verified yet. See the fixed-baseline audit above; dock Task
+  creation is a separate missing feature.
 - [~] Update banner and offline machines banner: offline plaque and What's new shown (`home/compare-offline-list.png`); What's new opens the changelog; the Play Store update check is to do
 - [~] Home dock: resting capsule with the placeholder and send button, its fade-in and the list scrim (`:layout` `HomeDockLayout`, focus layout, motion, fade and refusal with the iOS tests)
 - [~] Dock composer (`ui/home/HomeDockController.kt`, `HomeDockFocusView.kt`): opens over home with the dim and a faint blur (RenderEffect, Android 12+), the shell growing from the capsule and the rows and card revealing in turn (`HomeDockFocusMotion`), rides the IME, closes on the backdrop or Back. Machine, project (with Enter custom path), worktree and harness pickers and the permission, model and effort chips open `ChoiceMenu` (iOS's inline-section UIMenu as a popup window that keeps the keyboard up); Send runs `SessionStarter` with the progress line, the stop hint, Stop, refusal shakes and flash, then opens the chat. Project + and No Sessions' Start New Session open it too. Evidence: `dock/d12-open.png`, `d20-project-menu.png`, `d22-starting.png`, `d23-chat.png`, `dock-open-menus.mp4`, `dock-start-session.mp4` vs `ios-ref/41-dock-open.png` … `45-dock-harness-menu.png`. Bots (Session | Bot, faces), tasks and pictures are to do; the text heights are measured on the main thread

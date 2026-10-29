@@ -62,6 +62,7 @@ class AvatarView(context: Context) : View(context), ThemeAware {
         val image: String? = null,
         val harness: AvatarHarness? = null,
         val square: Boolean = false,
+        val isTask: Boolean = false,
     )
 
     var content: Content? = null
@@ -81,6 +82,7 @@ class AvatarView(context: Context) : View(context), ThemeAware {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val clip = Path()
     private val chip = IconView(context, Icon.ionicons("hardware-chip-outline"), 0.0)
+    private val task = IconView(context, Icon.ionicons("checkbox-outline"), 0.0)
     private val bounds = RectF()
 
     init {
@@ -94,7 +96,7 @@ class AvatarView(context: Context) : View(context), ThemeAware {
         artJob?.cancel()
         val content = content ?: return run { art = null }
         val key = when {
-            content.isBot -> null
+            content.isBot || content.isTask -> null
             content.style == AvatarStyle.Brutalist -> "avatars/brutalist/${GeneratedAvatar.brutalist(content.seed, content.monochrome).imageName}.png"
             content.style == AvatarStyle.Gradient -> "avatars/gradients/${GeneratedAvatar.gradientImageName(content.seed).removePrefix("gradient-")}.png"
             else -> null
@@ -148,14 +150,15 @@ class AvatarView(context: Context) : View(context), ThemeAware {
             val picture = picture
             when {
                 picture != null -> drawCover(canvas, picture)
-                content.isBot -> {
+                content.isBot || content.isTask -> {
                     paint.colorFilter = null
                     paint.color = Theme.color(Palette.surface)
                     canvas.drawRect(bounds, paint)
                     val frame = GeneratedAvatar.botGlyphFrame(sizeDp)
-                    chip.size = frame.width
-                    chip.tint = if (content.monochrome) Palette.textSecondary else Palette.text
-                    drawChild(canvas, chip, frame)
+                    val glyph = if (content.isTask && !content.isBot) task else chip
+                    glyph.size = frame.width
+                    glyph.tint = if (content.monochrome) Palette.textSecondary else Palette.text
+                    drawChild(canvas, glyph, frame)
                 }
                 content.style == AvatarStyle.Pixelated -> {
                     paint.colorFilter = null
@@ -203,7 +206,7 @@ class AvatarView(context: Context) : View(context), ThemeAware {
     /** Avatar.tsx `harnessBadgeSizes`: a surface circle at the bottom-right holding the harness mark. */
     private fun drawBadge(canvas: Canvas, content: Content, sizeDp: Double) {
         val harness = content.harness ?: return
-        if (content.isBot && picture == null) return
+        if ((content.isBot || content.isTask) && picture == null) return
         val (circle, glyph) = GeneratedAvatar.badge(sizeDp, GeneratedAvatar.badgeGlyphRatio(harness.name.lowercase()))
         val d = Theme.density
         paint.color = Theme.color(Palette.surface)

@@ -11,7 +11,7 @@ import com.slopus.happy.sync.ForkSource
  * getSessionName: the bot's name, else the summary, else null, which the
  * screens show as "New chat" (`session.newChat`).
  */
-fun Session.displayName(): String? = metadata?.bot?.name ?: metadata?.summary?.text
+fun Session.displayName(): String? = metadata?.bot?.name ?: metadata?.task?.taskString("name") ?: metadata?.summary?.text
 
 /** getSessionSubtitle: the path relative to home, or null ("unknown"). */
 fun Session.displaySubtitle(): String? = metadata?.let { formatPathRelativeToHome(it.path, it.homeDir) }
@@ -23,6 +23,7 @@ fun Session.displaySubtitle(): String? = metadata?.let { formatPathRelativeToHom
 fun Session.avatarId(): String {
     val metadata = metadata
     if (metadata?.bot != null) return "${metadata.machineId ?: ""}:bot:${metadata.bot.id}"
+    metadata?.task?.taskString("id")?.let { return "${metadata.machineId.orEmpty()}:task:$it" }
     val machineId = metadata?.machineId
     if (metadata != null && !machineId.isNullOrEmpty() && metadata.path.isNotEmpty()) return "$machineId:${metadata.path}"
     return id

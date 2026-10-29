@@ -190,7 +190,7 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
                 is HomeRow.Project -> when (row.row) {
                     is ProjectHomeRow.Section, is ProjectHomeRow.ArchiveHeader -> TYPE_SECTION
                     is ProjectHomeRow.MachineHeader -> TYPE_MACHINE
-                    is ProjectHomeRow.Bot, is ProjectHomeRow.Archived -> TYPE_CHAT
+                    is ProjectHomeRow.Bot, is ProjectHomeRow.Task, is ProjectHomeRow.Archived -> TYPE_CHAT
                     is ProjectHomeRow.ProjectCard -> TYPE_PROJECT
                     is ProjectHomeRow.Worktree, is ProjectHomeRow.Toggle -> TYPE_WORKTREE
                     is ProjectHomeRow.ArchiveToggle -> TYPE_ARCHIVE
@@ -257,13 +257,18 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
         private fun bindProject(view: View, row: ProjectHomeRow) {
             when (row) {
                 is ProjectHomeRow.Section -> (view as ProjectSectionCell).configure(
-                    context.getString(if (row.section == ProjectHomeSection.Bots) R.string.sidebar_bots else R.string.sidebar_projects),
+                    context.getString(when (row.section) {
+                        ProjectHomeSection.Bots -> R.string.sidebar_bots
+                        ProjectHomeSection.Tasks -> R.string.home_info_tasks
+                        ProjectHomeSection.Projects -> R.string.sidebar_projects
+                    }),
                 )
                 is ProjectHomeRow.ArchiveHeader -> (view as ProjectSectionCell).configure(context.dayTitle(row.title))
                 is ProjectHomeRow.MachineHeader -> (view as ProjectMachineHeaderCell).configure(
                     if (row.machineId == null) "<${context.getString(R.string.status_unknown)}>" else row.machineName,
                 )
                 is ProjectHomeRow.Bot -> chat(view as ProjectChatCell, row.session, archived = false)
+                is ProjectHomeRow.Task -> chat(view as ProjectChatCell, row.session, archived = false)
                 is ProjectHomeRow.Archived -> chat(view as ProjectChatCell, row.session, archived = true)
                 is ProjectHomeRow.ProjectCard -> {
                     val cell = view as ProjectCardCell
@@ -322,6 +327,7 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
                 style = avatarSettings.style,
                 monochrome = avatarSettings.monochrome || faded,
                 isBot = session.botId != null,
+                isTask = session.isTask,
                 image = session.avatarUri,
                 harness = harness,
             ),

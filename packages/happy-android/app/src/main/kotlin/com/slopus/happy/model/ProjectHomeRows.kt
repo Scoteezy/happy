@@ -54,7 +54,7 @@ data class WorktreeToggle(
     val blocked: Boolean,
 )
 
-enum class ProjectHomeSection { Bots, Projects }
+enum class ProjectHomeSection { Bots, Tasks, Projects }
 
 sealed interface ProjectHomeRow {
     val key: String
@@ -70,6 +70,10 @@ sealed interface ProjectHomeRow {
 
     data class Bot(val session: SessionRowData) : ProjectHomeRow {
         override val key get() = "bot-${session.id}"
+    }
+
+    data class Task(val session: SessionRowData) : ProjectHomeRow {
+        override val key get() = "task-${session.id}"
     }
 
     data class ProjectCard(val project: ProjectHomeEntry) : ProjectHomeRow {
@@ -185,6 +189,7 @@ private fun projectRows(project: ProjectGroupData, expanded: Set<String>): List<
 
 private class MachineSection(val machineId: String?, val machineName: String, val rig: Boolean) {
     val bots = mutableListOf<SessionRowData>()
+    val tasks = mutableListOf<SessionRowData>()
     val projects = mutableListOf<ProjectHomeRow>()
     var lastActivityAt = 0L
 }
@@ -229,10 +234,14 @@ fun buildProjectHomeRows(
     }
 
     for (item in items) {
-        if (item !is SessionListItem.Bots) continue
-        for (session in item.sessions) {
+        val sessions = when (item) {
+            is SessionListItem.Bots -> item.sessions
+            is SessionListItem.Tasks -> item.sessions
+            else -> continue
+        }
+        for (session in sessions) {
             val section = sectionFor(session.machineId)
-            section.bots.add(session)
+            if (item is SessionListItem.Tasks) section.tasks.add(session) else section.bots.add(session)
             section.lastActivityAt = maxOf(section.lastActivityAt, session.lastActivityAt)
         }
     }
@@ -254,12 +263,16 @@ fun buildProjectHomeRows(
     )
     val rows = mutableListOf<ProjectHomeRow>()
     for (section in ordered) {
-        if (section.bots.isEmpty() && section.projects.isEmpty()) continue
+        if (section.bots.isEmpty() && section.tasks.isEmpty() && section.projects.isEmpty()) continue
         val key = section.machineId ?: "unknown"
         rows.add(ProjectHomeRow.MachineHeader(section.machineId, section.machineName))
         if (section.bots.isNotEmpty()) {
             rows.add(ProjectHomeRow.Section("bots:$key", ProjectHomeSection.Bots))
             section.bots.forEach { rows.add(ProjectHomeRow.Bot(it)) }
+        }
+        if (section.tasks.isNotEmpty()) {
+            rows.add(ProjectHomeRow.Section("tasks:$key", ProjectHomeSection.Tasks))
+            section.tasks.forEach { rows.add(ProjectHomeRow.Task(it)) }
         }
         if (section.projects.isNotEmpty()) {
             rows.add(ProjectHomeRow.Section("projects:$key", ProjectHomeSection.Projects))

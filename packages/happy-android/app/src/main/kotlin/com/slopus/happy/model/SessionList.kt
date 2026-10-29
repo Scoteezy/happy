@@ -14,6 +14,8 @@ data class SessionRowData(
     val id: String,
     val botId: String? = null,
     val botUsername: String? = null,
+    val isTask: Boolean = false,
+    val taskFolderName: String? = null,
     /** Null: "New chat". */
     val name: String? = null,
     /** Null: "unknown". */
@@ -70,6 +72,7 @@ enum class ProjectSource { Rig, Happy }
 /** storage.ts `SessionListViewItem`, as far as the phone builds it. */
 sealed interface SessionListItem {
     data class Bots(val sessions: List<SessionRowData>) : SessionListItem
+    data class Tasks(val sessions: List<SessionRowData>) : SessionListItem
     data class Header(val title: DayTitle, val day: LocalDate) : SessionListItem
     data class ProjectsHeader(val source: ProjectSource) : SessionListItem
     data class ProjectItem(val source: ProjectSource, val project: ProjectGroupData) : SessionListItem
@@ -112,6 +115,8 @@ fun buildSessionRowData(session: Session, inputs: SessionListInputs): SessionRow
         id = session.id,
         botId = metadata?.bot?.id,
         botUsername = metadata?.bot?.username,
+        isTask = session.isTask,
+        taskFolderName = metadata?.task?.taskString("folderName"),
         name = session.displayName(),
         subtitle = session.displaySubtitle(),
         avatarId = session.avatarId(),
@@ -181,15 +186,19 @@ fun buildSessionListViewData(
 ): List<SessionListItem> {
     val rigProjectSessions = mutableListOf<Session>()
     val botSessions = mutableListOf<Session>()
+    val taskSessions = mutableListOf<Session>()
     val rigPathSessions = mutableListOf<Session>()
     val happySessions = mutableListOf<Session>()
     val archivedSessions = mutableListOf<Session>()
 
     for (session in inputs.sessions) {
         if (session.metadata?.isSideChat == true) continue
+        // Left or archived tasks disappear, rather than entering the archive.
+        if (session.isTask && session.isArchived(inputs.archivingSessionIds)) continue
         when {
             session.isArchived(inputs.archivingSessionIds) -> archivedSessions.add(session)
             session.metadata?.bot != null -> botSessions.add(session)
+            session.isTask -> taskSessions.add(session)
             session.metadata.isRig() -> if (session.isProjectSession()) rigProjectSessions.add(session) else rigPathSessions.add(session)
             else -> happySessions.add(session)
         }
@@ -214,6 +223,11 @@ fun buildSessionListViewData(
             if (aKey != bKey) aKey.compareTo(bKey) else a.id.compareTo(b.id)
         }
         items.add(SessionListItem.Bots(botSessions.map(toRow)))
+    }
+
+    if (taskSessions.isNotEmpty()) {
+        taskSessions.sortWith(taskOrder)
+        items.add(SessionListItem.Tasks(taskSessions.map(toRow)))
     }
 
     val rigProjects = buildProjectGroups(rigProjectSessions, toRow, isActive) +
@@ -265,6 +279,7 @@ fun visibleSessionListItems(items: List<SessionListItem>, hideArchived: Boolean)
             is SessionListItem.ProjectsHeader -> if (item.source in visibleSources) result.add(item)
             is SessionListItem.ProjectItem -> visibleProjects[index]?.let(result::add)
             is SessionListItem.Bots -> result.add(item)
+            is SessionListItem.Tasks -> result.add(item)
             else -> Unit
         }
     }
@@ -311,6 +326,7 @@ fun buildFlatSessionRows(items: List<SessionListItem>, sortByActivity: Boolean):
     for (item in items) {
         when (item) {
             is SessionListItem.Bots -> item.sessions.forEach { rows.add(toFlatSessionRow(it)) }
+            is SessionListItem.Tasks -> item.sessions.forEach { rows.add(toFlatSessionRow(it)) }
             is SessionListItem.ProjectItem -> for (workspace in item.project.workspaces) {
                 for (session in workspace.sessions) {
                     rows.add(FlatSessionRowData(session, item.project.name, workspace.name ?: workspace.id.ifEmpty { null }))
@@ -326,6 +342,7 @@ fun buildFlatSessionRows(items: List<SessionListItem>, sortByActivity: Boolean):
 /** toFlatSessionRow: a row outside any project card placed by the same worktree rule the cards use. */
 fun toFlatSessionRow(session: SessionRowData): FlatSessionRowData {
     if (session.botId != null) return FlatSessionRowData(session, "@${session.botUsername ?: ""}", null)
+    if (session.isTask) return FlatSessionRowData(session, session.taskFolderName?.let { "~/Tasks/$it" } ?: "~/Tasks", null)
     val path = session.path?.trim().orEmpty()
     val worktree = WorktreePaths.isWorktree(path)
     val projectPath = if (worktree) WorktreePaths.repoPath(path) else path
