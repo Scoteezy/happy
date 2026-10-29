@@ -21,4 +21,9 @@ class StemCellsRowActionsTest {
         assertEquals(listOf(listOf(RenameBot), listOf(ArchiveBot)), StemCellsRowActions.groups(task.copy(targetKind = "bot")))
         assertEquals(listOf(listOf(ArchiveSubtask)), StemCellsRowActions.groups(task.copy(kind = StemCellsRow.Kind.Session, agentId = "agent")))
     }
+    @Test fun reorderIsOfferedOnlyWhenTheHostHasALegalDrag() {
+        assertEquals(listOf(RenameTask, Reorder), StemCellsRowActions.groups(task, canReorder = true).first())
+        assertTrue(StemCellsRowActions.groups(task.copy(kind = StemCellsRow.Kind.Separator), canReorder = true).isEmpty())
+        assertTrue(StemCellsRowActions.groups(task.copy(isHappy = true), canReorder = true).isEmpty())
+    }
 }

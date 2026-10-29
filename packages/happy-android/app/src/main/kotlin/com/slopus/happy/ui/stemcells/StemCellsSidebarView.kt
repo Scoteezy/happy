@@ -3,6 +3,7 @@ package com.slopus.happy.ui.stemcells
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Bitmap
 import android.graphics.Paint
 import android.view.MotionEvent
 import android.view.View
@@ -12,6 +13,7 @@ import com.slopus.happy.layout.Rect
 import com.slopus.happy.layout.StemCellsMetrics
 import com.slopus.happy.layout.stemcells.StemCellsSidebarLayout
 import com.slopus.happy.stemcells.StemCellsRow
+import com.slopus.happy.stemcells.StemCellsDrag
 import com.slopus.happy.stemcells.StemCellsRow.Kind
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
@@ -57,6 +59,65 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
     private var laidOut: Pair<Double, List<StemCellsSidebarLayout.Row>>? = null
     var layoutResult: StemCellsSidebarLayout.Result? = null
         private set
+    private var arranged: List<String>? = null
+    private var heldIds = emptySet<String>()
+    private var carryIds: List<String>? = null
+    var onReorderInvalidated: (() -> Unit)? = null
+    private val settleOrder = Runnable { arranged = null; laidOut = null; requestLayout() }
+    private val drawingRows: List<StemCellsRow>
+        get() = arranged?.let { ids -> val current = rows.associateBy { it.id }; ids.mapNotNull(current::get) } ?: rows
+
+    data class CarryPicture(val image: Bitmap, val frame: Rect, val heights: List<Double>)
+
+    /** Snapshots the whole carried block, including children, bounded to four megapixels. */
+    fun prepareReorder(drag: StemCellsDrag): CarryPicture? {
+        if (arranged != null || isEditing || carryIds != null) return null
+        val rect = heldFrame(drag) ?: return null
+        val frames = layoutResult?.frames ?: return null
+        if (drag.units.any { unit -> unit.any { it !in frames.indices } }) return null
+        val w = dp(rect.width).toInt().coerceAtLeast(1)
+        val h = dp(rect.height).toInt().coerceAtLeast(1)
+        val scale = minOf(1.0, kotlin.math.sqrt(4_000_000.0 / (w.toDouble() * h)))
+        val bitmap = Bitmap.createBitmap((w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.scale(scale.toFloat(), scale.toFloat())
+        canvas.translate(-dp(rect.minX), -dp(rect.minY))
+        list.content.draw(canvas)
+        val heights = drag.units.map { frames[it.last()].box.maxY - frames[it.first()].box.minY + StemCellsMetrics.rowGap }
+        carryIds = rows.map { it.id }
+        heldIds = drag.held.map { it.id }.toSet()
+        list.setContentOffset(list.contentOffset) // stop any glide before lifting
+        list.isScrollEnabled = false
+        // FrameContainer places its children with setFrameOrHide, which restores visibility.
+        // Alpha keeps the original block hidden through every scroll/layout pass.
+        heldIds.forEach { views[it]?.alpha = 0f }
+        return CarryPicture(bitmap, rect, heights)
+    }
+
+    fun heldFrame(drag: StemCellsDrag): Rect? = drag.held.mapNotNull { views[it.id]?.frames?.box }.reduceOrNull(Rect::union)
+
+    fun arrangeReorder(drag: StemCellsDrag, to: Int) {
+        val order = drag.order(to)
+        arranged = order.map { it.id }
+        place(px(width), layoutRows(order), order, animated = true)
+    }
+
+    /** Keeps a dropped order until its document arrives (at most two seconds). */
+    fun endReorder(dropped: Boolean) {
+        carryIds = null
+        list.isScrollEnabled = true
+        removeCallbacks(settleOrder)
+        if (dropped) postDelayed(settleOrder, 2000) else {
+            arranged = null
+            place(px(width), layoutRows(rows), rows, animated = true)
+        }
+    }
+
+    fun revealReorder() {
+        heldIds.forEach { views[it]?.alpha = 1f }
+        heldIds = emptySet()
+        if (arranged == rows.map { it.id }) { removeCallbacks(settleOrder); arranged = null; laidOut = null; requestLayout() }
+    }
     /** Where the last finger went down on a row, in the row's own dp. */
     private var downX = 0.0
     private var editing: String? = null
@@ -119,6 +180,12 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
         // Other rows in the same shapes (one swapped for another) are placed again: their views are new.
         if (this.rows.map { it.id } != rows.map { it.id }) laidOut = null
         this.rows = rows
+        if (carryIds != null && carryIds != rows.map { it.id }) post { onReorderInvalidated?.invoke() }
+        if (carryIds == null && heldIds.isEmpty() && arranged == rows.map { it.id }) {
+            removeCallbacks(settleOrder)
+            arranged = null
+            laidOut = null
+        }
         var touched = 0
         val live = HashSet<String>()
         for (row in rows) {
@@ -195,7 +262,7 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
             if (frames.size != rows.size) return emptyList()
             val top = list.contentOffset
             val bottom = top + px(list.height)
-            return rows.zip(frames).filter { (_, frame) -> frame.box.maxY > top && frame.box.minY < bottom }.map { it.first }
+            return drawingRows.zip(frames).filter { (_, frame) -> frame.box.maxY > top && frame.box.minY < bottom }.map { it.first }
         }
 
     fun view(rowId: String): StemCellsRowView? = views[rowId]
@@ -203,14 +270,15 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
     private fun layoutRows(rows: List<StemCellsRow>) = layoutRows(rows, onAdd != null)
 
     override fun layoutSubviews(width: Double, height: Double) {
-        val input = layoutRows(rows)
-        if (laidOut?.first != width || laidOut?.second != input || layoutResult?.frames?.size != rows.size) place(width, input)
+        val drawn = drawingRows
+        val input = layoutRows(drawn)
+        if (laidOut?.first != width || laidOut?.second != input || layoutResult?.frames?.size != drawn.size) place(width, input, drawn)
         // After the rows are placed: the list lays its content out at their height in this pass.
         list.setFrame(Rect(0.0, 0.0, width, height))
     }
 
     /** Lays the rows out and moves each to its place. */
-    private fun place(width: Double, input: List<StemCellsSidebarLayout.Row>) {
+    private fun place(width: Double, input: List<StemCellsSidebarLayout.Row>, drawn: List<StemCellsRow> = rows, animated: Boolean = false) {
         val result = StemCellsSidebarLayout.layout(
             input, width,
             top = padding?.first ?: StemCellsMetrics.contentTop,
@@ -219,10 +287,17 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
         )
         layoutResult = result
         laidOut = width to input
-        for ((row, frame) in rows.zip(result.frames)) {
+        for ((row, frame) in drawn.zip(result.frames)) {
             val view = views[row.id] ?: continue
+            val oldTop = view.top + view.translationY
+            view.animate().cancel()
             view.frames = frame
             list.content.frames[view] = frame.box
+            view.setFrame(frame.box)
+            if (animated && row.id !in heldIds) {
+                view.translationY = oldTop - view.top
+                view.animate().translationY(0f).setDuration(160).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            } else view.translationY = 0f
         }
         connectors.lines = result.connectors
         list.content.frames[connectors] = Rect(0.0, 0.0, width, result.contentHeight)

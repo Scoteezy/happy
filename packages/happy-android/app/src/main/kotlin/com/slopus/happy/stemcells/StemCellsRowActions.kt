@@ -2,9 +2,9 @@ package com.slopus.happy.stemcells
 
 /** The current iOS/desktop sidebar's row-specific actions, never offered for Happy. */
 object StemCellsRowActions {
-    enum class Action { RenameSection, RenameTask, RenameBot, DeleteSection, CloseNewWork, LeaveTask, ArchiveTask, ArchiveBot, ArchiveSubtask }
+    enum class Action { RenameSection, RenameTask, RenameBot, Reorder, DeleteSection, CloseNewWork, LeaveTask, ArchiveTask, ArchiveBot, ArchiveSubtask }
 
-    fun groups(row: StemCellsRow): List<List<Action>> {
+    fun groups(row: StemCellsRow, canReorder: Boolean = false): List<List<Action>> {
         if (row.isHappy || row.kind !in listOf(StemCellsRow.Kind.Space, StemCellsRow.Kind.Session, StemCellsRow.Kind.Section)) return emptyList()
         val first = buildList {
             when {
@@ -12,6 +12,7 @@ object StemCellsRowActions {
                 row.kind == StemCellsRow.Kind.Space && row.spaceId != null && row.targetKind == "task" -> add(Action.RenameTask)
                 row.kind == StemCellsRow.Kind.Space && row.spaceId != null && row.targetKind == "bot" -> add(Action.RenameBot)
             }
+            if (canReorder) add(Action.Reorder)
         }
         val last = when {
             row.kind == StemCellsRow.Kind.Section -> listOf(Action.DeleteSection)

@@ -43,6 +43,7 @@ class StemCellsDirectHomeScreen(
     var openSettings: (() -> Unit)? = null
     var openSearch: (() -> Unit)? = null
     private var hold: StemCellsHoldOverlay? = null
+    private var carry: StemCellsReorderOverlay? = null
 
     override fun createView(): View = Root(context)
 
@@ -85,28 +86,32 @@ class StemCellsDirectHomeScreen(
 
     override fun onDisappear() {
         hold?.close(animated = false)
+        carry?.cancel(animated = false)
         stemCells.disappear()
     }
 
     override fun onBackPressed(): Boolean {
+        carry?.let { it.cancel(); return true }
         hold?.let { it.close(); return true }
         return stemCells.back()
     }
 
-    override val interceptsBack: Boolean get() = hold != null || stemCells.pickerOpen || stemCells.sidebar.isEditing
+    override val interceptsBack: Boolean get() = carry != null || hold != null || stemCells.pickerOpen || stemCells.sidebar.isEditing
 
     override fun onDestroy() {
         hold?.close(animated = false)
+        carry?.cancel(animated = false)
         stemCells.close()
     }
 
     private fun showHold(row: StemCellsRow, source: StemCellsRowView): Boolean {
-        if (hold != null) return false
-        val actions = StemCellsRowActions.groups(row)
+        if (hold != null || carry != null) return false
+        val actions = StemCellsRowActions.groups(row, canReorder = drag(row) != null)
         if (actions.isEmpty()) return false
         source.isPressed = false
         source.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
         val root = view as Root
+        root.continueHold(row)
         val at = IntArray(2).also(source::getLocationOnScreen)
         val base = IntArray(2).also(root::getLocationOnScreen)
         val rect = Rect(px(at[0] - base[0]), px(at[1] - base[1]), px(source.width), px(source.height))
@@ -119,6 +124,7 @@ class StemCellsDirectHomeScreen(
                 RenameSection -> R.string.stem_rename_section
                 RenameTask -> R.string.stem_rename_task
                 RenameBot -> R.string.stem_rename_bot
+                Reorder -> R.string.stem_reorder
                 DeleteSection -> R.string.stem_delete_section
                 CloseNewWork -> R.string.stem_close_new_work
                 LeaveTask -> R.string.stem_leave_task
@@ -128,6 +134,7 @@ class StemCellsDirectHomeScreen(
             }
             val icon = when (action) {
                 RenameSection, RenameTask, RenameBot -> "pencil"
+                Reorder -> "reorder"
                 DeleteSection -> "trash"
                 CloseNewWork, LeaveTask -> "close"
                 else -> "archive"
@@ -138,6 +145,7 @@ class StemCellsDirectHomeScreen(
                 when (action) {
                     RenameSection -> stemCells.sidebar.beginRename(row.id, row.label) { store.relabel(row.nodeId, it) }
                     RenameTask, RenameBot -> stemCells.sidebar.beginRename(row.id, row.label.takeUnless { it == context.getString(R.string.stem_untitled) } ?: "") { store.rename(row.spaceId!!, it) }
+                    Reorder -> armReorder(row)
                     DeleteSection -> store.removeSection(row.nodeId)
                     CloseNewWork -> store.discard(row.spaceId!!)
                     LeaveTask -> store.leave(row.targetId!!)
@@ -168,7 +176,65 @@ class StemCellsDirectHomeScreen(
         return true
     }
 
+    private fun drag(row: StemCellsRow): com.slopus.happy.stemcells.StemCellsDrag? {
+        val snapshot = session.snapshot
+        val document = snapshot.document ?: return null
+        return com.slopus.happy.stemcells.StemCellsDrag.holding(row.id, stemCells.sidebar.rows, snapshot.allRows, document)
+    }
+
+    private fun armReorder(row: StemCellsRow) {
+        if (carry != null) return
+        val drag = drag(row) ?: return
+        val sidebar = stemCells.sidebar
+        val picture = sidebar.prepareReorder(drag) ?: return
+        val root = view as Root
+        val at = IntArray(2).also(sidebar::getLocationOnScreen)
+        val base = IntArray(2).also(root::getLocationOnScreen)
+        val rect = picture.frame.offsetBy(px(at[0] - base[0]), px(at[1] - base[1]) - sidebar.list.contentOffset)
+        val overlay = StemCellsReorderOverlay(context, sidebar, drag, picture, rect, row.label)
+        carry = overlay
+        session.setDragging(true)
+        val covered = listOf(stemCells, header).associateWith { it.importantForAccessibility }
+        covered.keys.forEach { it.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS }
+        overlay.onDrop = { session.drop(drag, it) }
+        overlay.onEnd = { session.setDragging(false) }
+        overlay.onGone = {
+            if (carry === overlay) carry = null
+            sidebar.onReorderInvalidated = null
+            covered.forEach { (view, importance) -> view.importantForAccessibility = importance }
+            stack?.backStateChanged()
+        }
+        sidebar.onReorderInvalidated = { overlay.cancel(animated = false) }
+        root.addView(overlay)
+        overlay.setFrame(Rect(0.0, 0.0, px(root.width), px(root.height)))
+        overlay.present()
+        stack?.backStateChanged()
+    }
+
     private inner class Root(context: Context) : ManualLayout(context) {
+        private var touchDown: MotionEvent? = null
+        private var heldRow: StemCellsRow? = null
+        private var carryingTouch = false
+        private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+
+        /** The preview and carry share one pointer, as iOS's hold and drag interaction do. */
+        fun continueHold(row: StemCellsRow) {
+            if (touchDown != null && drag(row) != null) heldRow = row
+        }
+
+        private fun clearTouch() {
+            touchDown?.recycle()
+            touchDown = null
+            heldRow = null
+            carryingTouch = false
+        }
+
+        override fun onDetachedFromWindow() {
+            carry?.cancel(animated = false)
+            clearTouch()
+            super.onDetachedFromWindow()
+        }
+
         fun blur(on: Boolean) {
             if (android.os.Build.VERSION.SDK_INT < 31) return
             val effect = if (on) android.graphics.RenderEffect.createBlurEffect(20 * resources.displayMetrics.density, 20 * resources.displayMetrics.density, android.graphics.Shader.TileMode.CLAMP) else null
@@ -181,7 +247,38 @@ class StemCellsDirectHomeScreen(
             addView(header)
         }
 
-        override fun dispatchTouchEvent(ev: MotionEvent): Boolean = (hold == null && header.dispatchFromParent(ev)) || super.dispatchTouchEvent(ev)
+        override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                clearTouch()
+                touchDown = MotionEvent.obtain(ev)
+            }
+            if (carryingTouch) {
+                carry?.onTouchEvent(ev)
+                if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) clearTouch()
+                return true
+            }
+            val start = touchDown
+            val row = heldRow
+            if (ev.actionMasked == MotionEvent.ACTION_MOVE && start != null && row != null && hold != null &&
+                (kotlin.math.abs(ev.x - start.x) > touchSlop || kotlin.math.abs(ev.y - start.y) > touchSlop)) {
+                // The old row/scroll recognizer must not also open or scroll after the transfer.
+                val cancel = MotionEvent.obtain(ev).apply { action = MotionEvent.ACTION_CANCEL }
+                super.dispatchTouchEvent(cancel)
+                cancel.recycle()
+                heldRow = null
+                hold?.close(animated = false)
+                armReorder(row)
+                carry?.let {
+                    carryingTouch = true
+                    it.onTouchEvent(start)
+                    it.onTouchEvent(ev)
+                }
+                return true
+            }
+            val handled = (hold == null && carry == null && header.dispatchFromParent(ev)) || super.dispatchTouchEvent(ev)
+            if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) clearTouch()
+            return handled
+        }
 
         override fun layoutSubviews(width: Double, height: Double) {
             val layout = HomeScreenLayout(Size(width, height), safeArea, HomeDockLayout.Metrics.contentInset)
@@ -192,6 +289,7 @@ class StemCellsDirectHomeScreen(
             stemCells.contentInsets = layout.insets
             stemCells.setFrame(layout.content)
             hold?.let { it.safeArea = safeArea; it.setFrame(Rect(0.0, 0.0, width, height)) }
+            carry?.setFrame(Rect(0.0, 0.0, width, height))
         }
     }
 }

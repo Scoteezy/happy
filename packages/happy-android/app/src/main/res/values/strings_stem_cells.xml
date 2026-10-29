@@ -9,6 +9,9 @@
     <string name="stem_rename_task">Rename task</string>
     <string name="stem_rename_bot">Rename bot</string>
     <string name="stem_reorder">Reorder</string>
+    <string name="stem_reorder_hint">Drag to reorder. Tap or go back to cancel. Accessibility: move up or down, then activate to place.</string>
+    <string name="stem_move_up">Move up</string>
+    <string name="stem_move_down">Move down</string>
     <string name="stem_delete_section">Delete section</string>
     <string name="stem_close_new_work">Close new work</string>
     <string name="stem_leave_task">Leave task</string>
