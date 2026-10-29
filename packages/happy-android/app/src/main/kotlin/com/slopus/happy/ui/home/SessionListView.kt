@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -31,6 +32,7 @@ import com.slopus.happy.ui.components.AvatarView
 import com.slopus.happy.ui.components.ItemGroupView
 import com.slopus.happy.ui.components.ItemIcon
 import com.slopus.happy.ui.components.ItemRowView
+import com.slopus.happy.ui.components.SwipeActions
 import com.slopus.happy.ui.components.measurable
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
@@ -45,6 +47,7 @@ interface HomeListActions {
     fun toggleArchive(hidden: Boolean)
     fun toggleExpanded(projectId: String)
     fun holdSession(id: String)
+    fun archiveSession(id: String)
     fun holdProject(entry: ProjectHomeEntry)
     fun createWorkspace(entry: ProjectHomeEntry)
     fun openTroubleshoot()
@@ -106,6 +109,17 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
 
     private var rows: List<HomeRow> = emptyList()
 
+    /** FlatSessionRow.tsx's swipe: "Archive Session", on a live flat row only (happy-ios `trailingSwipeActionsConfigurationForRowAt`). */
+    private val swipe = SwipeActions(this) { holder ->
+        val position = holder.bindingAdapterPosition
+        val row = (adapter.itemAt(position) as? Item.Row)?.row as? HomeRow.Chat
+        row?.takeIf { !it.archived }?.let { chat ->
+            SwipeActions.Action(context.getString(R.string.session_info_archive_session), Icon.ionicons("archive-outline")) {
+                actions.archiveSession(chat.row.session.id)
+            }
+        }
+    }
+
     init {
         layoutManager = LinearLayoutManager(context)
         setAdapter(adapter)
@@ -153,6 +167,8 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
         override fun areItemsTheSame(oldItem: Item, newItem: Item) = oldItem.key == newItem.key && oldItem::class == newItem::class
         override fun areContentsTheSame(oldItem: Item, newItem: Item) = oldItem == newItem
     }) {
+        fun itemAt(position: Int): Item? = if (position in 0 until itemCount) getItem(position) else null
+
         override fun getItemViewType(position: Int): Int = when (val item = getItem(position)) {
             is Item.Banners -> TYPE_BANNERS
             is Item.Row -> when (val row = item.row) {
@@ -203,6 +219,15 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
                     cell.configure(sessionModel(row.row.session, faded, row.row.projectName, row.row.workspaceName, row.showBorder))
                     cell.setOnClickListener { actions.openSession(row.row.session.id) }
                     cell.setOnLongClickListener { actions.holdSession(row.row.session.id); true }
+                    // The swipe, for TalkBack (VoiceOver reads a row's swipe actions as its custom actions).
+                    ViewCompat.removeAccessibilityAction(cell, cell.archiveActionId)
+                    cell.archiveActionId = View.NO_ID
+                    if (!row.archived) {
+                        cell.archiveActionId = ViewCompat.addAccessibilityAction(cell, context.getString(R.string.session_info_archive_session)) { _, _ ->
+                            actions.archiveSession(row.row.session.id)
+                            true
+                        }
+                    }
                 }
                 is HomeRow.ArchiveToggle -> archive(view as ArchiveToggleCell, row.hidden, banded = true)
                 is HomeRow.DayHeader -> (view as SessionDayHeaderCell).configure(context.dayTitle(row.title))

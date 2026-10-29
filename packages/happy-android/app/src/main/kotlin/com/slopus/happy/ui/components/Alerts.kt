@@ -5,10 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.text.InputType
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.ContextThemeWrapper
 import android.widget.EditText
 import android.widget.FrameLayout
 import com.slopus.happy.R
+import com.slopus.happy.layout.Palette
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.view.dp
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -86,12 +90,27 @@ object Alerts {
         cont.invokeOnCancellation { dialog.dismiss() }
     }
 
-    /** One choice from a list (UIAlertController's action sheet); null when cancelled. */
-    suspend fun choose(context: Context, title: String?, message: String? = null, options: List<String>): Int? = suspendCancellableCoroutine { cont ->
+    /**
+     * One choice from a list (UIAlertController's action sheet, or an alert
+     * of buttons); null when cancelled. [destructive] options are red, as
+     * UIAlertAction's `.destructive` style.
+     */
+    suspend fun choose(
+        context: Context,
+        title: String?,
+        message: String? = null,
+        options: List<String>,
+        destructive: Set<Int> = emptySet(),
+    ): Int? = suspendCancellableCoroutine { cont ->
         var answered = false
         val builder = AlertDialog.Builder(themed(context)).setTitle(title)
         if (message != null && title != null) builder.setTitle("$title")
-        builder.setItems(options.toTypedArray()) { _, which -> answered = true; if (cont.isActive) cont.resume(which) }
+        val red = Theme.color(Palette.statusError)
+        val items = options.mapIndexed { index, option ->
+            if (index !in destructive) option
+            else SpannableString(option).apply { setSpan(ForegroundColorSpan(red), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+        }
+        builder.setItems(items.toTypedArray<CharSequence>()) { _, which -> answered = true; if (cont.isActive) cont.resume(which) }
             .setNegativeButton(context.getString(R.string.common_cancel)) { _, _ -> answered = true; if (cont.isActive) cont.resume(null) }
             .setOnDismissListener { if (!answered && cont.isActive) cont.resume(null) }
         val dialog = builder.create()

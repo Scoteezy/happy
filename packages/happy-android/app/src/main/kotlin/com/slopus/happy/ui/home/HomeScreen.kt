@@ -81,6 +81,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
     private enum class Kind { Loading, Link, Offline, NoSessions, List }
 
     private val services = HomeServices.of(graph)
+    private val sessionActions = HomeSessionActions(this, graph, scope)
     private val header = HomeHeaderView(context)
     private val dock = HomeDockView(context)
     private val dockController: HomeDockController by lazy {
@@ -283,7 +284,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
 
     private fun notPorted(title: String) = Alerts.show(context, title, NOT_PORTED)
 
-    // HomeListActions. The chat, the session actions and new workspaces are later stages of the port.
+    // HomeListActions. A project card's long press (Create workspace) is a later stage of the port.
 
     override fun openSession(id: String) = push(ChatScreen(context, graph, id))
 
@@ -294,7 +295,9 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         values.copy(expandedProjects = values.expandedProjects + (projectId to !expanded))
     }
 
-    override fun holdSession(id: String) = Unit
+    override fun holdSession(id: String) = sessionActions.present(id)
+
+    override fun archiveSession(id: String) = sessionActions.archive(id)
 
     override fun holdProject(entry: ProjectHomeEntry) = Unit
 

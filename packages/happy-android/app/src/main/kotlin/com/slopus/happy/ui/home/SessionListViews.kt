@@ -232,6 +232,8 @@ data class SessionRowModel(
  * [FlatSessionRowLayout].
  */
 class SessionRowCell(context: Context) : ManualLayout(context), ThemeAware {
+    /** The swipe's archive as a TalkBack action, while it has one. */
+    var archiveActionId = View.NO_ID
     private val avatar = AvatarView(context)
     private val titleLabel = ShimmerLabel(context, TextStyles.sessionTitle)
     private val timestampLabel = Label(context, TextStyles.sessionTimestamp, Palette.textSecondary, maxLines = 1, alignment = Layout.Alignment.ALIGN_OPPOSITE)
