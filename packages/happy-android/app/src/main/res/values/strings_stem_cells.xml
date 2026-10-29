@@ -4,6 +4,7 @@
   English only, as it is there. Not from happy-app's catalogs.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="stem_search">Search</string>
     <string name="stem_edit_name">Edit name</string>
     <string name="stem_add_computer">Add a computer</string>
     <string name="stem_voice">Voice</string>

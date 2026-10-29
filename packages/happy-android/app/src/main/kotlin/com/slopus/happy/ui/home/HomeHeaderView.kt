@@ -201,6 +201,8 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
     val filterButton = HeaderIconButton(context, Icon.ionicons("filter"), 22.0, context.getString(R.string.sessions_filter_title))
     private val actionDivider = View(context)
     val settingsButton = HeaderIconButton(context, Icon.ionicons("settings-outline"), 22.0, context.getString(R.string.settings_title))
+    /** Stem Cells' search, in the pill's first slot. */
+    val searchButton = HeaderIconButton(context, Icon.ionicons("search-outline"), 22.0, context.getString(R.string.stem_search))
     private val titleLabel = Label(context, TextStyles.headerTitle, Palette.headerTint, maxLines = 1, alignment = android.text.Layout.Alignment.ALIGN_CENTER).apply { followsTextSize = false }
     private val statusDot = StatusDotView(context)
     private val statusLabel = Label(context, TextStyles.homeHeaderStatus, Palette.textSecondary, maxLines = 1, alignment = android.text.Layout.Alignment.ALIGN_CENTER).apply { followsTextSize = false }
@@ -217,8 +219,57 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
             requestLayout()
         }
 
+    var title: CharSequence
+        get() = titleLabel.text
+        set(value) { titleLabel.text = value; requestLayout() }
+
+    /** Where the title is drawn from, in dp. */
+    val titleLeft: Double get() = px(titleLabel.left)
+
     var status: ConnectionStatus = ConnectionStatus.DISCONNECTED
         set(value) { if (field != value) { field = value; applyStatus() } }
+
+    /**
+     * A computer's home: the pill is search alone, and the picture is the
+     * way to settings, so there is no gear (and no filter: a computer's
+     * home has nothing to group).
+     */
+    var stemCellsActions = false
+        set(value) {
+            if (field == value) return
+            field = value
+            searchButton.visibility = if (value) VISIBLE else GONE
+            settingsButton.visibility = if (value) GONE else VISIBLE
+            filterButton.visibility = if (value) GONE else VISIBLE
+            actionDivider.visibility = if (value) GONE else VISIBLE
+            requestLayout()
+        }
+
+    /**
+     * Drawn over the scrim and under the controls, as big as the header
+     * and free to hang below it: the stories, which close into the title
+     * and open under the header. It takes the touches [accessoryTakes] says.
+     */
+    var accessory: android.view.View? = null
+        set(value) {
+            if (field === value) return
+            field?.let { removeView(it) }
+            field = value
+            if (value != null) addView(value, indexOfChild(scrim) + 1)
+            requestLayout()
+        }
+    var accessoryTakes: ((Float, Float) -> Boolean)? = null
+    /** How far below the header the accessory reaches, so the touches it takes there land in it. */
+    var accessoryOverhang: Double = 0.0
+        set(value) { if (field != value) { field = value; requestLayout() } }
+
+    /** Where the title starts while the accessory places it; null centres it. */
+    var titleX: Double? = null
+        set(value) { if (field != value) { field = value; requestLayout() } }
+
+    /** How much deeper the scrim reaches, under the accessory's open row. */
+    var backdropExtension: Double = 0.0
+        set(value) { if (field != value) { field = value; requestLayout() } }
 
     init {
         clipChildren = false
@@ -229,6 +280,8 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
         actions.addView(filterButton)
         actions.addView(actionDivider)
         actions.addView(settingsButton)
+        searchButton.visibility = GONE
+        actions.addView(searchButton)
         titleLabel.text = context.getString(R.string.tabs_sessions)
         titleLabel.isFocusable = true
         ViewCompat.setAccessibilityHeading(titleLabel, true)
@@ -281,6 +334,9 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
             title = titleLabel.measurable,
             status = if (showsStatus) statusLabel.measurable else null,
             showsAccountAvatar = showsAccountAvatar,
+            titleX = titleX,
+            backdropExtension = backdropExtension,
+            singleAction = stemCellsActions,
         ),
     )
 
@@ -293,7 +349,10 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
         logo.setFrame(l.logo.offsetBy(-l.logoControl.minX, -l.logoControl.minY))
         actions.setFrame(l.actions)
         val o = l.actions
+        accessory?.setFrame(Rect(0.0, 0.0, width, height + accessoryOverhang))
+        // The pill's slots: filter and settings, or a computer's search alone.
         filterButton.setFrame(l.filterButton.offsetBy(-o.minX, -o.minY))
+        searchButton.setFrame(l.filterButton.offsetBy(-o.minX, -o.minY))
         actionDivider.setFrame(l.actionDivider.offsetBy(-o.minX, -o.minY))
         settingsButton.setFrame(l.settingsButton.offsetBy(-o.minX, -o.minY))
         titleLabel.setFrame(l.title)
@@ -306,12 +365,41 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
 
     override fun onTouchEvent(event: MotionEvent): Boolean = false
 
+    /** A gesture that began outside the header's bounds, on what its accessory takes there. */
+    private var routing = false
+
+    /**
+     * The parent's touches below the header that the accessory takes (the
+     * open stories hang below it): UIKit asks `point(inside:)` wherever the
+     * touch is, Android's parents only offer touches inside a child, so the
+     * parent hands its touches here first from its dispatchTouchEvent.
+     * False when they aren't the header's.
+     */
+    fun dispatchFromParent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            val x = ev.x - left
+            val y = ev.y - top
+            val accessory = accessory
+            routing = (y >= height || y < 0 || x < 0 || x >= width) && accessory != null && accessory.visibility == VISIBLE &&
+                accessoryTakes?.invoke(x - accessory.left, y - accessory.top) == true
+        }
+        if (!routing) return false
+        val local = MotionEvent.obtain(ev)
+        local.offsetLocation(-left.toFloat(), -top.toFloat())
+        super.dispatchTouchEvent(local)
+        local.recycle()
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) routing = false
+        return true
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
             val x = ev.x.toInt()
             val y = ev.y.toInt()
             val hit = listOf(logoControl, actions).any { x in it.left until it.right && y in it.top until it.bottom }
-            if (!hit) return false
+            val accessory = accessory
+            val taken = accessory != null && accessory.visibility == VISIBLE && accessoryTakes?.invoke(ev.x - accessory.left, ev.y - accessory.top) == true
+            if (!hit && !taken) return false
         }
         return super.dispatchTouchEvent(ev)
     }

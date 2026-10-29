@@ -1,6 +1,8 @@
 package com.slopus.happy.layout.stories
 
+import com.slopus.happy.layout.LayoutInsets
 import com.slopus.happy.layout.Size
+import com.slopus.happy.layout.stemcells.StemCellsHomeLayout
 import com.slopus.happy.layout.assertClose
 import com.slopus.happy.layout.rect
 import org.junit.Assert.assertEquals
@@ -61,6 +63,15 @@ class StoriesRowLayoutTest {
         assertEquals(30, StoriesRowLayout.segments(80).size)
     }
 
-    // iOS's testHomeMakesRoomForTheOpenStories pins StemCellsHomeLayout; it
-    // comes with Stem Cells home.
+    /** The open stories push the banner and the list down by their room. */
+    @Test fun homeMakesRoomForTheOpenStories() {
+        val layout = StemCellsHomeLayout(Size(390, 844), contentTop = 120.0, chromeTop = 110.0, listBottom = 90.0, bannerHeight = 40.0, storiesHeight = 96.0)
+        assertEquals(rect(0, 216, 390, 40), layout.banner)
+        assertEquals(LayoutInsets(256, 0, 90, 0), layout.listInsets)
+        assertEquals(LayoutInsets(110, 0, 90, 0), layout.indicatorInsets)
+        // Closed or off: home exactly as it was.
+        val off = StemCellsHomeLayout(Size(390, 844), contentTop = 120.0, chromeTop = 110.0, listBottom = 90.0, bannerHeight = 0.0, storiesHeight = 0.0)
+        assertEquals(StemCellsHomeLayout(Size(390, 844), contentTop = 120.0, chromeTop = 110.0, listBottom = 90.0, bannerHeight = 0.0), off)
+        assertEquals(120.0, off.listInsets.top, 0.0)
+    }
 }

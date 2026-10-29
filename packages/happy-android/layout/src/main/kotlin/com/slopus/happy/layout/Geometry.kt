@@ -49,6 +49,13 @@ data class Rect(val x: Double, val y: Double, val width: Double, val height: Dou
     fun withHeight(height: Double) = copy(height = height)
     fun contains(px: Double, py: Double) = px >= x && px < maxX && py >= y && py < maxY
 
+    /** The smallest rect holding both (CGRect.union). */
+    fun union(other: Rect): Rect {
+        val x0 = min(minX, other.minX)
+        val y0 = min(minY, other.minY)
+        return Rect(x0, y0, max(maxX, other.maxX) - x0, max(maxY, other.maxY) - y0)
+    }
+
     companion object {
         val Zero = Rect(0.0, 0.0, 0.0, 0.0)
 
