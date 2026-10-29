@@ -3,7 +3,9 @@ package com.slopus.happy.ui
 import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.slopus.happy.AppGraph
@@ -51,6 +53,17 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
     /** The account the root was built for; null while signed out, unset before the first. */
     private var rootAccount: Any? = UNSET
     private val settingsHost = AppStemCellsSettingsHost(graph, activity.lifecycleScope, activity)
+
+    init {
+        activity.lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                // Detaching a stack can also mean reparenting it. Its owner,
+                // not View detachment, ends screen scopes and subscriptions.
+                stack.setScreens(emptyList())
+                root.rootDidChange()
+            }
+        })
+    }
 
     fun start() {
         Theme.install(activity)
