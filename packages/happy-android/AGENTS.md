@@ -845,7 +845,15 @@ service, including emoji confirmation, expiry and background cancellation.
 The real Direct home's long press opens `StemCellsHoldOverlay`, using the
 pure hold/preview frames and a spring over blurred/dimmed native Views.
 `StemCellsRowActions` supplies row-specific rename/leave/archive/close/delete
-actions. Reorder is not yet offered: finish carry/drag before adding it.
+actions, plus Reorder when `StemCellsDrag` supplies legal peers. Reorder lifts
+the whole row/section block into `StemCellsReorderOverlay`; a held pointer can
+continue directly from the preview, or the menu arms the next drag. The root
+cancels the original row/scroll recognizer before transferring its pointer.
+`StemCellsSession` serializes carry/drop/release so the local edit reaches the
+store before buffered remote documents are released. Keep that queue on the
+session, not the disappearing home. The sidebar hides carried rows with alpha:
+its `FrameContainer` restores visibility on every layout pass. TalkBack has
+legal-slot move actions and activation to drop; Back/tap/cancel restores order.
 `StemCellChatScreen(previewing = true)` renders actual history without marking
 read, binding/flushing drafts or discarding untouched work; the preview's
 tap opens a normal conversation. Never call normal lifecycle side effects
@@ -862,6 +870,11 @@ two fake computers and a fake relay account, then use MainActivity normally.
 `ShellHarnessApplication` installs fakes only under that exact APK suffix;
 ordinary debug uses the real graph, and preview/release contain neither
 fixture class. The fixture relay points at loopback port 1, not a real server.
+The fake computer resets its server state on process restart; cached sidebar
+versions can then exceed the fake server's version. For write verification
+after reinstall/restart, pair a fresh `shell-fixture-*` address in this isolated
+APK rather than resetting an existing account or calling a stale-cache result
+successful. A real daemon has durable versions; this is a fixture limitation.
 `ShellPairingTransport` supplies the fake daemon side of the real random-key
 handshake for a `shell-fixture-*` address (port 1234, token 32 bytes of 7).
 Tests and videos using it establish shell/handshake behavior, never successful
