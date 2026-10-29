@@ -110,7 +110,8 @@ class StemCellsHarnessActivity : ComponentActivity() {
             "opened=$opened created=$created haptics=${played.joinToString(",")} ${home.stemCells.probe}" +
             ((stack.top as? StemCellChatScreen)?.let { " " + it.probe } ?: "") +
             ((stack.top as? com.slopus.happy.ui.stemcells.StemCellArtifactScreen)?.let { " artifact=" + it.shows } ?: "") +
-            ((stack.top as? com.slopus.happy.ui.stemcells.StemCellsSurfaceScreen)?.let { " " + it.probe } ?: "")
+            ((stack.top as? com.slopus.happy.ui.stemcells.StemCellsSurfaceScreen)?.let { " " + it.probe } ?: "") +
+            ((stack.top as? com.slopus.happy.ui.stemcells.StemCellsSearchScreen)?.let { " " + it.probe } ?: "")
         if (probe.contentDescription != value) probe.contentDescription = value
     }
 

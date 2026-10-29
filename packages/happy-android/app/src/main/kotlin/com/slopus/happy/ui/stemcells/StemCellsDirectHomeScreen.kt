@@ -44,13 +44,14 @@ class StemCellsDirectHomeScreen(
         header.stemCellsActions = true
         header.title = computerName
         header.searchButton.tag = "stem-search"
-        header.searchButton.setOnClickListener { openSearch?.invoke() }
+        header.searchButton.setOnClickListener { search() }
         header.logoControl.contentDescription = context.getString(R.string.stem_open_settings)
         header.logoControl.tag = "stem-settings-mark"
         header.logoControl.setOnClickListener { openSettings?.invoke() }
         stemCells.onSnapshot = { snapshot -> header.status = if (snapshot.live) ConnectionStatus.CONNECTED else ConnectionStatus.CONNECTING }
         stemCells.onOpen = { row ->
             open?.invoke(row)
+            if (row.kind == StemCellsRow.Kind.Search) search()
             if (row.targetKind == "artifacts") push(DirectArtifactsScreen(context, session))
             val surfaceId = row.targetId
             if (row.targetKind == "surface" && surfaceId != null) push(StemCellsSurfaceScreen(context, session, surfaceId, row.surfaceType ?: "", row.label))
@@ -62,6 +63,12 @@ class StemCellsDirectHomeScreen(
         }
         stemCells.onBackStateChanged = { stack?.backStateChanged() }
         stemCells.attach(session)
+    }
+
+    /** The sidebar's search, over home; what it finds opens as its row would. */
+    private fun search() {
+        openSearch?.invoke()
+        push(StemCellsSearchScreen(context, session) { row -> stemCells.open(row) })
     }
 
     override fun onAppear() {

@@ -281,7 +281,8 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
 
     // Acts
 
-    private fun open(row: StemCellsRow) {
+    /** Opens a row as a tap on it does; search opens what it found through here. */
+    fun open(row: StemCellsRow) {
         val session = session ?: return
         session.store.attentionInput()
         when {
