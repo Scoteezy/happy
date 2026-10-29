@@ -156,7 +156,7 @@ data class BubblePalette(val background: ColorToken, val border: ColorToken, val
     }
 }
 
-/** The bundled typefaces (res/font). */
+/** The bundled typefaces (res/font, and assets/fonts for the variable ones). */
 enum class FontFace(val resourceName: String) {
     Regular("ibm_plex_sans_regular"),
     Italic("ibm_plex_sans_italic"),
@@ -177,9 +177,18 @@ enum class FontFace(val resourceName: String) {
     Menlo("monospace"),
     MenloBold("monospace"),
     MenloItalic("monospace"),
+    // Desktop's faces for Stem Cells (`--happy-font-ui`, `--happy-font-mono`;
+    // happy-ios `StemCellsFonts`): variable fonts in assets/fonts, each at its weight.
+    Figtree("fonts/figtree.ttf"),
+    FigtreeMedium("fonts/figtree.ttf"),
+    FigtreeSemiBold("fonts/figtree.ttf"),
+    FigtreeBold("fonts/figtree.ttf"),
+    JetBrainsMono("fonts/jetbrains_mono.ttf"),
+    JetBrainsMonoBold("fonts/jetbrains_mono.ttf"),
     ;
 
-    val isMonospaced get() = this == Mono || this == MonoItalic || this == MonoSemiBold || this == Menlo || this == MenloBold || this == MenloItalic
+    val isMonospaced get() = this == Mono || this == MonoItalic || this == MonoSemiBold || this == Menlo || this == MenloBold || this == MenloItalic ||
+        this == JetBrainsMono || this == JetBrainsMonoBold
 }
 
 data class TextStyle(

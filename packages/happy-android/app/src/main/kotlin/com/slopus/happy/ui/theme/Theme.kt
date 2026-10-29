@@ -111,6 +111,7 @@ object Fonts {
         if (faces.isNotEmpty()) return
         faces = FontFace.entries.associateWith { face ->
             system(face)?.let { return@associateWith it }
+            variable(context, face)?.let { return@associateWith it }
             val id = when (face) {
                 FontFace.Regular -> R.font.ibm_plex_sans_regular
                 FontFace.Italic -> R.font.ibm_plex_sans_italic
@@ -138,6 +139,18 @@ object Fonts {
         FontFace.MenloBold -> Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         FontFace.MenloItalic -> Typeface.create(Typeface.MONOSPACE, Typeface.ITALIC)
         else -> null
+    }
+
+    /** Figtree and JetBrains Mono, variable, at the weight each face names. */
+    private fun variable(context: Context, face: FontFace): Typeface? {
+        val weight = when (face) {
+            FontFace.Figtree, FontFace.JetBrainsMono -> 400
+            FontFace.FigtreeMedium -> 500
+            FontFace.FigtreeSemiBold -> 600
+            FontFace.FigtreeBold, FontFace.JetBrainsMonoBold -> 700
+            else -> return null
+        }
+        return Typeface.Builder(context.assets, face.resourceName).setFontVariationSettings("'wght' $weight").setWeight(weight).build()
     }
 
     /** A CSS weight of the platform's sans-serif; before API 28, the nearest named family. */

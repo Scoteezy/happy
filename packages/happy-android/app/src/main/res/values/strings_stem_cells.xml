@@ -25,4 +25,13 @@
     <string name="stem_direct">Direct</string>
     <string name="stem_beta">Beta</string>
     <string name="stem_pair_computer">Pair computer</string>
+    <string name="stem_untitled">New</string>
+    <string name="stem_composer_placeholder">Describe it…</string>
+    <string name="stem_add_picture">Add a picture</string>
+    <string name="stem_no_computer">Pair a computer to see its Stem Cells.</string>
+    <string name="stem_pair_a_computer">Pair a computer</string>
+    <string name="stem_unsupported">This computer\'s Happy Agent is too old for Stem Cells. Update it, then come back.</string>
+    <string name="stem_unanswered">The computer did not answer.</string>
+    <string name="stem_new_work_failed">New work could not be made. %1$s</string>
+    <string name="stem_open_settings">Settings</string>
 </resources>

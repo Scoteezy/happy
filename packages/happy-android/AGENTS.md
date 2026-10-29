@@ -756,8 +756,8 @@ unless they provide `true`.
 
 Development and preview builds (happy-ios `Direct`, `StemCells`). The
 core is in `direct/` and `stemcells/`, plain Kotlin with iOS's tests,
-and its frames in `:layout` `stemcells/` with iOS's layout tests; no
-views yet.
+and its frames in `:layout` `stemcells/` with iOS's layout tests; the
+views are in `ui/stemcells/` (home so far: `StemCellsDirectHomeScreen`).
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one
@@ -779,6 +779,18 @@ views yet.
   API.md, which the iOS reference host in `.context/` reads too. It serves
   the desktop bootstrap, settings, identity and the Stem Cells routes, and
   answers a send with a scripted, streamed reply.
+- `StemCellsHarnessActivity` (debug) runs the real engine, store and
+  views over that computer: `adb shell am start -n
+  com.slopus.happy.dev/com.slopus.happy.harness.StemCellsHarnessActivity
+  --el epoch 1767000000000`; the view tagged `stem-probe` reports
+  `live= rows= selected= opened= created= haptics=`. The iOS reference
+  host for it (`.context/ios-ref-host`, never committed) is the real
+  `StemCellsDirectHomeViewController` over a Swift port of the same
+  transport and fixture, run on the HappyRef simulators.
+- The Stem Cells faces are desktop's: Figtree and JetBrains Mono, variable
+  fonts in `assets/fonts` (converted from happy-ios's woff2), drawn at a
+  weight through `FontFace.Figtree*` and `FontFace.JetBrainsMono*`. The
+  clay icons are happy-ios's PNGs in `assets/clay`.
 
 ## Stories
 

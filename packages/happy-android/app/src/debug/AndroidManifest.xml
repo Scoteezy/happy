@@ -16,5 +16,12 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|fontScale|density"
             android:exported="true"
             android:theme="@style/Theme.Happy" />
+        <!-- Stem Cells over the harness's computer (the iOS reference host's fixture); see StemCellsHarnessActivity. -->
+        <activity
+            android:name="com.slopus.happy.harness.StemCellsHarnessActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|fontScale|density"
+            android:exported="true"
+            android:windowSoftInputMode="adjustNothing"
+            android:theme="@style/Theme.Happy" />
     </application>
 </manifest>
