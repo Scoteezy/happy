@@ -233,14 +233,24 @@ data class Agent(
     }
 }
 
-data class Bot(val id: String, val name: String, val systemKey: String?, val status: String?, val thumbhash: String?, val version: String?, val agent: Agent?) {
+data class Bot(
+    val id: String,
+    val name: String,
+    val systemKey: String?,
+    val status: String?,
+    val thumbhash: String?,
+    val version: String?,
+    val agent: Agent?,
+    /** Whether it has an `avatar`, with or without a thumbhash. */
+    val hasAvatar: Boolean = thumbhash != null,
+) {
     companion object {
         fun from(json: JsonElement): Bot {
             val o = Wire.obj(json)
             return Bot(
                 Wire.string(o, "id"), Wire.string(o, "name"), Wire.stringOrNull(o, "systemKey"), Wire.stringOrNull(o, "status"),
                 o.obj("avatar")?.let { Wire.stringOrNull(it, "thumbhash") }, Wire.stringOrNull(o, "version"),
-                o["agent"]?.takeIf { it != JsonNull }?.let(Agent::from),
+                o["agent"]?.takeIf { it != JsonNull }?.let(Agent::from), o.obj("avatar") != null,
             )
         }
     }

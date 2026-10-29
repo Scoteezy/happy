@@ -1,10 +1,16 @@
 package com.slopus.happy.direct
 
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.timeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import java.net.URLEncoder
 import java.security.SecureRandom
+import kotlin.time.Duration.Companion.milliseconds
 
 /** happy-ios `DirectHTTPResponse`. Header names are lowercase. */
 class DirectHttpResponse(val status: Int, val headers: Map<String, String> = emptyMap(), val body: ByteArray = ByteArray(0))
@@ -16,6 +22,9 @@ class DirectHttpResponse(val status: Int, val headers: Map<String, String> = emp
  */
 interface DirectTransport {
     suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): DirectHttpResponse
+
+    /** A GET whose body arrives as it is written, for an event stream. */
+    suspend fun stream(path: String, credential: String, headers: Map<String, String>): DirectHttpStream = throw DirectUnavailableException()
 
     /** Lets go of the connection so the next request makes a new one. */
     suspend fun reset() {}
@@ -35,7 +44,15 @@ sealed class DirectAgentError : Exception() {
 }
 
 /** happy-ios `AgentWire.Health`: whether the daemon is ready, and what it serves. */
-data class AgentHealth(val ready: Boolean, val stories: Boolean?, val stickers: Boolean?) {
+data class AgentHealth(
+    val ready: Boolean,
+    val stories: Boolean?,
+    val stickers: Boolean?,
+    val stemCellIdentities: Boolean? = null,
+    val sidebarOperations: Boolean? = null,
+    val sidebarProposals: Boolean? = null,
+    val sidebarAttachments: Boolean? = null,
+) {
     companion object {
         fun from(json: JsonElement): AgentHealth {
             val o = Wire.obj(json)
@@ -44,6 +61,10 @@ data class AgentHealth(val ready: Boolean, val stories: Boolean?, val stickers: 
                 ready = Wire.bool(o, "ready"),
                 stories = capabilities?.let { Wire.boolOrNull(it, "stories") },
                 stickers = capabilities?.let { Wire.boolOrNull(it, "stickers") },
+                stemCellIdentities = capabilities?.let { Wire.boolOrNull(it, "stemCellIdentities") },
+                sidebarOperations = capabilities?.let { Wire.boolOrNull(it, "sidebarOperations") },
+                sidebarProposals = capabilities?.let { Wire.boolOrNull(it, "sidebarProposals") },
+                sidebarAttachments = capabilities?.let { Wire.boolOrNull(it, "sidebarAttachments") },
             )
         }
     }
@@ -104,7 +125,34 @@ class DirectAgentClient(internal val transport: DirectTransport, private val tok
         send("PUT", "/v0/user-settings/${escape(key)}", json = JsonObject(mapOf("value" to value)))
     }
 
+    // Events
+
+    /**
+     * The journal as it happens, from `after` when given. The first frame is
+     * `hello`; the flow ends when the connection does, or when nothing, not
+     * even a heartbeat, has come for [SILENCE_MS].
+     */
+    @OptIn(FlowPreview::class)
+    fun events(after: String?): Flow<ServerSentEvent> = flow {
+        val response = transport.stream("/v0/events/stream", token, after?.let { mapOf("Last-Event-ID" to it) } ?: emptyMap())
+        if (response.status == 401) throw DirectAgentError.Revoked
+        if (response.status != 200) throw DirectAgentError.Status(response.status, null, null)
+        val parser = ServerSentEventParser()
+        try {
+            response.body.timeout(SILENCE_MS.milliseconds).collect { bytes -> for (frame in parser.append(bytes)) emit(frame) }
+        } catch (_: TimeoutCancellationException) {
+            // A computer whose daemon restarted or went to sleep never closes
+            // the tunnel's stream, so this long without a byte means it is
+            // gone, and so is the tunnel.
+            transport.reset()
+            throw DirectUnavailableException()
+        }
+    }
+
     companion object {
+        /** The daemon writes a heartbeat every 15 seconds. */
+        const val SILENCE_MS = 40_000L
+
         internal val json = Json { ignoreUnknownKeys = true }
 
         internal fun parse(body: ByteArray): JsonElement = json.parseToJsonElement(body.decodeToString())
