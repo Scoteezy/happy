@@ -6,6 +6,6 @@
     {"id":"fixture-task-forty-five","created":2,"metadata":{"path":"/fixture/Tasks/layout","host":"fixture.local","machineId":"fixture-machine","client":{"id":"rig","name":"Happy Agent","version":"1"},"task":{"id":"layout","name":"Check task layout","folderName":"layout","orderKey":"45"}}},
     {"id":"fixture-task-unjoined","created":3,"metadata":{"path":"/fixture/Tasks/follow-up","host":"fixture.local","machineId":"fixture-machine","client":{"id":"rig","name":"Happy Agent","version":"1"},"task":{"id":"follow-up","name":"Unjoined follow-up"}}},
     {"id":"fixture-task-retired","created":5,"metadata":{"path":"/fixture/Tasks/retired","host":"fixture.local","machineId":"fixture-machine","client":{"id":"rig","name":"Happy Agent","version":"1"},"lifecycleState":"archived","task":{"id":"retired","name":"Retired task must stay hidden","orderKey":"1"}}},
-    {"id":"fixture-project","created":0,"metadata":{"path":"/fixture/project","host":"fixture.local","machineId":"fixture-machine","client":{"id":"rig","name":"Happy Agent","version":"1"},"summary":{"text":"Project conversation"},"project":{"id":"fixture-project","kind":"regular","name":"Reference project"}}}
+    {"id":"fixture-project","created":0,"metadata":{"path":"/fixture/project","host":"fixture.local","machineId":"fixture-machine","client":{"id":"rig","name":"Happy Agent","version":"1"},"summary":{"text":"Project conversation","updatedAt":0},"project":{"id":"fixture-project","kind":"regular","name":"Reference project"}}}
   ]
 }
