@@ -244,7 +244,10 @@ rebuilds the root on that, never on `auth.state`, and home's warm list
 screen shows another account's rows. Signing an account out, active or not
 (`AppGraph.signOut(id)`), runs the logout hooks with its token, empties and
 closes its database, then deletes its directory and preferences, as iOS
-erases, closes and removes them. Tests: `AccountsTest` (registry, order,
+erases, closes and removes them. A tapped notification's session is looked
+up in every signed-in account's store (`AppGraph.accountHoldingSession`,
+another account's database opened read-only in place) and the app switches
+to the one holding it before opening the chat. Tests: `AccountsTest` (registry, order,
 hand-over), `AccountSwitchTest` (the stores and settings follow the switch).
 
 ## Sync

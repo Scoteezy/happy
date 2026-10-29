@@ -56,6 +56,10 @@ class AccountSwitchTest {
         assertFalse(graph.localSettings.values.value.devModeEnabled)
         assertEquals(second, graph.activeId)
 
+        // A tapped notification's session is found in the account holding it (happy-ios accountHoldingSession).
+        assertEquals(first, runBlocking { graph.accountHoldingSession("s1") })
+        assertEquals(null, runBlocking { graph.accountHoldingSession("missing") })
+
         runBlocking { graph.switchAccount(first) }
         eventually(message = "back to the first store") { graph.store.outbox().map { it.localId } == listOf("first") }
         eventually(message = "the first account's settings") { graph.localSettings.values.value.devModeEnabled }

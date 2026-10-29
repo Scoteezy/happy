@@ -41,6 +41,10 @@ object LocalCaches {
     /** happy-ios `accounts.json`: which accounts are signed in here, no secrets. */
     fun registryFile(context: Context) = File(accountsDir(context), "accounts.json")
 
+    /** [accountId]'s database file if it has one, nothing made. */
+    fun storedDatabase(context: Context, accountId: String, name: String): File? =
+        File(accountDir(context, accountId), name).takeIf { it.exists() }
+
     /** [accountId]'s database file, its directory made. */
     fun accountDatabase(context: Context, accountId: String, name: String): File =
         File(accountDir(context, accountId).apply { mkdirs() }, name)

@@ -1,6 +1,10 @@
 package com.slopus.happy
 
 import android.content.Context
+import android.database.DatabaseUtils
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
+import android.util.Log
 import com.slopus.happy.auth.AndroidKeyStoreKeys
 import com.slopus.happy.auth.AuthApi
 import com.slopus.happy.auth.AccountDisplay
@@ -343,6 +347,34 @@ class AppGraph(
 
     /** Makes another signed-in account the active one; the screens are rebuilt for it. Throws when it can't be. */
     suspend fun switchAccount(accountId: String) = auth.switchTo(accountId)
+
+    /**
+     * happy-ios `accountHoldingSession`: the signed-in account whose store
+     * has [sessionId], the active one first and then by the order they were
+     * added; null when none has it. Another account's database is read in
+     * place and left closed unless it was already open.
+     */
+    suspend fun accountHoldingSession(sessionId: String): String? = withContext(Dispatchers.IO) {
+        val activeId = (storeAccount.value as? AuthState.SignedIn)?.encryption?.anonId
+        if (activeId != null && store.session(sessionId) != null) return@withContext activeId
+        auth.registry.value.ordered.firstOrNull { entry ->
+            entry.id != activeId && storedSessionExists(entry.id, sessionId)
+        }?.id
+    }
+
+    private fun storedSessionExists(accountId: String, sessionId: String): Boolean {
+        val open = synchronized(databases) { databases[accountId] }
+        if (open != null) return HappyStore(open).session(sessionId) != null
+        val file = databaseName?.let { LocalCaches.storedDatabase(appContext, accountId, it) } ?: return false
+        return try {
+            SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+                DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM sessions WHERE id = ?", arrayOf(sessionId)) > 0
+            }
+        } catch (e: SQLiteException) {
+            Log.w("AppGraph", "Could not look in ${accountId.take(8)}'s store", e)
+            false
+        }
+    }
 
     private val wipeHooks = CopyOnWriteArrayList<() -> Unit>()
 

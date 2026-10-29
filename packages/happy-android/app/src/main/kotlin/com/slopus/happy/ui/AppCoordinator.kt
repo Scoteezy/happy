@@ -20,6 +20,7 @@ import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.settings.PairingFlow
 import com.slopus.happy.ui.stemcells.StemCellsLinkScreen
 import com.slopus.happy.ui.theme.Theme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
@@ -91,20 +92,56 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
         }
     }
 
+    private var lookingUpNotification = false
+    private var switchingForNotification = false
+
     /**
-     * happy-ios `openNotificationSession` and `showNotificationSession`: home,
-     * then the chat; nothing changes when that chat is already on top. Signed
-     * out there is nothing to open it in; a root still to come opens it once in.
+     * happy-ios `openNotificationSession`: a session in another signed-in
+     * account's store switches to that account first, and its home opens
+     * the chat once it is the root ([show] offers the link again); one in no
+     * store opens in the active account. Signed out there is nothing to open
+     * it in; a root still to come opens it once in.
      */
     private fun openNotificationSession(link: DeepLink.Session) {
-        if (graph.auth.state.value !is AuthState.SignedIn) {
+        val active = graph.storeAccount.value as? AuthState.SignedIn
+        if (active == null) {
             DeepLinks.consume(link)
             return
         }
+        if (root.all.firstOrNull() !is HomeScreen || lookingUpNotification) return
+        lookingUpNotification = true
+        activity.lifecycleScope.launch {
+            // A failed lookup keeps the active account.
+            val owner = runCatching { graph.accountHoldingSession(link.id) }.getOrNull()
+            lookingUpNotification = false
+            if (DeepLinks.pending.value != link) return@launch
+            if (graph.storeAccount.value !== active || root.all.firstOrNull() !is HomeScreen) {
+                openNotificationSession(link)
+                return@launch
+            }
+            if (owner != null && owner != active.encryption.anonId) {
+                if (switchingForNotification) return@launch
+                switchingForNotification = true
+                try {
+                    graph.switchAccount(owner)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    if (DeepLinks.consume(link)) showNotificationSession(link.id)
+                } finally {
+                    switchingForNotification = false
+                }
+                return@launch
+            }
+            if (DeepLinks.consume(link)) showNotificationSession(link.id)
+        }
+    }
+
+    /** happy-ios `showNotificationSession`: home, then the chat; nothing changes when that chat is already on top. */
+    private fun showNotificationSession(sessionId: String) {
         val home = root.all.firstOrNull() as? HomeScreen ?: return
-        if (!DeepLinks.consume(link)) return
-        if ((root.top as? ChatScreen)?.sessionId == link.id) return
-        root.setScreens(listOf(home, ChatScreen(activity, graph, link.id)), animated = true)
+        if ((root.top as? ChatScreen)?.sessionId == sessionId) return
+        root.setScreens(listOf(home, ChatScreen(activity, graph, sessionId)), animated = true)
     }
 
     /** The system's configuration changed (dark mode, font scale, density) without the activity restarting. */
