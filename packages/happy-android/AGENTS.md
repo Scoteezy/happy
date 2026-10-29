@@ -218,6 +218,35 @@ with the existing EAS/Play signing key; no signing config is checked in
 The custom server URL is not carried over: happy-app keeps it in MMKV
 (`server-config`), which this app does not read.
 
+## Several accounts
+
+As happy-ios, several accounts can be signed in at once, one of them
+active (Settings › Account's switcher, Add Account). `auth/AccountRegistry.kt`
+is iOS's `accounts.json`, at `files/accounts/accounts.json`: each account's
+anonymous id, server, credential location and added order, the active id,
+and what the switcher shows of it; no secrets. The account that holds
+happy-app's shared entry (above) is `Shared` and keeps using it, so the RN
+build still finds it; the others are `Own`, in the same SecureStore under
+`auth_credentials_<id>`. A registry that does not parse loads as empty and
+the shared entry is adopted again (`AuthRepository.bootstrap`).
+
+Each account has its own `files/accounts/<id>/` (`data/LocalCaches.kt`):
+`happy.db`, the file viewer's `file-cache`; and its own local settings,
+SharedPreferences `local-settings-<id>`. The database and preferences of the
+one account a device had before this (`happy.db` in `databases/`,
+`local-settings`) move there on the first launch. `AppGraph.store` and
+`AppGraph.localSettings` are one object each for the app's life and are
+switched under the screens (`HappyStore.switchTo`, `LocalSettings.switchTo`)
+before the account's `AccountSync` starts on its own server.
+`AppGraph.storeAccount` says which account they hold; `AppCoordinator`
+rebuilds the root on that, never on `auth.state`, and home's warm list
+(`HomeServices`) goes back to loading when the account changes, so no
+screen shows another account's rows. Signing an account out, active or not
+(`AppGraph.signOut(id)`), runs the logout hooks with its token, empties and
+closes its database, then deletes its directory and preferences, as iOS
+erases, closes and removes them. Tests: `AccountsTest` (registry, order,
+hand-over), `AccountSwitchTest` (the stores and settings follow the switch).
+
 ## Sync
 
 `AppGraph.account` is the signed-in account's `AccountSync` (null when
@@ -253,12 +282,14 @@ are stored, each from its newest page back as far as the reader scrolled
 plus the five-page background budget. That is the bound, recorded rather
 than enforced; a chat's rows are one contiguous run of seqs, so trimming
 the middle would break paging. Migrations keep everything from schema 1 on
-(`DatabaseMigrationTest`, one test per hop). Logout (`AppGraph.logout`):
-the `beforeLogout` hooks first, while signed in (the push unregister); then
-the database, local settings, the What's New marker, the new-session draft
-(stored and in memory, `afterLogoutWipe`), picked-image copies and the
-image loader's caches; then the credentials. The server choice stays
-(`LogoutWipeTest`).
+(`DatabaseMigrationTest`, one test per hop). Logout (`AppGraph.logout`,
+the active account): the `beforeLogout` hooks first, while signed in (the
+push unregister); then the database, local settings, the What's New marker,
+the new-session draft (stored and in memory, `afterLogoutWipe`),
+picked-image copies and the image loader's caches; then the account's
+directory and preferences go (see "Several accounts") and its credentials.
+The next signed-in account by added order becomes active; with none, the
+app is signed out. The server choice stays (`LogoutWipeTest`).
 
 **Large sessions** (`perf/LargeDataTest`, `perf/ChatDisplayTimingTest`).
 The reducer, ChatFeed and HomeListModel derive off the collecting thread
@@ -393,7 +424,7 @@ does). Read `settings.settings` (a `StateFlow<Settings>`); change with
 `settings.change { it.copy(field = value) }`, which records the changed
 top-level keys as pending and asks for a sync. Device-only preferences
 (localSettings.ts) are `AppGraph.localSettings.values`, stored as one JSON
-document in SharedPreferences.
+document in the account's SharedPreferences (`local-settings-<id>`).
 
 What's New reads `res/raw/changelog.json`, a byte-for-byte copy of
 happy-app's `sources/changelog/changelog.json`, with its images in
