@@ -11,6 +11,7 @@ import com.slopus.happy.stemcells.SpaceSidebarError
 import com.slopus.happy.stemcells.SpaceSidebarNewNode
 import com.slopus.happy.stemcells.SpaceSidebarOperation
 import com.slopus.happy.stemcells.SpaceSidebarPosition
+import com.slopus.happy.stemcells.SpaceSidebarDiff
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -72,6 +73,7 @@ class StemCellsHarnessTransport(
     private val agentIcons: JsonObject
     private val spaces = LinkedHashMap<String, JsonObject>()
     private val mutations = HashMap<String, JsonObject>()
+    private val proposals = LinkedHashMap<String, JsonObject>()
 
     // Bots, tasks and their agents, kept flat and composed into trees as read.
     private val bots = ArrayList<JsonObject>()
@@ -120,6 +122,7 @@ class StemCellsHarnessTransport(
         version = sidebar.num("version")!!.toInt()
         document = SpaceSidebar.parse(sidebar.str("html")!!)
         agentIcons = sidebar.obj("agentIcons")
+        root.obj("proposals").forEach { (id, value) -> proposals[id] = value as JsonObject }
         for (space in root.array("spaces")) spaces[(space as JsonObject).str("id")!!] = space
         for (bot in root.array("bots")) bots += flatten(bot as JsonObject)
         for (task in root.array("tasks")) tasks += flatten(task as JsonObject)
@@ -247,6 +250,30 @@ class StemCellsHarnessTransport(
 
     private fun spacesRoute(method: String, parts: List<String>, query: Map<String, String>, input: JsonObject): DirectHttpResponse {
         val route = "/" + parts.joinToString("/")
+        if (parts.take(4) == listOf("v0", "spaces", "sidebar", "proposals")) {
+            val id = parts.getOrNull(4) ?: return error(404, "not_found", "No such proposal.")
+            val held = proposals[id] ?: return error(404, "not_found", "No such proposal.")
+            if (method == "GET" && parts.size == 5) return ok(held)
+            if (method == "POST" && parts.size == 6 && parts[5] in listOf("accept", "decline")) {
+                val mutationId = input.str("mutationId") ?: return error(400, "invalid_request", "mutationId is required.")
+                mutations[mutationId]?.let { return ok(it) }
+                val current = held.obj("proposal")
+                if (current.str("status") != "open") return error(409, "already_decided", "This proposal was already answered.")
+                val accepting = parts[5] == "accept"
+                if (accepting) apply(SpaceSidebarDiff.diff(document, SpaceSidebar.parse(held.str("html")!!), widgets = true), "person", mutationId)
+                val decided = JsonObject(current + mapOf(
+                    "status" to JsonPrimitive(if (accepting) "accepted" else "declined"),
+                    "decidedAt" to JsonPrimitive(now()),
+                    "acceptedVersion" to (if (accepting) JsonPrimitive(version) else JsonNull),
+                ))
+                proposals[id] = JsonObject(held + ("proposal" to decided))
+                val result = obj("proposal" to decided)
+                mutations[mutationId] = result
+                emit("space.sidebar.proposal.changed", result)
+                return ok(result)
+            }
+            return error(404, "not_found", "No such proposal route.")
+        }
         when {
             method == "GET" && route == "/v0/spaces/sidebar" -> {
                 val widgets = query["widgets"] == "true"

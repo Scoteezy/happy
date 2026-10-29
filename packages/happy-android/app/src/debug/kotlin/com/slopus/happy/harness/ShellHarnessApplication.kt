@@ -35,7 +35,11 @@ class ShellHarnessApplication : HappyApplication() {
                             it.drawStickers(StoriesHarnessActivity.stickers())
                         }
                     } else null
-                    val computerFixture = if (stories == null) namedFixture else StoriesShellFixture.apply(namedFixture)
+                    val computerFixture = when {
+                        stories != null -> StoriesShellFixture.apply(namedFixture)
+                        credentials.address.startsWith("shell-fixture-proposals-") -> ProposalsShellFixture.apply(namedFixture)
+                        else -> namedFixture
+                    }
                     val computer = StemCellsHarnessTransport(computerFixture, fixtureScope,
                         fallback = stories,
                         drawMedia = { color, label, width, height ->
