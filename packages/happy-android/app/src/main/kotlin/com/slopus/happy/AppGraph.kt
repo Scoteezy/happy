@@ -120,7 +120,7 @@ class AppGraph(
         authApi,
         registryStore = AccountRegistryFile(LocalCaches.registryFile(appContext)),
         serverUrl = { serverConfig.url.value },
-        onSignedIn = { direct.select(null) },
+        onSignedIn = { if (direct.state.value.activeId != null) direct.select(null) },
     )
 
     private val databases = HashMap<String?, HappyDatabase>()
@@ -291,13 +291,23 @@ class AppGraph(
     data class ShellAccount(val relay: AuthState, val directId: String?)
     private val shellState = MutableStateFlow<ShellAccount?>(null)
     val shellAccount: StateFlow<ShellAccount?> = shellState.asStateFlow()
+    private val restoreFailure = MutableStateFlow(false)
+    val directRestoreFailed: StateFlow<Boolean> = restoreFailure.asStateFlow()
     private val shellOperationLock = Mutex()
 
     init {
         scope.launch {
-            direct.setForeground(foreground.value)
-            direct.restore()
-            if (!stemCells.showsComputers) direct.select(null)
+            try {
+                direct.setForeground(foreground.value)
+                direct.restore()
+                if (!stemCells.showsComputers) direct.select(null)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Keep the saved credentials/files untouched and leave relay
+                // onboarding usable. A failed restore must not strand a blank window.
+                restoreFailure.value = true
+            }
             combine(auth.state, direct.state) { relay, computers -> ShellAccount(relay, computers.activeId) }
                 .distinctUntilChanged()
                 .collect { selected ->
@@ -427,7 +437,7 @@ class AppGraph(
     suspend fun switchAccount(accountId: String) = scope.async {
         shellOperationLock.withLock {
             auth.switchTo(accountId)
-            direct.select(null)
+            if (direct.state.value.activeId != null) direct.select(null)
             shellAccount.first { it?.directId == null && (it?.relay as? AuthState.SignedIn)?.encryption?.anonId == accountId }
         }
         Unit

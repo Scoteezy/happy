@@ -14,6 +14,16 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DirectShellTest {
+    @Test fun unreadableDirectStorageDoesNotStrandTheShellOrEraseTheFile() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val blocker = java.io.File(context.filesDir, "direct")
+        assertFalse(blocker.exists())
+        blocker.writeText("fixture: path is a file, not an account directory")
+        val graph = AppGraph(context, "test", "http://127.0.0.1:1", SoftwareKeys(), databaseName = null)
+        eventually { graph.directRestoreFailed.value && graph.shellAccount.value != null }
+        assertEquals("fixture: path is a file, not an account directory", blocker.readText())
+    }
+
     @Test fun relaySignOutDoesNotClearTheActiveComputersPreferences() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val graph = AppGraph(context, "test", "http://127.0.0.1:1", SoftwareKeys(), databaseName = null,
