@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.details
 
+import com.slopus.happy.ui.nav.SessionRoute
 import android.content.Context
 import android.content.res.ColorStateList
 import android.text.Layout
@@ -43,7 +44,7 @@ import kotlinx.coroutines.launch
  * branch base (HappyAgentDiffView); a CLI session shows its uncommitted
  * files from git status.
  */
-class SessionChangesScreen(context: Context, private val graph: AppGraph, private val sessionId: String) : BarScreen(context) {
+class SessionChangesScreen(context: Context, private val graph: AppGraph, override val sessionId: String) : BarScreen(context), SessionRoute {
     private val root = FrameLayout(context)
     private val list = DiffFilesListView(context, scope)
     private var stateView: View? = null

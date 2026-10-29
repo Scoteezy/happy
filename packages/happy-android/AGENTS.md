@@ -429,6 +429,22 @@ use Header.tsx or OnboardingHeader on iOS (Settings, What's New, Welcome,
 home's link state, session info, machine, changes, message detail). A new
 screen picks one or the other by what its iOS screen uses.
 
+## Tablet
+
+`ui/tablet/TabletShell` is the activity's root and holds the `ScreenStack`.
+As happy-ios (`TabletShellRule`, `layout/TabletLayout.kt`), a window 768 dp
+wide or more is a tablet, by width alone; then the sidebar
+(`TabletSidebarView`, the home list's state and actions) sits beside the
+stack, 30% of the window held to 250–360, under a header with zen (collapses
+the sidebar, `localSettings.zenMode`) and back. The header row is Android's
+56 dp app bar where the iPad's is 50. Screens read `isTabletLayout` and
+`isZenMode` and hear `onTabletLayoutChanged()`: home draws nothing beside the
+sidebar, Header.tsx screens set `dropsBackButtonOnTablet`, and chat takes the
+plain header, the docked composer and the tablet permission footer
+(`TabletBranches`). A screen about one session implements `SessionRoute` so
+the sidebar highlights its row. `ContentWidth` caps the content at 800 only on
+a 13-inch tablet. Not ported yet: the grouped sidebar list (flat rows stand in).
+
 ## Settings
 
 `AppGraph.settings` (`SettingsRepository`) is the account's settings as

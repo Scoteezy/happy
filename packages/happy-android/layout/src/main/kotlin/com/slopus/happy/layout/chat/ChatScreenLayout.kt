@@ -260,6 +260,76 @@ data class ChatHeaderTitleLayout(val size: Size, val title: Rect, val subtitle: 
 }
 
 /**
+ * ChatHeaderView without glass (a tablet): the title over the workspace or
+ * branch and the line changes, at the start of the header's row rather than
+ * in a capsule. The row is the bar's width held to `maxWidth`
+ * (`layout.headerMaxWidth`) and centred, 16 in from its sides; the column is
+ * centred top to bottom in the title view.
+ *
+ * [bar] is the bar's frame in the title view's coordinates (the view's own
+ * bounds when the title view is the bar); [size] is the title view's. The
+ * row is placed from the bar, then clipped to the title view, where its
+ * touches land, and the text is measured to what is left.
+ */
+data class ChatPlainHeaderLayout(
+    /** The column the title and its row take, in the title view. */
+    val column: Rect,
+    /** In the column, as are [subtitle] and [changes]. */
+    val title: Rect,
+    val subtitle: Rect?,
+    val changes: Rect?,
+) {
+    object Metrics {
+        /** The header's `content` paddingHorizontal. */
+        const val paddingH = 16.0
+        /** subtitleRow's gap. */
+        const val rowGap = 4.0
+    }
+
+    companion object {
+        operator fun invoke(bar: Rect, size: Size, maxWidth: Double, title: Measurable, subtitle: Measurable?, changes: Size?): ChatPlainHeaderLayout {
+            val (x, width) = row(bar, size, maxWidth)
+            val titleSize = title.size(width)
+            var subtitleSize: Size? = null
+            var rowHeight = 0.0
+            if (subtitle != null) {
+                val measured = subtitle.size(subtitleWidth(width, changes))
+                subtitleSize = measured
+                rowHeight = measured.height
+            }
+            if (changes != null) rowHeight = max(rowHeight, changes.height)
+            val height = titleSize.height + rowHeight
+            val column = Rect(x, (size.height - height) / 2, width, height)
+            val rowTop = titleSize.height
+            var rowX = 0.0
+            val subtitleFrame = subtitleSize?.let { s ->
+                Rect(rowX, rowTop + (rowHeight - s.height) / 2, s.width, s.height).also { rowX += s.width + Metrics.rowGap }
+            }
+            val changesFrame = changes?.let { Rect(rowX, rowTop + (rowHeight - it.height) / 2, it.width, it.height) }
+            return ChatPlainHeaderLayout(column, Rect(0.0, 0.0, titleSize.width, titleSize.height), subtitleFrame, changesFrame)
+        }
+
+        /** Where the column starts in the title view and what it has across. */
+        private fun row(bar: Rect, size: Size, maxWidth: Double): Pair<Double, Double> {
+            val barWidth = max(0.0, bar.width)
+            val row = min(barWidth, max(0.0, maxWidth))
+            val start = bar.minX + (barWidth - row) / 2 + Metrics.paddingH
+            val end = start + max(0.0, row - 2 * Metrics.paddingH)
+            val viewWidth = max(0.0, size.width)
+            val x = min(max(start, 0.0), viewWidth)
+            return x to max(0.0, min(end, viewWidth) - x)
+        }
+
+        /** What the title is measured to. */
+        fun textWidth(bar: Rect, size: Size, maxWidth: Double): Double = row(bar, size, maxWidth).second
+
+        /** What the subtitle is measured to: the column less the line changes and the gap before them. */
+        fun subtitleWidth(textWidth: Double, changes: Size?): Double =
+            max(0.0, textWidth - (changes?.let { it.width + Metrics.rowGap } ?: 0.0))
+    }
+}
+
+/**
  * ChatHeaderView's scrim: MobileHeaderScrim's strong variant, its wash at
  * 0.80 while the conversation starts below the header and 0.96 once content
  * is scrolled under it, faded over 200 ms.

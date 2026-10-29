@@ -66,6 +66,9 @@ import kotlinx.coroutines.withContext
  * drawn until the new one is in.
  */
 class ChangelogScreen(context: Context, private val graph: AppGraph) : BarScreen(context) {
+    // navigation/Header.tsx's plain header: the tablet shell's back serves a tablet.
+    override val dropsBackButtonOnTablet get() = true
+
     private val changelog = Changelog.bundled(context.resources)
     private val entryViews = changelog.entries.map { ChangelogEntryView(context) }
     private val list = GroupedListView(context)

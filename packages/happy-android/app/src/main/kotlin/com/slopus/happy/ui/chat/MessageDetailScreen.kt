@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.chat
 
+import com.slopus.happy.ui.nav.SessionRoute
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -49,7 +50,7 @@ import kotlinx.coroutines.withContext
  * Chat/MessageDetail/MessageDetailViewController.swift.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class MessageDetailScreen(context: Context, private val graph: AppGraph, private val sessionId: String, private val messageId: String) : BarScreen(context) {
+class MessageDetailScreen(context: Context, private val graph: AppGraph, override val sessionId: String, private val messageId: String) : BarScreen(context), SessionRoute {
     private val renderer = MessageDetailRenderer(context.resources, ChatRowRenderer(context.resources))
     private val scroll = ScrollView(context)
     private val canvas = ChatRowView(context)

@@ -32,10 +32,31 @@ abstract class BarScreen(context: Context) : Screen(context) {
 
     override fun createView(): View = Chrome(context)
 
+    /**
+     * navigation/Header.tsx :322: happy-app's plain header (settings, session
+     * info, machine, What's New) has no back button on a tablet, where the
+     * tablet shell's persistent back serves instead (happy-ios
+     * `dropsBackButtonOnTablet`). The system back still pops.
+     */
+    protected open val dropsBackButtonOnTablet: Boolean get() = false
+
+    /** False for a screen that puts something else where back goes (Cancel on a sheet). */
+    protected open val wantsBackButton: Boolean get() = true
+
     override fun onAppear() {
         super.onAppear()
-        val stack = stack
-        if (stack != null && stack.all.indexOf(this) > 0 && bar.onBack == null) bar.onBack = { pop() }
+        updateBackButton()
+    }
+
+    override fun onTabletLayoutChanged() {
+        super.onTabletLayoutChanged()
+        updateBackButton()
+    }
+
+    private fun updateBackButton() {
+        val stack = stack ?: return
+        val shows = wantsBackButton && stack.all.indexOf(this) > 0 && !(dropsBackButtonOnTablet && isTabletLayout)
+        if (shows && bar.onBack == null) bar.onBack = { pop() } else if (!shows && bar.onBack != null) bar.onBack = null
     }
 
     override fun onInsetsChanged() {

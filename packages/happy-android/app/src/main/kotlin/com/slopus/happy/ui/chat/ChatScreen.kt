@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.chat
 
+import com.slopus.happy.ui.nav.SessionRoute
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.slopus.happy.data.OutboxKind
 import com.slopus.happy.data.OutboxState
@@ -78,6 +79,9 @@ import com.slopus.happy.ui.components.AvatarView
 import com.slopus.happy.ui.components.IconView
 import com.slopus.happy.ui.composer.ChatComposerView
 import com.slopus.happy.ui.nav.Screen
+import com.slopus.happy.ui.tablet.ContentWidth
+import com.slopus.happy.ui.tablet.TabletShell
+import com.slopus.happy.layout.TabletBranches
 import com.slopus.happy.ui.text.TextLayouts
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.layout.chat.MarkdownLayout
@@ -108,7 +112,7 @@ import kotlinx.coroutines.withContext
  * everything.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: String) : Screen(context) {
+class ChatScreen(context: Context, private val graph: AppGraph, override val sessionId: String) : Screen(context), SessionRoute {
     private val actions = SyncChatActions { graph.account.value }
     private val messages: ChatMessagesSource
         get() = graph.account.value?.let { SyncChatMessagesSource(it.messages, it.sender) } ?: StoreChatMessagesSource(graph.store)
@@ -197,6 +201,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         header.backButton.setOnClickListener { pop() }
         header.titleControl.setOnClickListener { openInfo() }
         header.avatarControl.setOnClickListener { openInfo() }
+        header.plainControl.setOnClickListener { openInfo() }
+        applyTabletBranch()
         list.onScroll = ::scrolled
         list.onAction = ::perform
         composer.onHeightChanged = { root.requestLayout() }
@@ -405,10 +411,12 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             bubble = bubble,
             compactTools = settings.compactToolCalls,
             showLineNumbers = settings.showLineNumbersInToolViews,
-            maxContentWidth = ChatScreenLayout.Metrics.regularMaxContentWidth,
+            // layout.ts maxWidth (happy-ios ContentWidth): 800 only on a large tablet.
+            maxContentWidth = ContentWidth.maxWidth(context),
             root = state.session?.metadata?.path,
             flavor = state.session?.metadata?.flavor,
             env = TextLayouts.Env(Theme.density, Theme.textScale),
+            tablet = isTabletLayout,
         )
     }
 
@@ -463,7 +471,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
 
     private fun scrolled(distanceFromNewest: Double, distanceFromOldest: Double) {
         header.underlap = ChatScreenLayout.headerBackdropVisible(distanceFromOldest)
-        val visible = ChatScreenLayout.dockDetailsVisible(distanceFromNewest, dockDetailsVisible)
+        // A docked composer (a tablet, `usesFloatingMobileDock` false) keeps its status rows and the bars above it however far back the reader is.
+        val visible = branches.isTablet || ChatScreenLayout.dockDetailsVisible(distanceFromNewest, dockDetailsVisible)
         if (visible != dockDetailsVisible) {
             dockDetailsVisible = visible
             composer.setDetailsVisible(visible, animated = true)
@@ -630,6 +639,32 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
         push(com.slopus.happy.ui.details.SessionInfoScreen(context, graph, sessionId))
     }
 
+    /** happy-app's tablet branches for this window (happy-ios `tabletBranches`). */
+    private val branches: TabletBranches
+        get() = TabletBranches(isTabletLayout, isLandscape = root.width > root.height, headerHeight = TabletShell.HEADER_HEIGHT)
+
+    override fun onTabletLayoutChanged() {
+        super.onTabletLayoutChanged()
+        applyTabletBranch()
+        requestPlans()
+    }
+
+    /**
+     * ChatHeaderView's `glassEnabled` and SessionView's `headerRight`: a
+     * phone's capsule and avatar over the scrim, or a tablet's opaque bar
+     * with the plain title and no back or avatar.
+     */
+    private fun applyTabletBranch() {
+        header.tablet = !branches.chatHeaderGlass
+        header.headerMaxWidth = ContentWidth.headerMaxWidth(context)
+        if (branches.isTablet && !dockDetailsVisible) {
+            dockDetailsVisible = true
+            composer.setDetailsVisible(true, animated = false)
+            for (bar in dockBarViews) bar.alpha = 1f
+        }
+        root.requestLayout()
+    }
+
     override fun onBackPressed(): Boolean {
         if (composer.card.isTextFocused) {
             composer.card.blur()
@@ -663,6 +698,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
             header.safeTop = safeArea.top
             val keyboard = keyboard
             val bars = dockBars
+            val branches = branches
             val layout = ChatScreenLayout(
                 ChatScreenLayout.Input(
                     size = Size(width, height),
@@ -671,6 +707,10 @@ class ChatScreen(context: Context, private val graph: AppGraph, val sessionId: S
                     accessories = bars.map { it.second },
                     composerHeight = composer.composerHeight(width),
                     composerCardOffset = composer.cardOffset(width),
+                    maxContentWidth = ContentWidth.maxWidth(context),
+                    // TabletBranches: chatFloatingDock and chatInputPaddingH.
+                    docked = branches.isTablet,
+                    accessoryPaddingH = branches.chatInputPaddingH,
                 ),
             )
             // Insets first, so the list lays out with them in this pass.

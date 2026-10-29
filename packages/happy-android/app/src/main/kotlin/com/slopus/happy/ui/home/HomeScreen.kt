@@ -193,8 +193,8 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         if (previous != next) updateChrome(animated = previous != null)
     }
 
-    /** HomeListHeader.tsx: the offline plaque, then What's new while the latest entry is unread. */
-    private fun banners(state: HomeListState): HomeBanners {
+    /** HomeListHeader.tsx: the offline plaque, then What's new while the latest entry is unread (the tablet sidebar's list too). */
+    fun banners(state: HomeListState): HomeBanners {
         val offline = state.offlineBanner?.let { banner ->
             banner.machineName?.let { context.getString(R.string.troubleshoot_banner_title_one, it) }
                 ?: context.getString(R.string.troubleshoot_banner_title_many)
@@ -242,10 +242,18 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
 
     private fun updateChrome(animated: Boolean) {
         val floating = kind != Kind.Link
-        header.visibility = if (floating) View.VISIBLE else View.GONE
+        // Beside the tablet sidebar the index route draws nothing, nor its header and dock (MainView.tsx `isTablet`).
+        val blank = floating && isTabletLayout
+        content?.visibility = if (blank) View.INVISIBLE else View.VISIBLE
+        header.visibility = if (floating && !blank) View.VISIBLE else View.GONE
         bar.visibility = if (floating) View.GONE else View.VISIBLE
-        dockController.isAvailable = showsDock
+        dockController.isAvailable = showsDock && !blank
         root.requestLayout()
+    }
+
+    override fun onTabletLayoutChanged() {
+        super.onTabletLayoutChanged()
+        if (kind != null) updateChrome(animated = false)
     }
 
     private fun showArchive() = graph.settings.change { it.copy(hideInactiveSessions = false) }
@@ -282,13 +290,30 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         popup.show()
     }
 
-    private fun openSettings() = push(SettingsScreen(context, graph))
+    private fun openSettings() = pushUnlessShowing({ it is SettingsScreen }) { SettingsScreen(context, graph) }
+
+    /** The tablet sidebar's Settings row. */
+    fun openSettingsFromSidebar() = openSettings()
+
+    /** `router.navigate('/new')`: the sidebar's New session and the tablet empty state's Start New Session. */
+    fun openNewSession() = pushUnlessShowing({ it is NewSessionScreen }) { NewSessionScreen(context, graph) }
+
+    /**
+     * Pushes onto the stack, whatever is on top: the tablet sidebar beside
+     * it opens screens through home. Not again over the same screen, as
+     * happy-ios's sidebar doesn't push a second copy of the route on top.
+     */
+    private fun pushUnlessShowing(showing: (Screen?) -> Boolean, make: () -> Screen) {
+        val stack = stack ?: return
+        if (showing(stack.top)) return
+        stack.push(make())
+    }
 
     private fun notPorted(title: String) = Alerts.show(context, title, NOT_PORTED)
 
     // HomeListActions. A project card's long press (Create workspace) is a later stage of the port.
 
-    override fun openSession(id: String) = push(ChatScreen(context, graph, id))
+    override fun openSession(id: String) = pushUnlessShowing({ (it as? ChatScreen)?.sessionId == id }) { ChatScreen(context, graph, id) }
 
     override fun toggleArchive(hidden: Boolean) = graph.settings.change { it.copy(hideInactiveSessions = !hidden) }
 

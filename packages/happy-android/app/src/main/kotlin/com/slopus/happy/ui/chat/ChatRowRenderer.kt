@@ -60,6 +60,7 @@ import com.slopus.happy.layout.chat.FileViewLayout
 import com.slopus.happy.layout.chat.CompactToolRowLayout
 import com.slopus.happy.layout.chat.MarkdownLayout
 import com.slopus.happy.layout.chat.PermissionFooterLayout
+import com.slopus.happy.layout.tablet
 import com.slopus.happy.layout.chat.ToolCardLayout
 import com.slopus.happy.layout.chat.UserMessageLayout
 import com.slopus.happy.layout.chat.WorkGroupHeaderLayout
@@ -115,6 +116,8 @@ data class ChatRowStyle(
     /** `settings.showLineNumbersInToolViews`. */
     val showLineNumbers: Boolean = false,
     val env: ChatTextEnv,
+    /** `TabletBranches.permissionButtonsTrailing`: a tablet hugs each permission button to its label at the trailing edge. */
+    val tablet: Boolean = false,
 )
 
 /** Everything one row is drawn from. Equal inputs at the same width give the same plan. */
@@ -766,9 +769,10 @@ class ChatRowRenderer(private val resources: Resources) {
             MeasuredText(ChatStrings.string(resources.getString(option.label), Palette.text), textStyle, style.env, maxLines = option.maxLines, alignment = Layout.Alignment.ALIGN_CENTER)
         }
         val measurables = labels.map { it.measurable }
-        return ChatPiece(Measurable { PermissionFooterLayout(it, measurables).size }) { frame ->
+        val footer = { width: Double -> if (style.tablet) PermissionFooterLayout.tablet(width, measurables) else PermissionFooterLayout(width, measurables) }
+        return ChatPiece(Measurable { footer(it).size }) { frame ->
             val m = PermissionFooterLayout.Metrics
-            val layout = PermissionFooterLayout(frame.width, measurables)
+            val layout = footer(frame.width)
             val items = ArrayList<ChatDrawItem>()
             val hits = ArrayList<ChatHit>()
             options.forEachIndexed { index, option ->

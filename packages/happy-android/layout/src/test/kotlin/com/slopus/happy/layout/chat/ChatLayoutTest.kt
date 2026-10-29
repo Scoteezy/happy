@@ -802,3 +802,89 @@ class InactiveHintLayoutTest {
         assertFrame(short.command, rect(0, 40, 361, 48))
     }
 }
+
+/** happy-ios ChatPlainHeaderLayoutTests and ChatChromeTextSizeLayoutTests' plain header widths. */
+class ChatPlainHeaderLayoutTest {
+    @Test fun testTheTitleSitsAtTheStartOfTheRow() {
+        val layout = ChatPlainHeaderLayout(
+            bar = rect(0, 0, 664, 50), size = Size(664, 50), maxWidth = 800.0,
+            title = fixed(120, 20), subtitle = fixed(60, 16), changes = Size(40, 14),
+        )
+        assertFrame(layout.column, rect(16, 7, 632, 36))
+        // The column's children are in the column.
+        assertFrame(layout.title, rect(0, 0, 120, 20))
+        assertFrame(layout.subtitle, rect(0, 20, 60, 16))
+        assertFrame(layout.changes, rect(64, 21, 40, 14))
+    }
+
+    @Test fun testAWideBarHoldsTheRowToTheHeadersMaxWidth() {
+        val layout = ChatPlainHeaderLayout(bar = rect(0, 0, 1000, 50), size = Size(1000, 50), maxWidth = 800.0, title = fixed(120, 20), subtitle = null, changes = null)
+        assertFrame(layout.column, rect(116, 15, 768, 20))
+        assertFrame(layout.title, rect(0, 0, 120, 20))
+        XCTAssertNil(layout.subtitle)
+        XCTAssertNil(layout.changes)
+    }
+
+    @Test fun testAnInsetTitleViewPlacesTheRowFromTheBarsEdges() {
+        // The title view 80 into a 1000-wide bar, 840 wide and 3 down: the row
+        // is where it would be in the bar (116), which is 36 into the view,
+        // and centred in the view's own height.
+        val layout = ChatPlainHeaderLayout(
+            bar = rect(-80, -3, 1000, 50), size = Size(840, 44), maxWidth = 800.0,
+            title = fixed(120, 20), subtitle = null, changes = null,
+        )
+        assertFrame(layout.column, rect(36, 12, 768, 20))
+        assertFrame(layout.title, rect(0, 0, 120, 20))
+    }
+
+    @Test fun testARowStartingBeforeTheTitleViewIsClippedAndMeasuredToWhatIsLeft() {
+        // The row starts 16 into the bar, which is 104 before the view.
+        val layout = ChatPlainHeaderLayout(
+            bar = rect(-120, 0, 664, 50), size = Size(500, 50), maxWidth = 800.0,
+            title = fixed(600, 20), subtitle = fixed(480, 16), changes = Size(40, 14),
+        )
+        assertFrame(layout.column, rect(0, 7, 500, 36))
+        assertFrame(layout.title, rect(0, 0, 500, 20))
+        // 500 less the changes and their gap.
+        assertFrame(layout.subtitle, rect(0, 20, 456, 16))
+        assertFrame(layout.changes, rect(460, 21, 40, 14))
+    }
+
+    @Test fun testARowEndingPastTheTitleViewIsClipped() {
+        val layout = ChatPlainHeaderLayout(
+            bar = rect(0, 0, 664, 50), size = Size(400, 50), maxWidth = 800.0,
+            title = fixed(600, 20), subtitle = null, changes = null,
+        )
+        assertFrame(layout.column, rect(16, 15, 384, 20))
+        assertFrame(layout.title, rect(0, 0, 384, 20))
+    }
+
+    @Test fun testATitleViewOutsideTheRowGetsAnEmptyColumn() {
+        // The row ends 16 before the view starts.
+        val layout = ChatPlainHeaderLayout(
+            bar = rect(-900, 0, 1000, 50), size = Size(100, 50), maxWidth = 800.0,
+            title = fixed(120, 20), subtitle = null, changes = null,
+        )
+        assertFrame(layout.column, rect(0, 15, 0, 20))
+        assertFrame(layout.title, rect(0, 0, 0, 20))
+    }
+
+    @Test fun testWithoutABarTheRowIsTheTitleViews() {
+        val size = Size(664, 44)
+        val layout = ChatPlainHeaderLayout(
+            bar = rect(0, 0, size.width, size.height), size = size, maxWidth = 800.0,
+            title = fixed(120, 20), subtitle = fixed(60, 16), changes = null,
+        )
+        assertFrame(layout.column, rect(16, 4, 632, 36))
+        assertFrame(layout.subtitle, rect(0, 20, 60, 16))
+    }
+
+    @Test fun testThePlainHeadersTextWidths() {
+        val bar = rect(-100, 0, 1000, 50)
+        val size = Size(800, 50)
+        XCTAssertEqual(ChatPlainHeaderLayout.textWidth(bar, size, 800.0), 768)
+        XCTAssertEqual(ChatPlainHeaderLayout.subtitleWidth(768.0, Size(40, 18)), 724)
+        XCTAssertEqual(ChatPlainHeaderLayout.subtitleWidth(768.0, null), 768)
+        XCTAssertEqual(ChatPlainHeaderLayout.subtitleWidth(20.0, Size(40, 18)), 0)
+    }
+}

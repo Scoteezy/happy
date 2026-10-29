@@ -76,6 +76,10 @@ data class HomeListState(
     val offlineBanner: OfflineBanner?,
     /** The linked computers' names, for the offline checklist. */
     val computers: List<String> = emptyList(),
+    /** How many of [computers] are reachable. */
+    val onlineComputers: Int = 0,
+    /** Something is listed: a live chat, or an archived one while the archive shows (iOS `SessionList.visibleCount > 0`). */
+    val listsSessions: Boolean = false,
     /** Grouped by project: each chat's checkout, whose chats the session screen shows as tabs. */
     val worktrees: Map<String, ProjectWorktree> = emptyMap(),
 )
@@ -121,6 +125,8 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
         rows = rows,
         offlineBanner = if (shouldShowOfflineMachinesBanner(choices.size, online)) OfflineBanner(choices.singleOrNull()?.name) else null,
         computers = choices.map { it.name },
+        onlineComputers = online,
+        listsSessions = visible.isNotEmpty(),
         worktrees = if (inputs.grouping == SessionListGrouping.Project) projectWorktreesBySession(all) else emptyMap(),
     )
 }
@@ -149,8 +155,8 @@ private fun flatRows(visible: List<SessionListItem>, hasArchived: Boolean, archi
 
 /**
  * [next] with every row equal to one in [previous] replaced by that
- * instance, and the whole list kept when nothing changed, so Compose skips
- * every row but the ones that differ.
+ * instance, and the whole list kept when nothing changed, so the list's diff
+ * rebinds only the rows that differ.
  */
 fun reuseUnchanged(previous: HomeListState?, next: HomeListState): HomeListState {
     if (previous == null) return next

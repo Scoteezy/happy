@@ -19,6 +19,7 @@ import com.slopus.happy.ui.nav.ScreenStack
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.settings.PairingFlow
 import com.slopus.happy.ui.stemcells.StemCellsLinkScreen
+import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.theme.Theme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -33,7 +34,11 @@ import kotlinx.coroutines.launch
  * Pairing links and tapped notifications land here too ([DeepLinks]).
  */
 class AppCoordinator(private val activity: ComponentActivity, private val graph: AppGraph) {
-    val root = ScreenStack(activity)
+    /** The app's one stack of screens. */
+    private val stack = ScreenStack(activity)
+
+    /** The window's root: the stack, with the sidebar beside it on a tablet-wide window. */
+    val root = TabletShell(activity, graph, stack)
 
     /** The account the root was built for; null while signed out, unset before the first. */
     private var rootAccount: Any? = UNSET
@@ -41,7 +46,7 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
     fun start() {
         Theme.install(activity)
         Theme.setPreference(graph.localSettings.themePreference.value)
-        activity.onBackPressedDispatcher.addCallback(activity, root.backCallback)
+        activity.onBackPressedDispatcher.addCallback(activity, stack.backCallback)
         activity.lifecycleScope.launch {
             graph.localSettings.themePreference.collect { preference ->
                 Theme.setPreference(preference)
@@ -88,7 +93,7 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
                 confirmTitle = activity.getString(R.string.common_continue),
             )
             if (!confirmed || graph.auth.state.value !is AuthState.SignedIn) return@launch
-            PairingFlow.report(root, PairingFlow.approve(graph, link.link, kind), kind)
+            PairingFlow.report(stack, PairingFlow.approve(graph, link.link, kind), kind)
         }
     }
 
@@ -108,14 +113,14 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
             DeepLinks.consume(link)
             return
         }
-        if (root.all.firstOrNull() !is HomeScreen || lookingUpNotification) return
+        if (stack.all.firstOrNull() !is HomeScreen || lookingUpNotification) return
         lookingUpNotification = true
         activity.lifecycleScope.launch {
             // A failed lookup keeps the active account.
             val owner = runCatching { graph.accountHoldingSession(link.id) }.getOrNull()
             lookingUpNotification = false
             if (DeepLinks.pending.value != link) return@launch
-            if (graph.storeAccount.value !== active || root.all.firstOrNull() !is HomeScreen) {
+            if (graph.storeAccount.value !== active || stack.all.firstOrNull() !is HomeScreen) {
                 openNotificationSession(link)
                 return@launch
             }
@@ -139,9 +144,9 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
 
     /** happy-ios `showNotificationSession`: home, then the chat; nothing changes when that chat is already on top. */
     private fun showNotificationSession(sessionId: String) {
-        val home = root.all.firstOrNull() as? HomeScreen ?: return
-        if ((root.top as? ChatScreen)?.sessionId == sessionId) return
-        root.setScreens(listOf(home, ChatScreen(activity, graph, sessionId)), animated = true)
+        val home = stack.all.firstOrNull() as? HomeScreen ?: return
+        if ((stack.top as? ChatScreen)?.sessionId == sessionId) return
+        stack.setScreens(listOf(home, ChatScreen(activity, graph, sessionId)), animated = true)
     }
 
     /** The system's configuration changed (dark mode, font scale, density) without the activity restarting. */
@@ -170,7 +175,8 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
             graph.stemCells.isAvailable -> StemCellsLinkScreen(activity, graph)
             else -> WelcomeScreen(activity, graph)
         }
-        root.setScreens(listOf(screen), animated = !first)
+        stack.setScreens(listOf(screen), animated = !first)
+        root.rootDidChange()
         DeepLinks.pending.value?.let(::open)
     }
 

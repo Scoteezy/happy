@@ -45,6 +45,22 @@ abstract class Screen(val context: Context) {
         made?.requestLayout()
     }
 
+    /**
+     * happy-ios `TabletLayoutTrait` (`useIsTablet()`): the window is at least
+     * 768 wide. The tablet shell sets it on its stack and flips it live as the
+     * window resizes; it is the width rule alone, true on the first-run
+     * screens too, where the shell itself steps aside.
+     */
+    val isTabletLayout: Boolean get() = stack?.isTabletLayout == true
+
+    /** happy-ios `ZenModeTrait`: `localSettings.zenMode`, which the shell's zen control toggles. */
+    val isZenMode: Boolean get() = stack?.isZenMode == true
+
+    /** [isTabletLayout] or [isZenMode] changed; the default asks the view to lay out again. */
+    open fun onTabletLayoutChanged() {
+        made?.requestLayout()
+    }
+
     /** Back was pressed with this screen on top; true when it handled it (a sheet closed, say). */
     open fun onBackPressed(): Boolean = false
 
@@ -73,4 +89,13 @@ abstract class Screen(val context: Context) {
         val s = stack ?: return
         if (s.top === this) s.pop(animated)
     }
+}
+
+/**
+ * A screen of one session (every `/session/<id>/…` route), which the tablet
+ * sidebar keeps selected while it is on top (SessionsList.tsx
+ * `selectedSessionId`).
+ */
+interface SessionRoute {
+    val sessionId: String
 }

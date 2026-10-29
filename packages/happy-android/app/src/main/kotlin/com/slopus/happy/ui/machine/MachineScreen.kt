@@ -42,6 +42,9 @@ import kotlinx.coroutines.launch
  * machine's updates arrive over the socket.
  */
 class MachineScreen(context: Context, private val graph: AppGraph, private val machineId: String) : BarScreen(context) {
+    // navigation/Header.tsx's plain header: the tablet shell's back serves a tablet.
+    override val dropsBackButtonOnTablet get() = true
+
     private val root = FrameLayout(context)
     private val list = GroupedListView(context)
     private var model: MachineDetailsModel? = null

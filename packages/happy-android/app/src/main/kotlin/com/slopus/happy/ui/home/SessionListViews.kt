@@ -260,9 +260,16 @@ class SessionRowCell(context: Context) : ManualLayout(context), ThemeAware {
     }
 
     override fun applyTheme() {
-        rowRipple(Palette.flatListBackground)
+        rowRipple(if (isSelected) Palette.surfaceSelected else Palette.flatListBackground)
         divider.setBackgroundColor(Theme.color(Palette.divider))
         model?.let { applyDot(it) }
+    }
+
+    /** The tablet sidebar's open chat: the selected surface (UITableViewCell's `selectedBackgroundView`). */
+    override fun setSelected(selected: Boolean) {
+        val changed = selected != isSelected
+        super.setSelected(selected)
+        if (changed) applyTheme()
     }
 
     fun configure(model: SessionRowModel) {

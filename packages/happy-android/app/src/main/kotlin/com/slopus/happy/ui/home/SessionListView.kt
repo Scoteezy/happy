@@ -109,6 +109,18 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
 
     private var rows: List<HomeRow> = emptyList()
 
+    /** In the tablet sidebar, the open chat's row stays selected (SessionsList.tsx `selectedSessionId`); flat rows only. */
+    var selectedSessionId: String? = null
+        set(value) {
+            if (field == value) return
+            val previous = field
+            field = value
+            for (id in listOfNotNull(previous, value)) {
+                val position = adapter.currentList.indexOfFirst { ((it as? Item.Row)?.row as? HomeRow.Chat)?.row?.session?.id == id }
+                if (position >= 0) adapter.notifyItemChanged(position)
+            }
+        }
+
     /** FlatSessionRow.tsx's swipe: "Archive Session", on a live flat row only (happy-ios `trailingSwipeActionsConfigurationForRowAt`). */
     private val swipe = SwipeActions(this) { holder ->
         val position = holder.bindingAdapterPosition
@@ -217,6 +229,7 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
                     val cell = view as SessionRowCell
                     val faded = row.archived || row.row.session.machineOffline
                     cell.configure(sessionModel(row.row.session, faded, row.row.projectName, row.row.workspaceName, row.showBorder))
+                    cell.isSelected = row.row.session.id == selectedSessionId
                     cell.setOnClickListener { actions.openSession(row.row.session.id) }
                     cell.setOnLongClickListener { actions.holdSession(row.row.session.id); true }
                     // The swipe, for TalkBack (VoiceOver reads a row's swipe actions as its custom actions).

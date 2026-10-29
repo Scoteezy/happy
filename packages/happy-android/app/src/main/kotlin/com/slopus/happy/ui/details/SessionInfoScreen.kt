@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.details
 
+import com.slopus.happy.ui.nav.SessionRoute
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -87,7 +88,10 @@ import kotlinx.serialization.json.put
  * screen 5 s after it appeared, the group says it is taking longer and
  * offers Retry and Copy diagnostics, as the bar's menu always does.
  */
-class SessionInfoScreen(context: Context, private val graph: AppGraph, private val sessionId: String) : BarScreen(context) {
+class SessionInfoScreen(context: Context, private val graph: AppGraph, override val sessionId: String) : BarScreen(context), SessionRoute {
+    // navigation/Header.tsx's plain header: the tablet shell's back serves a tablet.
+    override val dropsBackButtonOnTablet get() = true
+
     private val root = FrameLayout(context)
     private val list = GroupedListView(context)
     private var stateView: View? = null

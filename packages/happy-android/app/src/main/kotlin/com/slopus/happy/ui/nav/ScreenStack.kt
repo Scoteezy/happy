@@ -47,6 +47,25 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     /** Called whenever the top screen changes (after the transition). */
     var onTopChanged: ((Screen?) -> Unit)? = null
 
+    /** Called when the stack's screens change, before any transition (UINavigationController's `willShow`). */
+    var onScreensChanged: (() -> Unit)? = null
+
+    /** [Screen.isTabletLayout] for every screen on the stack; the tablet shell sets it. */
+    var isTabletLayout = false
+        set(value) {
+            if (field == value) return
+            field = value
+            screens.forEach(Screen::onTabletLayoutChanged)
+        }
+
+    /** [Screen.isZenMode]; the tablet shell sets it. */
+    var isZenMode = false
+        set(value) {
+            if (field == value) return
+            field = value
+            screens.forEach(Screen::onTabletLayoutChanged)
+        }
+
     val backCallback = object : OnBackPressedCallback(false) {
         private var interactive = false
 
@@ -355,6 +374,7 @@ class ScreenStack(context: Context) : FrameLayout(context) {
 
     private fun updateBack() {
         backCallback.isEnabled = screens.size > 1 || (top?.interceptsBack() == true)
+        onScreensChanged?.invoke()
     }
 
     /** Re-reads whether the top screen wants back (a sheet opened in it, say). */

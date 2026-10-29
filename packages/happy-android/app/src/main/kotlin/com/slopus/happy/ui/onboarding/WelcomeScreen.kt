@@ -77,10 +77,11 @@ class WelcomeScreen(
         bar.plainTitle = true
         bar.subtitle = if (offersServer) graph.serverConfig.customHostLabel else null
         if (addingAccount) {
-            bar.onBack = null
             bar.leadingActions = listOf(NavigationBar.Action.text(context.getString(R.string.common_cancel)) { cancel() })
         }
     }
+
+    override val wantsBackButton: Boolean get() = !addingAccount
 
     override fun onBackPressed(): Boolean {
         if (!addingAccount) return false

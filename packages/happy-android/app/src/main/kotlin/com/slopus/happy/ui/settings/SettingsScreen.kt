@@ -45,6 +45,9 @@ fun AppGraph.profiles(): Flow<Profile?> = store.changes
  * The EULA row is iOS-only in happy-app, so it is not here.
  */
 class SettingsScreen(context: Context, private val graph: AppGraph) : BarScreen(context) {
+    // navigation/Header.tsx's plain header: the tablet shell's back serves a tablet.
+    override val dropsBackButtonOnTablet get() = true
+
     private val list = GroupedListView(context)
     private var profile: Profile? = null
     private var settings: Settings = graph.settings.settings.value

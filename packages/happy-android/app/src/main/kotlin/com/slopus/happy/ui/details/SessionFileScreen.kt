@@ -58,11 +58,11 @@ import kotlin.math.min
 class SessionFileScreen(
     context: Context,
     private val graph: AppGraph,
-    private val sessionId: String,
+    override val sessionId: String,
     private val rawPath: String,
     private val requestedLine: Int? = null,
     private val requestedColumn: Int? = null,
-) : BarScreen(context) {
+) : BarScreen(context), com.slopus.happy.ui.nav.SessionRoute {
     private val account: AccountSync? = graph.account.value
     private var target: FileViewer.Target
     private var sessionPath: String?

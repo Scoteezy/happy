@@ -176,6 +176,8 @@ object ChatTextStyles {
     // ChatHeaderView.tsx, in the capsule
     val headerTitle = TextStyle(FontFace.SemiBold, 16, 20)
     val headerSubtitle = TextStyle(FontFace.Regular, 12, 14)
+    /** Without glass (a tablet): the subtitle on its own 16 line. */
+    val headerPlainSubtitle = TextStyle(FontFace.Regular, 12, 16)
 
     // InactiveArchivedHint
     val inactiveHint = TextStyle(FontFace.System, 13, 18)
