@@ -4,6 +4,7 @@ import com.slopus.happy.data.HappyStore
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.isRig
 import com.slopus.happy.model.rigHasRpcMethod
+import com.slopus.happy.model.parseJsonObject
 import com.slopus.happy.net.HttpStatusException
 import com.slopus.happy.sync.MachineOps.Companion.decode
 import kotlinx.coroutines.CancellationException
@@ -128,7 +129,11 @@ class SessionOps internal constructor(
      * from its machine.
      */
     suspend fun archive(sessionId: String): OpResult {
-        if (metadata(sessionId)?.bot != null) return OpResult(false, "Connect to the bot’s machine to archive it.")
+        when (persistentConversation(sessionId)) {
+            PersistentConversation.Bot -> return OpResult(false, "Connect to the bot’s machine to archive it.")
+            PersistentConversation.Task -> return OpResult(false, "Connect to the task’s machine to archive it.")
+            null -> Unit
+        }
         return try {
             api.archiveSession(sessionId)
             OpResult(true)
@@ -146,6 +151,7 @@ class SessionOps internal constructor(
      * out of this account's list; it runs on for everyone else in it.
      */
     suspend fun leaveTask(sessionId: String): OpResult {
+        if (persistentConversation(sessionId) != PersistentConversation.Task) return OpResult(false, "Unknown task")
         val answer = try {
             rpc.sessionRpc(sessionId, "leaveTask", JsonObject(emptyMap())) as? JsonObject
         } catch (e: CancellationException) {
@@ -153,16 +159,34 @@ class SessionOps internal constructor(
         } catch (_: Exception) {
             return OpResult(false, "Connect to the task’s machine to leave it.")
         }
-        if ((answer?.get("success") as? JsonPrimitive)?.booleanOrNull == true) return OpResult(true)
+        if ((answer?.get("success") as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull == true) return OpResult(true)
         val refusal = listOf("error", "message").firstNotNullOfOrNull { answer?.string(it)?.trim()?.takeIf(String::isNotEmpty) }
         // An older Happy Agent that has no such method.
         return OpResult(false, if (refusal == "Method not found") "Happy Agent on this computer cannot leave tasks yet. Update it and try again." else refusal ?: "Failed to leave task")
     }
 
+    /** Native task archive preserves the machine's refusal, never server-archives it. */
+    suspend fun archiveTask(sessionId: String): OpResult {
+        if (persistentConversation(sessionId) != PersistentConversation.Task) return OpResult(false, "Unknown task")
+        val unreachable = "Connect to the task’s machine to archive it."
+        val answer = try {
+            rpc.sessionRpc(sessionId, "killSession", JsonObject(emptyMap())) as? JsonObject
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return OpResult(false, unreachable)
+        }
+        if ((answer?.get("success") as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull == true) return OpResult(true)
+        val refusal = listOf("error", "message").firstNotNullOfOrNull { answer?.string(it)?.trim()?.takeIf(String::isNotEmpty) }
+        return OpResult(false, refusal ?: unreachable)
+    }
+
     /** ops.ts `sessionDelete`: the session and everything in it, for good. */
     suspend fun delete(sessionId: String): OpResult {
-        if (metadata(sessionId)?.bot != null) {
-            return OpResult(false, "A bot keeps one continuous conversation. Archive the bot instead.")
+        when (persistentConversation(sessionId)) {
+            PersistentConversation.Bot -> return OpResult(false, "A bot keeps one continuous conversation. Archive the bot instead.")
+            PersistentConversation.Task -> return OpResult(false, "Connect to the task’s machine to archive it.")
+            null -> Unit
         }
         return try {
             api.deleteSession(sessionId)
@@ -241,6 +265,18 @@ class SessionOps internal constructor(
 
     private suspend fun metadata(sessionId: String): SessionMetadata? =
         withContext(io) { SessionMetadata.parse(store.session(sessionId)?.metadataJson) }
+
+    private enum class PersistentConversation { Bot, Task }
+
+    /** Native object-presence guard: unrelated invalid metadata must never enable HTTP deletion/retirement. */
+    private suspend fun persistentConversation(sessionId: String): PersistentConversation? = withContext(io) {
+        val raw = parseJsonObject(store.session(sessionId)?.metadataJson)
+        when {
+            raw?.get("bot") is JsonObject -> PersistentConversation.Bot
+            raw?.get("task") is JsonObject -> PersistentConversation.Task
+            else -> null
+        }
+    }
 
     private inline fun <T> attempt(failure: (String?) -> T, block: () -> T): T = try {
         block()

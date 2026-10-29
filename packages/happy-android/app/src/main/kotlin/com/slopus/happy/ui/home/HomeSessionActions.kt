@@ -16,6 +16,9 @@ import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.details.SessionInfoText
 import com.slopus.happy.model.forkSource
+import com.slopus.happy.model.isTask
+import com.slopus.happy.model.canLeaveTask
+import com.slopus.happy.model.taskCanArchive
 import com.slopus.happy.model.parseJsonObject
 import com.slopus.happy.resume.AccountResumeOps
 import com.slopus.happy.resume.ResumeOutcome
@@ -33,7 +36,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonObject
 
 /**
  * The "Session" alert a long press on a home row opens, what each item
@@ -59,8 +61,8 @@ class HomeSessionActions(
     /** The record, its computer and the settings are read off the main thread; the alert opens once they are in, if the account is still the one. */
     fun present(sessionId: String) {
         if (opening != null) return
+        val account = graph.account.value ?: return
         opening = sessionId
-        val account = graph.account.value
         scope.launch {
             val read = withContext(Dispatchers.IO) { graph.store.session(sessionId) }
             opening = null
@@ -77,9 +79,10 @@ class HomeSessionActions(
             val choice = Alerts.choose(
                 context,
                 context.getString(R.string.session_actions_title),
-                options = items.map(::title),
-                destructive = setOf(items.indexOf(SessionActionId.Archive)),
+                options = items.map { if (it == SessionActionId.Archive && session.isTask) context.getString(R.string.tasks_archive) else title(it) },
+                destructive = items.indices.filter { items[it] == SessionActionId.Archive || items[it] == SessionActionId.LeaveTask }.toSet(),
             ) ?: return@launch
+            if (graph.account.value !== account || host.stack == null) return@launch
             run(items[choice], read, session, machine)
         }
     }
@@ -91,6 +94,7 @@ class HomeSessionActions(
         SessionActionId.Duplicate -> context.getString(R.string.session_duplicate_action)
         SessionActionId.CopyMetadata -> context.getString(R.string.session_info_copy_metadata)
         SessionActionId.CopyMetadataAndLogs -> context.getString(R.string.session_info_copy_metadata) + context.getString(R.string.home_client_logs_suffix)
+        SessionActionId.LeaveTask -> context.getString(R.string.tasks_leave)
         SessionActionId.Archive -> context.getString(R.string.session_archive_action)
     }
 
@@ -102,6 +106,7 @@ class HomeSessionActions(
             SessionActionId.Duplicate -> DuplicateSheet.present(host, graph, session.id)
             SessionActionId.CopyMetadata -> copyMetadata(record, withLogs = false)
             SessionActionId.CopyMetadataAndLogs -> copyMetadata(record, withLogs = true)
+            SessionActionId.LeaveTask -> leave(session.id)
             SessionActionId.Archive -> archive(session.id)
         }
     }
@@ -180,15 +185,23 @@ class HomeSessionActions(
      * failure is shown on whatever this account has on screen by then, and
      * nothing is shown once another account is open.
      */
-    fun archive(sessionId: String) {
-        onBeforeArchive?.invoke(sessionId)
+    fun archive(sessionId: String) = retire(sessionId, leave = false)
+
+    fun leave(sessionId: String) = retire(sessionId, leave = true)
+
+    private fun retire(sessionId: String, leave: Boolean) {
         val account = graph.account.value ?: return
         val appContext = context
         detached.launch {
             val record = withContext(Dispatchers.IO) { graph.store.session(sessionId) } ?: return@launch
-            val isTask = parseJsonObject(record.metadataJson)?.get("task") is JsonObject
+            if (graph.account.value !== account) return@launch
+            val session = Session.from(record)
+            if (leave && !session.canLeaveTask || !leave && session.isTask && !session.taskCanArchive) return@launch
+            val archiver = HomeServices.of(graph).archiver
+            onBeforeArchive?.invoke(sessionId)
+            if (graph.account.value !== account) return@launch
             val result = try {
-                HomeServices.of(graph).archiver.archive(Session.from(record))
+                if (leave) archiver.leave(session) else archiver.archive(session)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -197,7 +210,8 @@ class HomeSessionActions(
             if (result !is ArchiveResult.Failed || graph.account.value !== account) return@launch
             val message = when {
                 result.bot -> BOT_ARCHIVE_MESSAGE
-                isTask -> TASK_ARCHIVE_MESSAGE
+                leave -> result.message?.takeIf { it.isNotEmpty() } ?: "Failed to leave task"
+                session.isTask -> result.message?.takeIf { it.isNotEmpty() } ?: TASK_ARCHIVE_MESSAGE
                 else -> result.message?.takeIf { it.isNotEmpty() } ?: appContext.getString(R.string.session_info_failed_to_archive_session)
             }
             Alerts.show(appContext, appContext.getString(R.string.common_error), message)

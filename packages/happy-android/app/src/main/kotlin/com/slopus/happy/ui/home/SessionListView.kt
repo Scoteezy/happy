@@ -12,6 +12,8 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.slopus.happy.R
 import com.slopus.happy.home.HomeRow
+import com.slopus.happy.home.SessionActionId
+import com.slopus.happy.home.sessionSwipeAction
 import com.slopus.happy.home.formatSessionListTimestamp
 import com.slopus.happy.icons.Icon
 import com.slopus.happy.layout.HomeContentInsets
@@ -48,6 +50,7 @@ interface HomeListActions {
     fun toggleExpanded(projectId: String)
     fun holdSession(id: String)
     fun archiveSession(id: String)
+    fun leaveTask(id: String)
     fun holdProject(entry: ProjectHomeEntry)
     fun createWorkspace(entry: ProjectHomeEntry)
     fun openTroubleshoot()
@@ -121,14 +124,32 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
             }
         }
 
-    /** FlatSessionRow.tsx's swipe: "Archive Session", on a live flat row only (happy-ios `trailingSwipeActionsConfigurationForRowAt`). */
+    /** Native trailing swipe: flat archive, or capability-gated Leave for grouped/flat tasks. */
     private val swipe = SwipeActions(this) { holder ->
         val position = holder.bindingAdapterPosition
-        val row = (adapter.itemAt(position) as? Item.Row)?.row as? HomeRow.Chat
-        row?.takeIf { !it.archived }?.let { chat ->
-            SwipeActions.Action(context.getString(R.string.session_info_archive_session), Icon.ionicons("archive-outline")) {
-                actions.archiveSession(chat.row.session.id)
-            }
+        when (val row = (adapter.itemAt(position) as? Item.Row)?.row) {
+            is HomeRow.Chat -> rowSwipe(row.row.session, row.archived, grouped = false)
+            is HomeRow.Project -> (row.row as? ProjectHomeRow.Task)?.let { rowSwipe(it.session, archived = false, grouped = true) }
+            else -> null
+        }
+    }
+
+    private fun rowSwipe(session: SessionRowData, archived: Boolean, grouped: Boolean): SwipeActions.Action? {
+        val action = sessionSwipeAction(session, archived, grouped) ?: return null
+        val leaves = action == SessionActionId.LeaveTask
+        return SwipeActions.Action(context.getString(if (leaves) R.string.tasks_leave else R.string.session_info_archive_session),
+            Icon.ionicons(if (leaves) "exit-outline" else "archive-outline"), compact = grouped) {
+            if (leaves) actions.leaveTask(session.id) else actions.archiveSession(session.id)
+        }
+    }
+
+    private fun accessibleSwipe(cell: View, previous: Int, session: SessionRowData, archived: Boolean, grouped: Boolean): Int {
+        ViewCompat.removeAccessibilityAction(cell, previous)
+        val action = sessionSwipeAction(session, archived, grouped) ?: return View.NO_ID
+        val leaves = action == SessionActionId.LeaveTask
+        return ViewCompat.addAccessibilityAction(cell, context.getString(if (leaves) R.string.tasks_leave else R.string.session_info_archive_session)) { _, _ ->
+            if (leaves) actions.leaveTask(session.id) else actions.archiveSession(session.id)
+            true
         }
     }
 
@@ -221,6 +242,7 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
                 is Item.Banners -> (view as HomeListHeaderView).content = item.banners
                 is Item.Row -> bind(view, item.row)
             }
+            swipe.rowBound(holder)
         }
 
         private fun bind(view: View, row: HomeRow) {
@@ -233,14 +255,7 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
                     cell.setOnClickListener { actions.openSession(row.row.session.id) }
                     cell.setOnLongClickListener { actions.holdSession(row.row.session.id); true }
                     // The swipe, for TalkBack (VoiceOver reads a row's swipe actions as its custom actions).
-                    ViewCompat.removeAccessibilityAction(cell, cell.archiveActionId)
-                    cell.archiveActionId = View.NO_ID
-                    if (!row.archived) {
-                        cell.archiveActionId = ViewCompat.addAccessibilityAction(cell, context.getString(R.string.session_info_archive_session)) { _, _ ->
-                            actions.archiveSession(row.row.session.id)
-                            true
-                        }
-                    }
+                    cell.archiveActionId = accessibleSwipe(cell, cell.archiveActionId, row.row.session, row.archived, grouped = false)
                 }
                 is HomeRow.ArchiveToggle -> archive(view as ArchiveToggleCell, row.hidden, banded = true)
                 is HomeRow.DayHeader -> (view as SessionDayHeaderCell).configure(context.dayTitle(row.title))
@@ -304,6 +319,13 @@ class SessionListView(context: Context, private val actions: HomeListActions) : 
             // The cell's 0.6 fades an archived chat; its face keeps its colour unless the settings say otherwise.
             cell.configure(model.copy(avatar = model.avatar.copy(monochrome = avatarSettings.monochrome)), archived)
             cell.setOnClickListener { actions.openSession(session.id) }
+            if (session.isTask) {
+                cell.setOnLongClickListener { actions.holdSession(session.id); true }
+            } else {
+                cell.setOnLongClickListener(null)
+                cell.isLongClickable = false
+            }
+            cell.archiveActionId = accessibleSwipe(cell, cell.archiveActionId, session, archived, grouped = true)
         }
     }
 

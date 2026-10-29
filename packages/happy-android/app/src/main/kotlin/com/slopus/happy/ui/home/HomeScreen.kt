@@ -329,6 +329,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
     override fun holdSession(id: String) = sessionActions.present(id)
 
     override fun archiveSession(id: String) = sessionActions.archive(id)
+    override fun leaveTask(id: String) = sessionActions.leave(id)
 
     override fun holdProject(entry: ProjectHomeEntry) = Unit
 

@@ -28,6 +28,8 @@ class TaskHomeRowsTest {
         val rows = buildProjectHomeRows(items, emptyMap(), "unknown", emptySet())
         assertEquals(listOf("fixture-machine"), rows.filterIsInstance<ProjectHomeRow.MachineHeader>().map { it.machineId })
         assertEquals("Reference project", rows.filterIsInstance<ProjectHomeRow.ProjectCard>().single().project.name)
+        assertEquals(setOf("fixture-task-five", "fixture-task-forty-five"), sessions.filter { it.canLeaveTask }.map { it.id }.toSet())
+        assertEquals(listOf("fixture-task-forty-five"), sessions.filter { it.taskCanArchive }.map { it.id })
     }
 
     private fun task(id: String, key: String? = null, created: Long = 0, archived: Boolean = false, machine: String = "m") =

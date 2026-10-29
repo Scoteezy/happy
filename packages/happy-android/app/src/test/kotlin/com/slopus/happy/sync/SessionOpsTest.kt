@@ -200,6 +200,57 @@ class SessionOpsTest {
         assertNotNull(server.session("bot"))
     }
 
+    @Test fun taskCannotBeServerArchivedOrDeletedAndLeaveOnlyCallsItsRpc() = runBlocking {
+        server.addSession("task", updatedAt = 100, metadata = JsonObject(rigMetadataJson(rpcMethods = listOf("leaveTask")) +
+            ("task" to buildJsonObject { put("canArchive", true) })))
+        h.startAndSync()
+        assertFalse(ops.archive("task").success)
+        assertFalse(ops.delete("task").success)
+        assertTrue(server.requestsTo("/v1/sessions/task/archive").isEmpty())
+        assertTrue(server.requestsTo("/v1/sessions/task").none { it.method == "DELETE" })
+        val calls = respond("task", "leaveTask", buildJsonObject { put("success", true) })
+        assertTrue(ops.leaveTask("task").success)
+        assertEquals(listOf(JsonObject(emptyMap())), calls)
+        assertFalse(ops.leaveTask("cli").success)
+        assertNotNull(server.session("task"))
+    }
+
+    @Test fun taskArchivePreservesMachineRefusalAndNeverUsesHttp() = runBlocking {
+        server.addSession("task", updatedAt = 100, metadata = JsonObject(rigMetadataJson() + ("task" to JsonObject(emptyMap()))))
+        h.startAndSync()
+        assertEquals("Connect to the task’s machine to archive it.", ops.archiveTask("task").message)
+        respond("task", "killSession", buildJsonObject { put("error", "  Only the owner may archive  ") })
+        assertEquals(OpResult(false, "Only the owner may archive"), ops.archiveTask("task"))
+        respond("task", "killSession", buildJsonObject { put("success", true) })
+        assertTrue(ops.archiveTask("task").success)
+        respond("task", "killSession", buildJsonObject { put("success", "true") })
+        assertFalse(ops.archiveTask("task").success)
+        assertTrue(server.requestsTo("/v1/sessions/task/archive").isEmpty())
+    }
+
+    @Test fun taskLeaveExplainsOldAgentAndPreservesOtherRefusals() = runBlocking {
+        server.addSession("task", updatedAt = 100, metadata = JsonObject(rigMetadataJson() + ("task" to JsonObject(emptyMap()))))
+        h.startAndSync()
+        respond("task", "leaveTask", buildJsonObject { put("error", "Method not found") })
+        assertEquals("Happy Agent on this computer cannot leave tasks yet. Update it and try again.", ops.leaveTask("task").message)
+        respond("task", "leaveTask", buildJsonObject { put("message", "  No longer a member  ") })
+        assertEquals(OpResult(false, "No longer a member"), ops.leaveTask("task"))
+        respond("task", "leaveTask", buildJsonObject { put("success", "true") })
+        assertFalse(ops.leaveTask("task").success)
+    }
+
+    @Test fun malformedUnrelatedMetadataCannotBypassTaskHttpGuards() = runBlocking {
+        val raw = buildJsonObject { putJsonObject("task") {} }
+        assertEquals(null, SessionMetadata.parse(raw))
+        server.addSession("task", updatedAt = 100, metadata = raw)
+        h.startAndSync()
+        assertFalse(ops.archive("task").success)
+        assertFalse(ops.delete("task").success)
+        assertTrue(server.requestsTo("/v1/sessions/task/archive").isEmpty())
+        assertTrue(server.requestsTo("/v1/sessions/task").none { it.method == "DELETE" })
+        assertNotNull(server.session("task"))
+    }
+
     @Test
     fun archiveDeactivatesTheSessionOnTheServer() = runBlocking {
         h.startAndSync()

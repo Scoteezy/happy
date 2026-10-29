@@ -15,6 +15,7 @@ data class SessionRowData(
     val botId: String? = null,
     val botUsername: String? = null,
     val isTask: Boolean = false,
+    val canLeaveTask: Boolean = false,
     val taskFolderName: String? = null,
     /** Null: "New chat". */
     val name: String? = null,
@@ -116,6 +117,7 @@ fun buildSessionRowData(session: Session, inputs: SessionListInputs): SessionRow
         botId = metadata?.bot?.id,
         botUsername = metadata?.bot?.username,
         isTask = session.isTask,
+        canLeaveTask = session.canLeaveTask,
         taskFolderName = metadata?.task?.taskString("folderName"),
         name = session.displayName(),
         subtitle = session.displaySubtitle(),

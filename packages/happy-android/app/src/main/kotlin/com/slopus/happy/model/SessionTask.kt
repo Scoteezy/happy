@@ -2,6 +2,7 @@ package com.slopus.happy.model
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 /** Native SessionState: a task is metadata's object, unless the session is a bot. */
 val SessionMetadata.task: JsonObject?
@@ -11,6 +12,10 @@ internal fun JsonObject.taskString(key: String): String? =
     (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 val Session.isTask: Boolean get() = metadata?.task != null
+
+/** Native SessionState: absent ownership/capability is not permission. */
+val Session.taskCanArchive: Boolean get() = (metadata?.task?.get("canArchive") as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull == true
+val Session.canLeaveTask: Boolean get() = isTask && metadata?.capabilities?.rpcMethods?.contains("leaveTask") == true
 
 /** ProjectHomeList.taskPrecedes: membership keys are lexical, never numeric. */
 internal val taskOrder = Comparator<Session> { a, b ->

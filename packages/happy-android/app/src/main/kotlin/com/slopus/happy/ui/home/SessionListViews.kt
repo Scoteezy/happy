@@ -700,6 +700,7 @@ class WorktreeCell(context: Context) : ProjectListCell(context) {
 
 /** A bot's standing chat or an archived chat: avatar, name, and the time or a dot. */
 class ProjectChatCell(context: Context) : ProjectListCell(context) {
+    var archiveActionId = View.NO_ID
     private val avatar = AvatarView(context)
     private val nameLabel = ShimmerLabel(context, TextStyles.projectName)
     private val timestampLabel = Label(context, TextStyles.projectTimestamp, Palette.textSecondary, maxLines = 1)

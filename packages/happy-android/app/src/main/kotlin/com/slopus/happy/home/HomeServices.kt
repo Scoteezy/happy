@@ -39,7 +39,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val sessionActions: SessionActions = LiveSessionActions { graph.account.value?.sessionOps }
-    val archiver = SessionArchiver(sessionActions)
+    val archiver = SessionArchiver(sessionActions) { graph.account.value }
 
     /**
      * Null without an account and from each account change until that
@@ -84,7 +84,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
     init {
         scope.launch {
             var account: AccountSync? = null
-            graph.account.collect { next -> if (next !== account) { account = next; reads.reset() } }
+            graph.account.collect { next -> if (next !== account) { account = next; reads.reset(); archiver.accountChanged() } }
         }
         scope.launch { snapshots.collect { snapshot -> if (snapshot != null) reads.observe(snapshot.sessions) } }
     }

@@ -27,7 +27,7 @@ object RelayTasksShellFixture {
                 val item = value.jsonObject
                 val created = now - (10 - item.getValue("created").jsonPrimitive.long) * 60_000
                 SessionRecord(item.getValue("id").jsonPrimitive.content, 0, created, created, true, now,
-                    item.getValue("metadata").toString(), 2, null, 0, "", null)
+                    item.getValue("metadata").toString(), 3, null, 0, "", null)
             })
             graph.store.setCursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT, now)
         }

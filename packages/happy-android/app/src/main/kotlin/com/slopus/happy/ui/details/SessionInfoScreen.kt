@@ -25,6 +25,9 @@ import com.slopus.happy.layout.SecondaryTextStyles
 import com.slopus.happy.model.GitStatus
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.model.isTask
+import com.slopus.happy.model.canLeaveTask
+import com.slopus.happy.model.taskCanArchive
 import com.slopus.happy.model.details.SessionDetails
 import com.slopus.happy.model.details.SessionInfoFrame
 import com.slopus.happy.model.details.SessionInfoModel
@@ -617,12 +620,15 @@ class SessionInfoScreen(context: Context, private val graph: AppGraph, override 
     private fun perform(action: Action, work: suspend () -> Unit) {
         if (!busy.add(action)) return
         val appContext = context
+        val owner = graph.account.value
         detached.launch {
             try {
+                if (graph.account.value !== owner) return@launch
                 work()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (graph.account.value !== owner) return@launch
                 val message = (e as? Failure)?.message ?: appContext.getString(R.string.session_info_unknown_error)
                 Alerts.show(appContext, appContext.getString(R.string.session_info_action_error), message)
             } finally {
@@ -663,16 +669,19 @@ class SessionInfoScreen(context: Context, private val graph: AppGraph, override 
      * then stop the agent, falling back to archiving on the server.
      */
     private fun archive() = perform(Action.Archive) {
+        val owner = graph.account.value ?: return@perform
         val record = current() ?: return@perform
+        if (graph.account.value !== owner) return@perform
         val session = Session.from(record)
-        val isTask = parseJsonObject(record.metadataJson)?.get("task") is JsonObject
-        // The archiver kills a bot only; a task keeps its worktree.
-        val result = HomeServices.of(graph).archiver.archive(session, cleanup = { if (!isTask) cleanupWorktree(record) })
+        if (session.isTask && !session.taskCanArchive) return@perform
+        // Bots and tasks only stop through their machine; neither cleans up a worktree.
+        val result = HomeServices.of(graph).archiver.archive(session, cleanup = { cleanupWorktree(record) })
+        if (graph.account.value !== owner) return@perform
         if (result is ArchiveResult.Failed) {
             throw Failure(
                 when {
                     result.bot -> BOT_ARCHIVE_MESSAGE
-                    isTask -> TASK_ARCHIVE_MESSAGE
+                    session.isTask -> result.message?.takeIf { it.isNotEmpty() } ?: TASK_ARCHIVE_MESSAGE
                     else -> result.message?.takeIf { it.isNotEmpty() } ?: string(R.string.session_info_failed_to_archive_session)
                 },
             )
@@ -682,10 +691,14 @@ class SessionInfoScreen(context: Context, private val graph: AppGraph, override 
     }
 
     private fun leaveTask() = perform(Action.Leave) {
-        current() ?: return@perform
-        val ops = graph.account.value?.sessionOps ?: throw Failure(TASK_LEAVE_MESSAGE)
-        val result = ops.leaveTask(sessionId)
-        if (!result.success) throw Failure(result.message ?: TASK_LEAVE_MESSAGE)
+        val owner = graph.account.value ?: return@perform
+        val record = current() ?: return@perform
+        if (graph.account.value !== owner) return@perform
+        val session = Session.from(record)
+        if (!session.canLeaveTask) return@perform
+        val result = HomeServices.of(graph).archiver.leave(session)
+        if (graph.account.value !== owner) return@perform
+        if (result is ArchiveResult.Failed) throw Failure(result.message ?: TASK_LEAVE_MESSAGE)
         // It is no longer in this account: leave the screen and the chat.
         leaveSession()
     }

@@ -4,6 +4,10 @@ import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.forkSource
 import com.slopus.happy.model.isRig
+import com.slopus.happy.model.isTask
+import com.slopus.happy.model.canLeaveTask
+import com.slopus.happy.model.taskCanArchive
+import com.slopus.happy.model.SessionRowData
 
 /** Why resume is offered but can't run, or null when it can (useSessionQuickActions getResumeAvailability). */
 enum class ResumeBlock { MissingMachine, MissingBackendId, SameMachineOnly, MachineOffline }
@@ -39,7 +43,7 @@ fun canForkSession(session: Session, machine: Machine?, continuationExperiments:
     continuationExperiments && !session.metadata.isRig() && session.forkSource() != null && machine?.isOnline == true
 
 /** The "Session" alert's rows, in order (useSessionQuickActions actionItems). */
-enum class SessionActionId { Details, Resume, Fork, Duplicate, CopyMetadata, CopyMetadataAndLogs, Archive }
+enum class SessionActionId { Details, Resume, Fork, Duplicate, CopyMetadata, CopyMetadataAndLogs, LeaveTask, Archive }
 
 fun sessionActionIds(session: Session, machine: Machine?, continuationExperiments: Boolean, devMode: Boolean): List<SessionActionId> = buildList {
     add(SessionActionId.Details)
@@ -52,5 +56,18 @@ fun sessionActionIds(session: Session, machine: Machine?, continuationExperiment
         add(SessionActionId.CopyMetadata)
         add(SessionActionId.CopyMetadataAndLogs)
     }
-    add(SessionActionId.Archive)
+    if (session.isTask) {
+        if (session.canLeaveTask) add(SessionActionId.LeaveTask)
+        if (session.taskCanArchive) add(SessionActionId.Archive)
+    } else {
+        add(SessionActionId.Archive)
+    }
+}
+
+/** Native trailing swipe: grouped tasks may leave; other grouped rows never swipe. */
+fun sessionSwipeAction(session: SessionRowData, archived: Boolean, grouped: Boolean): SessionActionId? = when {
+    archived -> null
+    session.isTask -> SessionActionId.LeaveTask.takeIf { session.canLeaveTask }
+    grouped -> null
+    else -> SessionActionId.Archive
 }
