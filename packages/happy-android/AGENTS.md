@@ -842,6 +842,18 @@ for the engine and offline files, and `local-settings-<id>` preferences.
 `DirectPairingScreen` uses `DirectIdentityLayout` and the real pairing
 service, including emoji confirmation, expiry and background cancellation.
 
+The real Direct home's long press opens `StemCellsHoldOverlay`, using the
+pure hold/preview frames and a spring over blurred/dimmed native Views.
+`StemCellsRowActions` supplies row-specific rename/leave/archive/close/delete
+actions. Reorder is not yet offered: finish carry/drag before adding it.
+`StemCellChatScreen(previewing = true)` renders actual history without marking
+read, binding/flushing drafts or discarding untouched work; the preview's
+tap opens a normal conversation. Never call normal lifecycle side effects
+from a read-only preview. `StemCellsPreviewTest` checks the real renderer's
+requests and preservation of an unsynced draft. Inline rename belongs to
+`StemCellsSidebarView`/`StemCellsRowView`; IME-aware list insets keep the field
+visible, and removed rows cancel it rather than sending a stale rename.
+
 For fake-backed verification of the **real MainActivity shell**, build debug
 with `-Phappy.shellHarness=true`. This changes only debug's application ID to
 `com.slopus.happy.dev.shellharness`, so fixtures cannot share normal app data.
