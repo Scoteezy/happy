@@ -29,7 +29,20 @@ class ShellHarnessApplication : HappyApplication() {
                     val namePreferences = getSharedPreferences("shell-computer-names", MODE_PRIVATE)
                     val name = namePreferences.getString(credentials.address, "Fixture computer ${credentials.address.removePrefix("shell-fixture-")}")!!
                     val namedFixture = fixture.replace("\"name\": \"Studio Mac\"", "\"name\": ${kotlinx.serialization.json.JsonPrimitive(name)}")
-                    val computer = StemCellsHarnessTransport(namedFixture, fixtureScope,
+                    val stories = if (credentials.address.startsWith("shell-fixture-stories-")) {
+                        StoriesHarnessTransport(System.currentTimeMillis()).also {
+                            it.drawFrames(StoriesHarnessActivity.frames())
+                            it.drawStickers(StoriesHarnessActivity.stickers())
+                        }
+                    } else null
+                    val computerFixture = if (stories == null) namedFixture else {
+                        val root = kotlinx.serialization.json.Json.parseToJsonElement(namedFixture) as kotlinx.serialization.json.JsonObject
+                        val settings = root["settings"] as kotlinx.serialization.json.JsonObject
+                        kotlinx.serialization.json.JsonObject(root + ("settings" to kotlinx.serialization.json.JsonObject(settings +
+                            (com.slopus.happy.stories.STORIES_SETTING_KEY to kotlinx.serialization.json.JsonPrimitive(true))))).toString()
+                    }
+                    val computer = StemCellsHarnessTransport(computerFixture, fixtureScope,
+                        fallback = stories,
                         drawMedia = { color, label, width, height ->
                             val bitmap = android.graphics.Bitmap.createBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
                             android.graphics.Canvas(bitmap).apply {
@@ -46,7 +59,13 @@ class ShellHarnessApplication : HappyApplication() {
                     // Identity refreshes open and close handles independently of the shared fake computer.
                     object : DirectTransport by computer {
                         override suspend fun close() {}
+                        private fun offline() = getSharedPreferences("shell-transport-state", MODE_PRIVATE).getBoolean(credentials.address, false)
+                        override suspend fun stream(path: String, credential: String, headers: Map<String, String>): DirectHttpStream {
+                            if (offline()) return DirectHttpStream(503, body = kotlinx.coroutines.flow.emptyFlow())
+                            return computer.stream(path, credential, headers)
+                        }
                         override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): DirectHttpResponse {
+                            if (offline()) return DirectHttpResponse(503)
                             val response = computer.request(method, path, credential, body, headers)
                             if (method == "PATCH" && path == "/v0/config" && response.status == 200 && body != null) {
                                 val patch = DirectAgentClient.parse(body) as kotlinx.serialization.json.JsonObject
@@ -71,6 +90,16 @@ class ShellHarnessActivity : ComponentActivity() {
         val graph = (application as HappyApplication).graph
         lifecycleScope.launch {
             graph.shellAccount.filterNotNull().first()
+            // Fault injection only for this APK's synthetic computers. Restart the
+            // fixture app afterward to test cold offline restoration, not a live link.
+            intent.getStringExtra("offlineComputer")?.let { address ->
+                check(address.startsWith("shell-fixture-"))
+                getSharedPreferences("shell-transport-state", MODE_PRIVATE).edit()
+                    .putBoolean(address, intent.getBooleanExtra("offline", true)).commit()
+                startActivity(Intent(this@ShellHarnessActivity, MainActivity::class.java))
+                finish()
+                return@launch
+            }
             val preferences = getSharedPreferences("shell-harness", MODE_PRIVATE)
             if (!preferences.getBoolean("seeded", false)) {
                 graph.auth.signIn("shell-fixture-token", ByteArray(32) { 42 })
