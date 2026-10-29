@@ -139,6 +139,14 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     var onRefuse: ((AgentInputControl) -> Unit)? = null
     /** Return was pressed in a card that capitalises words (a bot's name): true when it was taken. */
     var onReturn: (() -> Boolean)? = null
+    /**
+     * A new line is about to be typed (the keyboard's Return or a hardware
+     * Enter): false swallows it, as an autocomplete pick does. Answer
+     * without touching the text; change it after.
+     */
+    var shouldInsertNewline: (() -> Boolean)? = null
+    /** The caret or the selection moved. */
+    var onSelectionChanged: (() -> Unit)? = null
 
     /**
      * Whether the card draws its own capsule. Home's dock draws it on the
@@ -202,6 +210,10 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             }
         })
         textView.setOnFocusChangeListener { _, focused -> onFocusChanged?.invoke(focused) }
+        textView.onSelectionChange = { onSelectionChanged?.invoke() }
+        textView.filters = textView.filters + android.text.InputFilter { source, start, end, _, _, _ ->
+            if (end - start == 1 && source[start] == '\n' && shouldInsertNewline?.invoke() == false) "" else null
+        }
         // A pasted or keyboard-inserted picture is attached, as iOS's paste does; text goes on as text.
         androidx.core.view.ViewCompat.setOnReceiveContentListener(textView, arrayOf("image/*")) { _, payload ->
             if (!configuration.showsAdd || onReceiveImages == null) return@setOnReceiveContentListener payload
@@ -340,6 +352,19 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         textView.setText(text)
         textView.setSelection(text.length)
     }
+
+    /** The text with the caret at [cursor] (an autocomplete pick). */
+    fun setText(text: String, cursor: Int) {
+        if (text != this.text) textView.setText(text)
+        textView.setSelection(cursor.coerceIn(0, text.length))
+    }
+
+    /** The caret or selection, as UTF-16 offsets. */
+    val selection: com.slopus.happy.autocomplete.TextSelection
+        get() = com.slopus.happy.autocomplete.TextSelection(
+            minOf(textView.selectionStart, textView.selectionEnd).coerceAtLeast(0),
+            maxOf(textView.selectionStart, textView.selectionEnd).coerceAtLeast(0),
+        )
 
     fun focus() = textView.focus()
 

@@ -77,6 +77,8 @@ import com.slopus.happy.ui.components.Alerts
 import com.slopus.happy.ui.components.AvatarStyle
 import com.slopus.happy.ui.components.AvatarView
 import com.slopus.happy.ui.components.IconView
+import com.slopus.happy.autocomplete.AutocompleteServices
+import com.slopus.happy.autocomplete.SessionSuggestions
 import com.slopus.happy.ui.composer.ChatComposerView
 import com.slopus.happy.ui.voice.VoiceCoordinator
 import com.slopus.happy.ui.nav.Screen
@@ -208,6 +210,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         list.onAction = ::perform
         composer.onHeightChanged = { root.requestLayout() }
         composer.onSent = { list.scrollToNewest(animated = true) }
+        composer.onSuggestionsChanged = { root.requestLayout() }
+        composer.suggestionSource = SessionSuggestions(sessionId, { state.session?.metadata }, AutocompleteServices.of(graph).files)
         // The microphone, and the status row during a call: the voice screen over this chat.
         val voice = VoiceCoordinator.of(graph)
         composer.onVoice = { voice.start(sessionId, this) }
@@ -698,6 +702,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             for (bar in dockBarViews) addView(bar)
             addView(composer)
             addView(scrollButton)
+            addView(composer.suggestionList)
             applyTheme()
         }
 
@@ -730,7 +735,9 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             list.setFrame(layout.list)
             header.setFrame(Rect(0.0, 0.0, width, header.headerBottom))
             scrim.setFrame(layout.scrim)
-            composer.setFrame(layout.composer.offsetBy(layout.dock.minX, layout.dock.minY))
+            val composerFrame = layout.composer.offsetBy(layout.dock.minX, layout.dock.minY)
+            composer.setFrame(composerFrame)
+            composer.suggestionFrame(composerFrame.width)?.let { composer.suggestionList.setFrame(it.offsetBy(composerFrame.minX, composerFrame.minY)) }
             for ((bar, frame) in bars.zip(layout.accessories)) bar.first.setFrame(frame.offsetBy(layout.dock.minX, layout.dock.minY))
             scrollButton.setFrame(layout.scrollButton)
             val s = 32.0

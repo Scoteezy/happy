@@ -36,8 +36,24 @@ class TextField(
 
     var onChange: ((String) -> Unit)? = null
     var onReturn: (() -> Unit)? = null
+    /** The caret or the selection moved. */
+    var onSelectionChange: (() -> Unit)? = null
+    /** A hardware keyboard's Tab: true when it was taken, else it moves the focus as usual. */
+    var onTab: (() -> Boolean)? = null
 
     val string: String get() = text?.toString().orEmpty()
+
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        // EditText's own constructor reports a selection before this class's fields are set.
+        @Suppress("UNNECESSARY_SAFE_CALL")
+        onSelectionChange?.invoke()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_TAB && event?.hasNoModifiers() == true && onTab?.invoke() == true) return true
+        return super.onKeyDown(keyCode, event)
+    }
 
     init {
         background = null

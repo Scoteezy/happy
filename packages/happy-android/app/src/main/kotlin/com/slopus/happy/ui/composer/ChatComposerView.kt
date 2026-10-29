@@ -5,6 +5,11 @@ import android.view.HapticFeedbackConstants
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentNotice
 import com.slopus.happy.attachments.planAttachmentSend
+import com.slopus.happy.autocomplete.COMPOSER_PREFIXES
+import com.slopus.happy.autocomplete.SuggestionList
+import com.slopus.happy.autocomplete.SuggestionSource
+import com.slopus.happy.autocomplete.applySuggestion
+import com.slopus.happy.autocomplete.findActiveWord
 import com.slopus.happy.chat.AgentInputDesktopSend
 import com.slopus.happy.chat.AgentInputPrimaryAction
 import com.slopus.happy.chat.ChatActions
@@ -39,8 +44,10 @@ import com.slopus.happy.ui.view.ManualLayout
 import com.slopus.happy.ui.view.setFrame
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
 
@@ -101,6 +108,23 @@ class ChatComposerView(
     private var detailsVisible = true
     private val images = ComposerImagePicker(context, scope)
 
+    /**
+     * The suggestions for the word at the caret (`/` commands, `@` files).
+     * It hangs above the composer, outside its bounds, so the screen hosts
+     * it where touches reach it and places it at [suggestionFrame].
+     */
+    val suggestionList = ComposerSuggestionListView(context).apply { visibility = GONE }
+    /** Where suggestions come from; none, none show. */
+    var suggestionSource: SuggestionSource? = null
+    /** The suggestion list showed, hid or changed its rows: the screen places it again. */
+    var onSuggestionsChanged: (() -> Unit)? = null
+    /** useActiveWord: the prefixed word up to the caret, the query. */
+    private var activeQuery: String? = null
+    /** useActiveSuggestions: the last list and its highlighted row, kept while a newer query runs. */
+    private var suggestions = SuggestionList()
+    private var suggestionJob: Job? = null
+    private var isSuggestionListShown = false
+
     /** Text, or a picture waiting. */
     private val hasComposerContent get() = card.hasContent || images.images.isNotEmpty()
 
@@ -112,8 +136,14 @@ class ChatComposerView(
         card.onHeightChanged = { requestLayout(); onHeightChanged?.invoke() }
         card.onTextChanged = {
             applyConfiguration()
+            updateActiveWord()
             if (restoredDraft) scope.launch { runCatching { actions.setDraft(sessionId, card.text) } }
         }
+        card.onSelectionChanged = ::updateActiveWord
+        // Return, or a hardware Tab, picks the highlighted suggestion instead.
+        card.shouldInsertNewline = { !pickSuggestionOnKey() }
+        card.textView.onTab = ::pickSuggestionOnKey
+        suggestionList.onSelect = ::selectSuggestion
         card.onPrimary = ::primaryPressed
         // The flat panel's send and stop are buttons of their own.
         card.onSend = ::sendPressed
@@ -442,6 +472,75 @@ class ChatComposerView(
                 applyConfiguration()
             }
         }
+    }
+
+    // Autocomplete
+
+    /**
+     * useActiveWord and useActiveSuggestions: the prefixed word at the caret
+     * is the query; its suggestions replace the list when they arrive (a
+     * newer query drops older answers). A draft that ends in "/co" opens on
+     * its suggestions, as its text change asks.
+     */
+    private fun updateActiveWord() {
+        val source = suggestionSource
+        val query = if (source == null) null else findActiveWord(card.text, card.selection, COMPOSER_PREFIXES)?.activeWord
+        if (query == activeQuery) return
+        activeQuery = query
+        suggestionJob?.cancel()
+        suggestionJob = null
+        applySuggestions()
+        if (query == null || source == null) return
+        suggestionJob = scope.launch {
+            // The search runs off main; only its list comes back.
+            val results = withContext(Dispatchers.Default) { source.suggestions(query) }
+            if (activeQuery != query) return@launch
+            suggestions = suggestions.replaced(results)
+            applySuggestions()
+        }
+    }
+
+    private fun applySuggestions() {
+        val visible = if (activeQuery == null) emptyList() else suggestions.suggestions
+        if (visible.isEmpty()) {
+            if (!isSuggestionListShown) return
+            isSuggestionListShown = false
+            suggestionList.animateOut {
+                if (!isSuggestionListShown) suggestionList.visibility = GONE
+            }
+            return
+        }
+        suggestionList.set(visible, suggestions.selected)
+        onSuggestionsChanged?.invoke()
+        if (!isSuggestionListShown) {
+            isSuggestionListShown = true
+            suggestionList.visibility = VISIBLE
+            suggestionList.animateIn()
+        }
+    }
+
+    /** Picks the highlighted suggestion, or the first; false with no list. */
+    private fun pickSuggestionOnKey(): Boolean {
+        if (activeQuery == null || suggestions.suggestions.isEmpty()) return false
+        val index = maxOf(0, suggestions.selected)
+        // Asked from inside the text's own edit: the text changes after it.
+        post { selectSuggestion(index) }
+        return true
+    }
+
+    /** `handleSuggestionSelect`: the whole active word becomes the pick and a space, the caret after it. */
+    private fun selectSuggestion(index: Int) {
+        if (activeQuery == null) return
+        val suggestion = suggestions.suggestions.getOrNull(index) ?: return
+        val result = applySuggestion(card.text, card.selection, suggestion.text, COMPOSER_PREFIXES, addSpace = true)
+        card.setText(result.text, result.cursorPosition)
+        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+    }
+
+    /** The suggestion list's frame in the composer's bounds, while it shows. */
+    fun suggestionFrame(width: Double): Rect? {
+        if (suggestionList.visibility != VISIBLE) return null
+        return layout(width).autocomplete(suggestionList.suggestions.size, suggestionList.border)
     }
 
     // Layout

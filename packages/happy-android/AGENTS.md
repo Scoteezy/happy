@@ -762,9 +762,14 @@ metadata's slash commands and skills, minus `IGNORED_COMMANDS`), and
 kept 5 minutes). Ranking is `Fuse.kt`, a port of the Fuse.js 7.1 subset
 happy-app uses; `FuseTest` holds scores produced by fuse.js itself, so
 regenerate them from fuse.js if the options change rather than editing
-them by hand. The UI is `ui/autocomplete/`: ChatRoute provides
-`LocalSuggestionSource`, ChatScreen passes `ComposerSuggestions` into
-ChatComposer's `overlay` slot and the shared `ComposerCursor` into its
-`cursor` parameter (the composer reports the selection, places the cursor
-after an insert, and offers hardware keys to `cursor.onKey` first: arrows,
-Enter/Tab and Escape drive the list while it shows).
+them by hand. The UI follows happy-ios `SessionComposerView`:
+`ChatComposerView` finds the active word on every text and caret change,
+asks its `suggestionSource` (ChatScreen gives it a `SessionSuggestions`)
+off main, drops answers to an older query, and shows them in
+`ui/composer/ComposerSuggestionListView` (rows by `:layout`
+`ComposerSuggestionRowLayout`, the frame by `AgentInputLayout.autocomplete`).
+The list hangs above the composer, outside its bounds, so ChatScreen's root
+hosts it and places it at `composer.suggestionFrame`; it is the glass
+itself so its shadow isn't cut. A tap, Return or a hardware Tab picks the
+highlighted row (Return through an `InputFilter` that swallows the newline,
+the pick posted after the edit); as on iOS there are no arrow keys.

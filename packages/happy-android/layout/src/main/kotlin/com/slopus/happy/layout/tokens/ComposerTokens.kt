@@ -38,6 +38,20 @@ val Palette.composerSendFill get() = ColorToken("#000000")
 val Palette.composerSendDisabled get() = ColorToken("#C0C0C0")
 val Palette.composerSendIcon get() = ColorToken("#FFFFFF")
 
+/**
+ * The suggestion list's glass (theme.colors.glass.overlay over the
+ * ultra-thin material), drawn solid in the colour the iOS simulator shows
+ * it as over the chat (iPad, light and dark), as [newSessionPopoverFill]
+ * is for the pickers.
+ */
+val Palette.composerSuggestionFill get() = ColorToken("#EBEBED", "#060606")
+
+// AgentInputSuggestionView.tsx's rows.
+val TextStyles.suggestionCommand get() = TextStyle(FontFace.SemiBold, 14)
+val TextStyles.suggestionDescription get() = TextStyle(FontFace.Regular, 13)
+val TextStyles.suggestionFile get() = TextStyle(FontFace.Regular, 14)
+val TextStyles.suggestionLabel get() = TextStyle(FontFace.Regular, 12)
+
 /** `unifiedPanelShadow`: black, 0/2 radius 8 at 0.08 in light; 0/6 radius 16 at 0.22 in dark. */
 object ComposerShadow {
     const val lightOffsetY = 2.0

@@ -643,21 +643,26 @@ async function main() {
         })
     })
     // The sessions in ~/code/happy answer the shell and file reads the
-    // changes screen makes, from a real repository with uncommitted work.
+    // changes screen makes and the file list for the composer's @ mentions,
+    // from a real repository with uncommitted work.
     const fixture = changesFixture()
     created.filter(({ seed }) => !seed.archived).forEach((session, index) => {
         if (session.seed.path !== `${home}/code/happy`) return
         const socket = live[index]
         if (session.seed.tag === 'agent-changes') return agentGit(session, socket, fixture)
         socket.on('connect', () => {
-            for (const method of ['bash', 'readFile']) socket.emit('rpc-register', { method: `${session.id}:${method}` })
+            for (const method of ['bash', 'readFile', 'ripgrep']) socket.emit('rpc-register', { method: `${session.id}:${method}` })
         })
         socket.on('rpc-request', (data: { method: string; params: string }, callback: (response: string) => void) => {
             const method = data.method.slice(session.id.length + 1)
-            if (method !== 'bash' && method !== 'readFile') return
+            if (method !== 'bash' && method !== 'readFile' && method !== 'ripgrep') return
             const params = decryptWithDataKey(decodeBase64(data.params), session.key) as { command?: string; path?: string }
             let answer: object
-            if (method === 'bash') {
+            if (method === 'ripgrep') {
+                // `rg --files` for the composer's @ mentions: the fixture's files, as git lists them.
+                const stdout = execSync('git ls-files --cached --others --exclude-standard', { cwd: fixture, encoding: 'utf8' })
+                answer = { success: true, exitCode: 0, stdout, stderr: '' }
+            } else if (method === 'bash') {
                 // Only git, in the fixture: the app asks for nothing else here.
                 const command = String(params.command ?? '')
                 if (!command.startsWith('git ')) {
