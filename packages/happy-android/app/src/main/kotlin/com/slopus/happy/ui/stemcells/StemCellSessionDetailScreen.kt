@@ -92,6 +92,9 @@ class StemCellSessionDetailScreen(
     private var row: StemCellsRow? = null
     private var family: List<StemCellsRow> = emptyList()
     private var completedOpen = false
+    /** How far the settled card is open, 0 to 1: it moves between the two over the fold's animation. */
+    private var foldShown = 0.0
+    private var folding: android.animation.ValueAnimator? = null
     private var heldName: String? = null
     private var actionRows: List<StemCellsSettingsRow> = emptyList()
 
@@ -446,7 +449,24 @@ class StemCellSessionDetailScreen(
         StemCellsHaptics.play(root, StemCellsHaptics.Moment.Fold)
         completedOpen = !completedOpen
         completed.open = completedOpen
-        root.requestLayout()
+        // iOS's 0.25 s ease-in-out: the rows are placed where they open, and
+        // the card grows over them (or shrinks back over them, then they go).
+        folding?.cancel()
+        folding = android.animation.ValueAnimator.ofFloat(foldShown.toFloat(), if (completedOpen) 1f else 0f).apply {
+            duration = 250
+            interpolator = android.view.animation.PathInterpolator(0.42f, 0f, 0.58f, 1f)
+            addUpdateListener {
+                foldShown = (it.animatedValue as Float).toDouble()
+                root.requestLayout()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (folding === animation) folding = null
+                    root.requestLayout()
+                }
+            })
+            start()
+        }
     }
 
     private fun cover(view: View) {
@@ -546,14 +566,27 @@ class StemCellSessionDetailScreen(
             ).contentHeight
             val workCount = (detail?.running?.size ?: 0) + (detail?.terminals?.size ?: 0)
             val settled = detail?.completed?.size ?: 0
-            val layout = StemCellSessionDetailLayout(
+            fun layout(open: Boolean) = StemCellSessionDetailLayout(
                 width, ceil(name.lineHeight), ceil(subtitle.lineHeight),
                 tiles = tiles.size, actions = actionRows.size,
                 media = StemCellSessionDetailLayout.Shown(shownMedia.size, hasMore(shared.media.size, mediaLimit)),
                 links = StemCellSessionDetailLayout.Shown(shownLinks.size, hasMore(shared.links.size, linksLimit)),
                 family = familyHeight, running = workCount, completed = settled,
-                countWidth = StemCellsSettingsCardView.valueWidth("$settled") ?: 0.0, open = completedOpen,
+                countWidth = StemCellsSettingsCardView.valueWidth("$settled") ?: 0.0, open = open,
             )
+            if (folding == null) foldShown = if (completedOpen) 1.0 else 0.0
+            val opened = layout(true)
+            // Folding, the rows stand where they open, under a card between its two heights.
+            val layout = if (folding == null) layout(completedOpen) else {
+                val closed = layout(false)
+                fun between(a: Double, b: Double) = a + (b - a) * foldShown
+                opened.copy(
+                    completed = opened.completed?.let { card ->
+                        card.copy(frame = card.frame.copy(height = between(closed.completed?.frame?.height ?: card.frame.height, card.frame.height)))
+                    },
+                    contentHeight = between(closed.contentHeight, opened.contentHeight),
+                )
+            }
             val frames = scroll.content.frames
             frames[mark] = layout.mark
             // Renaming, the field stands in its place.
