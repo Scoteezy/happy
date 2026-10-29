@@ -86,6 +86,11 @@
     <string name="stem_artifact_version">%1$s · Version %2$d</string>
     <string name="stem_untitled_artifact">Untitled artifact</string>
     <string name="stem_artifacts">Artifacts</string>
+    <string name="stem_add_todo">Add a todo</string>
+    <string name="stem_no_todos">Nothing here yet.</string>
+    <string name="stem_todo_done">done</string>
+    <string name="stem_empty_document">This document is empty.</string>
+    <string name="stem_open_on_computer">Open this on your computer to use it.</string>
     <string name="stem_artifact_deleted">This artifact was deleted.</string>
     <string name="stem_artifact_unavailable">This artifact couldn’t be loaded. Check that your computer is on.</string>
     <string name="stem_artifact_live">This page runs on your computer. Open it there.</string>

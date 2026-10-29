@@ -777,7 +777,8 @@ the PDF under `assets/harness/`); the rest it draws. An artifact opens in
 `StemCellArtifactFiles.ORIGIN`, answered in `shouldInterceptRequest` from
 the computer, and refuses every other request. `DirectArtifactsScreen`
 lists the catalog for desktop's Artifacts row (`--ez classic true` in the
-harness shows desktop's sidebar).
+harness shows desktop's sidebar). A Surface row opens
+`StemCellsSurfaceScreen` (todos, a document, or a line).
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one

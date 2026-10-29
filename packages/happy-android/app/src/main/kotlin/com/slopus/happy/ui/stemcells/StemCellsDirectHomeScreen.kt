@@ -52,6 +52,8 @@ class StemCellsDirectHomeScreen(
         stemCells.onOpen = { row ->
             open?.invoke(row)
             if (row.targetKind == "artifacts") push(DirectArtifactsScreen(context, session))
+            val surfaceId = row.targetId
+            if (row.targetKind == "surface" && surfaceId != null) push(StemCellsSurfaceScreen(context, session, surfaceId, row.surfaceType ?: "", row.label))
             StemCellChatScreen.forRow(context, session, row)?.let { push(it) }
         }
         stemCells.onNewWork = { creation, library ->
