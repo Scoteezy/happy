@@ -401,20 +401,33 @@ reconnect. `setText`, `clearDraft`, `mirrors` / `mirror(id)`.
 
 ### Recreation and process death
 
-The manifest handles orientation, screen size and uiMode, so rotation,
-folding and a dark/light switch don't recreate the activity. A font scale
-or locale change does, and so does the system after process death.
-`StateRestorationTest` covers both: the same graph for a recreation, a new
-graph over the same database and keys for process death.
+The manifest handles orientation, screen size, uiMode, font scale and
+density, so rotation, folding, a dark/light switch and a text size change
+don't recreate the activity: `AppCoordinator.configurationChanged`
+reinstalls the theme and, when the text size or density changed, measures
+every view again (`Theme.applyTree(relayout = true)`). A locale change does
+recreate it, and so does the system after process death. Nothing is saved
+in the instance state: the graph lives in the application, and a new
+activity builds its screens from home, as happy-ios starts from its root.
 
-- Kept through both: the open screen (the nav back stack is saved), the
-  chat's composer draft (the session composer's mirror is in the
-  database), the chat list's scroll position, the home dock's text and
-  focus (`rememberSaveable`), and an open composer or dock picker.
-- Kept through a recreation only: Restore's QR request (a ViewModel).
-- Lost, as in happy-app: pending chats (memory only), open alerts and
-  confirmations, an in-flight Resume or Stop spinner, Restore's QR request
-  after process death.
+- Kept: what is in the account's store and local settings, so the chat's
+  composer draft (the session composer's mirror is in the database), the
+  outbox and the expanded projects.
+- Lost: the open screen stack, scroll positions, the home dock's text, open
+  alerts and pickers, pending chats (memory only), an in-flight Resume or
+  Stop spinner, Restore's QR request.
+
+## Text size
+
+As happy-ios (`docs/DYNAMIC-TYPE.md`), not everything follows the system
+font size. A `Label` follows it (`TextScale`, with the styles' `maxScale`
+caps) unless `followsTextSize = false`, which home's header and its dock
+set, as `HomeViewController` keeps its designed size. The bar's own title
+(UINavigationBar's 17) never follows; `NavigationBar.plainTitle = true`
+draws Header.tsx's plain 16 title instead, which does, on the screens that
+use Header.tsx or OnboardingHeader on iOS (Settings, What's New, Welcome,
+home's link state, session info, machine, changes, message detail). A new
+screen picks one or the other by what its iOS screen uses.
 
 ## Settings
 

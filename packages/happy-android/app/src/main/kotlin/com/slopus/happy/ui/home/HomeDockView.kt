@@ -48,7 +48,7 @@ class HomeDockView(context: Context) : ManualLayout(context), ThemeAware {
     val sendButton = HomeDockSendButton(context)
     private val shell = View(context)
     private val shellShape = GradientDrawable()
-    private val entryLabel = Label(context, TextStyles.homeDockEntry, Palette.textSecondary, maxLines = 1)
+    private val entryLabel = Label(context, TextStyles.homeDockEntry, Palette.textSecondary, maxLines = 1).apply { followsTextSize = false }
     private var composerFrame = Rect.Zero
     private var fadeAnimator: ValueAnimator? = null
 

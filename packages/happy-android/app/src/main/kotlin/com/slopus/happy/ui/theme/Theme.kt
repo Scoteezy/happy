@@ -85,9 +85,15 @@ object Theme {
     }
 
     /** Re-applies colours to every [ThemeAware] view under [root]. */
-    fun applyTree(root: View) {
+    /**
+     * Every view under [root] re-reads its colours; with [relayout] (the
+     * text size or density changed) each is measured again too, since a
+     * view whose content didn't change keeps its last measure otherwise.
+     */
+    fun applyTree(root: View, relayout: Boolean = false) {
         if (root is ThemeAware) root.applyTheme()
-        if (root is ViewGroup) for (i in 0 until root.childCount) applyTree(root.getChildAt(i))
+        if (root is ViewGroup) for (i in 0 until root.childCount) applyTree(root.getChildAt(i), relayout)
+        if (relayout) root.requestLayout()
         root.invalidate()
     }
 }

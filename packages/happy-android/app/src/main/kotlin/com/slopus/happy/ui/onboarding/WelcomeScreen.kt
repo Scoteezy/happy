@@ -73,6 +73,8 @@ class WelcomeScreen(
 
     override fun onAppear() {
         super.onAppear()
+        // OnboardingHeader's title, which scales with the text size (happy-ios setScaledTitleView).
+        bar.plainTitle = true
         bar.subtitle = if (offersServer) graph.serverConfig.customHostLabel else null
         if (addingAccount) {
             bar.onBack = null

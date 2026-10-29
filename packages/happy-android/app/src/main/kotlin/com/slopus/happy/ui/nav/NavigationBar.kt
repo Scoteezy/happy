@@ -60,6 +60,24 @@ class NavigationBar(context: Context) : ManualLayout(context), ThemeAware {
     var subtitle: String? = null
         set(value) { field = value; subtitleLabel.text = value.orEmpty(); requestLayout() }
 
+    /**
+     * Header.tsx's `createPlainHeader` title (16, semibold) and its 11 subtitle,
+     * which grow with the text size, uncapped, in a bar that keeps its height
+     * (happy-ios `setScaledTitleView`: Settings, What's New, Welcome, home's
+     * link state, session info, machine, changes, message detail). Off, the
+     * bar's own title as react-native-screens makes it on iOS: 17 and never
+     * scaled. The bar's buttons never scale either way.
+     */
+    var plainTitle: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            titleLabel.style = if (value) TextStyles.headerTitle else TextStyles.nativeHeaderTitle
+            titleLabel.followsTextSize = value
+            subtitleLabel.followsTextSize = value
+            requestLayout()
+        }
+
     /** Replaces the title and subtitle. */
     var titleView: View? = null
         set(value) {
@@ -76,8 +94,8 @@ class NavigationBar(context: Context) : ManualLayout(context), ThemeAware {
     var tint: ColorToken = Palette.headerTint
         set(value) { field = value; rebuild() }
 
-    private val titleLabel = Label(context, TextStyles.nativeHeaderTitle, Palette.text, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER)
-    private val subtitleLabel = Label(context, TextStyles.headerSubtitle, Palette.textSecondary, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER)
+    private val titleLabel = Label(context, TextStyles.nativeHeaderTitle, Palette.text, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER).apply { followsTextSize = false }
+    private val subtitleLabel = Label(context, TextStyles.headerSubtitle, Palette.textSecondary, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER).apply { followsTextSize = false }
     private val leadingButtons = mutableListOf<View>()
     private val trailingButtons = mutableListOf<View>()
 
@@ -107,7 +125,7 @@ class NavigationBar(context: Context) : ManualLayout(context), ThemeAware {
     private fun button(action: Action): View = FrameLayout(context).apply {
         val text = action.text
         if (text != null) {
-            val label = Label(context, TEXT_ACTION, tint, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER)
+            val label = Label(context, TEXT_ACTION, tint, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER).apply { followsTextSize = false }
             label.text = text
             addView(label, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER))
             widths[this] = { NavigationBarLayout.textButtonWidth(label.measure(Double.MAX_VALUE).width) }

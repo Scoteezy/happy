@@ -67,6 +67,8 @@ class SessionChangesScreen(context: Context, private val graph: AppGraph, privat
 
     override fun viewCreated(view: View) {
         super.viewCreated(view)
+        // Header.tsx's title, which scales with the text size (happy-ios setScaledTitleView).
+        bar.plainTitle = true
         bar.title = string(R.string.session_info_view_changes)
         // Only what the viewers read from the metadata counts; streaming never re-scans Git.
         val store = graph.store

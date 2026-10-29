@@ -56,6 +56,8 @@ class SettingsScreen(context: Context, private val graph: AppGraph) : BarScreen(
     private var githubBusy = false
 
     override fun createContent(): View {
+        // Header.tsx's title, which scales with the text size (happy-ios setScaledTitleView).
+        bar.plainTitle = true
         bar.title = context.getString(R.string.settings_title)
         return list
     }

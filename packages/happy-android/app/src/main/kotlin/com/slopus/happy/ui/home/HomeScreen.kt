@@ -124,6 +124,8 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
 
     override fun onAppear() {
         super.onAppear()
+        // OnboardingHeader's title, which scales with the text size (happy-ios setScaledTitleView).
+        bar.plainTitle = true
         // The server may have changed on a screen pushed from here.
         bar.subtitle = graph.serverConfig.customHostLabel
     }

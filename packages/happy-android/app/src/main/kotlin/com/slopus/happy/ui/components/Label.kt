@@ -8,6 +8,7 @@ import android.view.View
 import com.slopus.happy.layout.ColorToken
 import com.slopus.happy.layout.Measurable
 import com.slopus.happy.layout.Size
+import com.slopus.happy.layout.TextScale
 import com.slopus.happy.layout.TextStyle
 import com.slopus.happy.ui.text.TextLayouts
 import com.slopus.happy.ui.theme.Theme
@@ -19,6 +20,8 @@ import com.slopus.happy.ui.view.px
  * `StyledLabel`). It draws a `StaticLayout` made for its frame's width;
  * [measure] answers the size for a width without touching the view's state.
  * Limited lines truncate with an ellipsis; unlimited ones wrap.
+ * [followsTextSize] off draws it as designed whatever the person's text
+ * size, as a StyledLabel outside happy-ios's `FollowsTextSize` trait does.
  */
 class Label(
     context: Context,
@@ -51,11 +54,16 @@ class Label(
     var ellipsize: android.text.TextUtils.TruncateAt = android.text.TextUtils.TruncateAt.END
         set(value) { if (field != value) { field = value; invalidateText() } }
 
+    /** Whether the text grows with the person's text size (happy-ios `FollowsTextSize`). */
+    var followsTextSize: Boolean = true
+        set(value) { if (field != value) { field = value; invalidateText() } }
+
     private var layout: StaticLayout? = null
     private var layoutWidth = -1
     private var layoutKey: Any? = null
 
-    private val env get() = TextLayouts.Env(Theme.density, Theme.textScale)
+    private val scale get() = if (followsTextSize) Theme.textScale else TextScale.Standard
+    private val env get() = TextLayouts.Env(Theme.density, scale)
 
     /** The label's size offered [width] dp. A single-line label reports its whole text width. */
     fun measure(width: Double): Size = TextLayouts.measure(text, style, width, env, maxLines)
@@ -89,7 +97,7 @@ class Label(
 
     override fun onDraw(canvas: Canvas) {
         if (width <= 0 || text.isEmpty()) return
-        val key = Triple(Theme.isDark, Theme.textScale, Theme.density)
+        val key = Triple(Theme.isDark, scale, Theme.density)
         var l = layout
         if (l == null || layoutWidth != width || layoutKey != key) {
             l = TextLayouts.build(text, style, px(width), env, Theme.color(color), maxLines, alignment, ellipsize)

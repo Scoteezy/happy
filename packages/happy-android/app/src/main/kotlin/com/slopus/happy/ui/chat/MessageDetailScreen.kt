@@ -68,6 +68,8 @@ class MessageDetailScreen(context: Context, private val graph: AppGraph, private
 
     override fun createContent(): View {
         // ToolHeader: one line, cut in the middle, so both ends of a long path or command stay readable.
+        // Header.tsx's title, which scales with the text size (happy-ios setScaledTitleView).
+        bar.plainTitle = true
         bar.titleEllipsize = TextUtils.TruncateAt.MIDDLE
         bar.title = context.getString(R.string.common_message)
         scroll.isFillViewport = false

@@ -120,6 +120,8 @@ class SessionInfoScreen(context: Context, private val graph: AppGraph, private v
         super.viewCreated(view)
         bar.actions = listOf(NavigationBar.Action(Icon.materialIcons("more-horiz"), string(R.string.session_actions_title), 22.0) { showMenu() })
         // The title home already shows, as the screen slides in.
+        // Header.tsx's title, which scales with the text size (happy-ios setScaledTitleView).
+        bar.plainTitle = true
         graph.store.session(sessionId)?.let { bar.title = SessionDetails.title(parseJsonObject(it.metadataJson)) ?: string(R.string.session_new_chat) }
         showLoadStatus(LoadState.Loading)
         beginObservation()

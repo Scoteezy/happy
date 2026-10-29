@@ -201,9 +201,9 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
     val filterButton = HeaderIconButton(context, Icon.ionicons("filter"), 22.0, context.getString(R.string.sessions_filter_title))
     private val actionDivider = View(context)
     val settingsButton = HeaderIconButton(context, Icon.ionicons("settings-outline"), 22.0, context.getString(R.string.settings_title))
-    private val titleLabel = Label(context, TextStyles.headerTitle, Palette.headerTint, maxLines = 1, alignment = android.text.Layout.Alignment.ALIGN_CENTER)
+    private val titleLabel = Label(context, TextStyles.headerTitle, Palette.headerTint, maxLines = 1, alignment = android.text.Layout.Alignment.ALIGN_CENTER).apply { followsTextSize = false }
     private val statusDot = StatusDotView(context)
-    private val statusLabel = Label(context, TextStyles.homeHeaderStatus, Palette.textSecondary, maxLines = 1, alignment = android.text.Layout.Alignment.ALIGN_CENTER)
+    private val statusLabel = Label(context, TextStyles.homeHeaderStatus, Palette.textSecondary, maxLines = 1, alignment = android.text.Layout.Alignment.ALIGN_CENTER).apply { followsTextSize = false }
 
     /** The safe area's top: the status bar the header sits under. */
     var safeTop: Double = 0.0

@@ -58,6 +58,8 @@ class MachineScreen(context: Context, private val graph: AppGraph, private val m
 
     override fun viewCreated(view: View) {
         super.viewCreated(view)
+        // Header.tsx's title, which scales with the text size (happy-ios setPlainHeaderTitle).
+        bar.plainTitle = true
         scope.launch {
             graph.store.changes
                 .map {
