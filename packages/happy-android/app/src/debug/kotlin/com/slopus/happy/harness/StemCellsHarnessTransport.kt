@@ -3,6 +3,7 @@ package com.slopus.happy.harness
 import com.slopus.happy.direct.DirectAgentClient
 import com.slopus.happy.direct.DirectHttpResponse
 import com.slopus.happy.direct.DirectHttpStream
+import com.slopus.happy.direct.DirectSettings
 import com.slopus.happy.direct.DirectTransport
 import com.slopus.happy.stemcells.SpaceSidebar
 import com.slopus.happy.stemcells.SpaceSidebarDocument
@@ -52,6 +53,8 @@ class StemCellsHarnessTransport(
     private val fallback: DirectTransport? = null,
     /** How long each request takes, as over a link. */
     private val latencyMs: Long = 0,
+    /** The computer without Stem Cells turned on: desktop's own sidebar. */
+    private val classic: Boolean = false,
 ) : DirectTransport {
     private val lock = Mutex()
     private val root: JsonObject
@@ -106,7 +109,11 @@ class StemCellsHarnessTransport(
         val offset = now() - ((raw["now"] as JsonPrimitive).content.toLong())
         root = shift(raw, offset) as JsonObject
         health = root.obj("health")
-        root.obj("settings").forEach { (key, value) -> settings[key] = value; settingVersions[key] = "%08d".format(++settingWrites) to now() }
+        root.obj("settings").forEach { (key, value) ->
+            if (classic && key == DirectSettings.STEM_CELLS) return@forEach
+            settings[key] = value
+            settingVersions[key] = "%08d".format(++settingWrites) to now()
+        }
         config = root.obj("config")
         val sidebar = root.obj("sidebar")
         artifactId = sidebar.str("artifactId")!!
@@ -394,13 +401,22 @@ class StemCellsHarnessTransport(
         if (parts.getOrNull(5) == "files") {
             val path = parts.drop(6).joinToString("/")
             val text = files.str(path) ?: return error(404, "not_found", "No such file.")
-            return served(text.toByteArray(), if (path.endsWith(".md")) "text/markdown" else "text/plain", headers)
+            return served(text.toByteArray(), fileType(path), headers)
         }
-        val listed = files.map { (path, text) -> obj("path" to path, "mimeType" to if (path.endsWith(".md")) "text/markdown" else "text/plain", "size" to (text as JsonPrimitive).content.toByteArray().size) }
+        val listed = files.map { (path, text) -> obj("path" to path, "mimeType" to fileType(path), "size" to (text as JsonPrimitive).content.toByteArray().size) }
         return ok(obj("version" to obj(
             "artifactId" to artifact.str("id"), "number" to number, "title" to artifact.str("title"),
             "entry" to artifact.obj("entry"), "files" to JsonArray(listed), "live" to null,
         )))
+    }
+
+    /** An artifact file's type, by its extension. */
+    private fun fileType(path: String) = when (path.substringAfterLast('.')) {
+        "md" -> "text/markdown"
+        "html" -> "text/html"
+        "css" -> "text/css"
+        "js" -> "text/javascript"
+        else -> "text/plain"
     }
 
     // The sidebar

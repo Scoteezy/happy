@@ -199,7 +199,9 @@ class StemCellWorkingView(context: Context) : ManualLayout(context), ThemeAware 
         phase.text = text
         val shownTimer = if (started != null) "${timer.text} ${context.getString(R.string.stem_working_separator)} " else ""
         contentDescription = shownTimer + text
-        requestLayout()
+        // The clock's width moves with its digits: placed again now, in the
+        // frame the row already has, not left to a pass that may not reach it.
+        if (width > 0) layoutSubviews(px(width), px(height)) else requestLayout()
     }
 
     private fun retrying(phase: StemCellActivity.Phase.Retrying): String {

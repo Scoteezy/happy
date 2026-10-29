@@ -772,7 +772,12 @@ files and camera, the camera app writing into `cache/camera` through the
 over the screen's root raised above its shadows; any other file is kept
 in `cache/media` and handed to another app with `ACTION_VIEW`. The
 harness serves a fixture item's `asset` as its bytes (the recording and
-the PDF under `assets/harness/`); the rest it draws.
+the PDF under `assets/harness/`); the rest it draws. An artifact opens in
+`StemCellArtifactScreen` (a `BarScreen`); its web view loads from
+`StemCellArtifactFiles.ORIGIN`, answered in `shouldInterceptRequest` from
+the computer, and refuses every other request. `DirectArtifactsScreen`
+lists the catalog for desktop's Artifacts row (`--ez classic true` in the
+harness shows desktop's sidebar).
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one

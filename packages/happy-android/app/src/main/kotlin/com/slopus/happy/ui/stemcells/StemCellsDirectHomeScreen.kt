@@ -51,6 +51,7 @@ class StemCellsDirectHomeScreen(
         stemCells.onSnapshot = { snapshot -> header.status = if (snapshot.live) ConnectionStatus.CONNECTED else ConnectionStatus.CONNECTING }
         stemCells.onOpen = { row ->
             open?.invoke(row)
+            if (row.targetKind == "artifacts") push(DirectArtifactsScreen(context, session))
             StemCellChatScreen.forRow(context, session, row)?.let { push(it) }
         }
         stemCells.onNewWork = { creation, library ->

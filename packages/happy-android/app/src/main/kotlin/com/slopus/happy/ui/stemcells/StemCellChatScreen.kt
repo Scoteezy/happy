@@ -1034,5 +1034,6 @@ class StemCellChatScreen(
     /** A conversation another one names opens over it, as its row would. */
     private fun wire() {
         openRow = { row -> forRow(context, session, row)?.let { push(it) } }
+        onOpenArtifact = { push(StemCellArtifactScreen(context, session, it)) }
     }
 }
