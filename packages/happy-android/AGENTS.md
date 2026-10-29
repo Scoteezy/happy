@@ -755,7 +755,8 @@ unless they provide `true`.
 ## Direct and Stem Cells
 
 Development and preview builds (happy-ios `Direct`, `StemCells`). The
-core is in `direct/` and `stemcells/`, plain Kotlin with iOS's tests; no
+core is in `direct/` and `stemcells/`, plain Kotlin with iOS's tests,
+and its frames in `:layout` `stemcells/` with iOS's layout tests; no
 views yet.
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`

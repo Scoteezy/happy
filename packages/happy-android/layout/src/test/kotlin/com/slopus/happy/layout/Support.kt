@@ -47,6 +47,12 @@ fun assertFrame(actual: Rect?, expected: Rect) {
     assertTrue("$actual is not $expected", close)
 }
 
+/** Frame lists, each to 1/1000 dp. */
+fun assertFrames(actual: List<Rect>, expected: List<Rect>) {
+    assertEquals("frames: $actual", expected.size, actual.size)
+    actual.zip(expected).forEach { (a, e) -> assertFrame(a, e) }
+}
+
 fun assertSize(actual: Size, expected: Size) {
     assertEquals("width", expected.width, actual.width, 0.001)
     assertEquals("height", expected.height, actual.height, 0.001)
