@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
@@ -285,6 +286,19 @@ class StemCellsStore(
 
     /** Every event whose type starts with one of `prefixes` (`"story."`), for what no conversation or Surface key names. */
     fun events(prefixes: List<String>): Flow<DirectEvent> = listen(null, prefixes)
+
+    /**
+     * Either of those, registered before it returns, so nothing dispatched
+     * after the call is missed (a Swift stream's buffering from the moment
+     * it is made). Cancel the channel to stop.
+     */
+    suspend fun subscribe(key: String?, prefixes: List<String> = emptyList()): ReceiveChannel<DirectEvent> = withContext(confined) {
+        val channel = Channel<DirectEvent>(Channel.UNLIMITED)
+        val listener = Listener(key, prefixes, channel)
+        listeners += listener
+        channel.invokeOnClose { scope.launch { listeners -= listener } }
+        channel
+    }
 
     // Reads
 
