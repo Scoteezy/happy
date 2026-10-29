@@ -85,6 +85,54 @@ enum class AgentInputPrimaryAction {
     }
 }
 
+/**
+ * AgentInput.tsx's wide composer (`desktopActionControls`, a window wider
+ * than 700): its send button is only send. Stop has its own button beside
+ * the gear. [hasText] is the text alone (it colours the button); content
+ * counts picked images too (it enables it).
+ */
+data class AgentInputDesktopSend(val fill: Fill, val glyph: Glyph, val isEnabled: Boolean) {
+    enum class Fill {
+        /** `sendButtonLocked`: surfaceHigh in a 1 dp divider ring. */
+        Locked,
+        /** `sendButtonActive`: button.primary.background. */
+        Active,
+        /** `sendButtonInactive`: button.primary.disabled. */
+        Inactive,
+    }
+
+    enum class Glyph {
+        Spinner,
+        /** Ionicons `lock-closed` 15, textSecondary. */
+        Lock,
+        /** Octicons `arrow-up` 16, button.primary.tint. */
+        Arrow,
+    }
+
+    companion object {
+        operator fun invoke(
+            hasText: Boolean,
+            hasComposerContent: Boolean,
+            isSendBlocked: Boolean,
+            isSending: Boolean = false,
+            isSendDisabled: Boolean = false,
+        ) = AgentInputDesktopSend(
+            fill = when {
+                isSendBlocked -> Fill.Locked
+                hasText || isSending -> Fill.Active
+                else -> Fill.Inactive
+            },
+            glyph = when {
+                isSending -> Glyph.Spinner
+                isSendBlocked -> Glyph.Lock
+                else -> Glyph.Arrow
+            },
+            // `desktopCanPressSendButton`.
+            isEnabled = !isSending && !isSendDisabled && hasComposerContent,
+        )
+    }
+}
+
 /** useSessionStatus: the status row above the card. */
 data class ComposerStatus(val state: SessionState, val text: Text, val tone: Tone, val isPulsing: Boolean) {
     sealed interface Text {
@@ -152,8 +200,21 @@ data class ComposerStatus(val state: SessionState, val text: Text, val tone: Ton
     }
 }
 
-/** The composer's three chips and their menus (AgentInput.tsx `permissionSettingsGroups` and `modelSettingsGroups`). */
-data class ComposerChipSet(val permission: Chip?, val model: Chip, val effort: Chip?) {
+/**
+ * The composer's three chips and their menus (AgentInput.tsx
+ * `permissionSettingsGroups` and `modelSettingsGroups`), and the wide
+ * composer's gear: [showsSettings] wherever the permission can be picked
+ * (`onPermissionModeChange`) however little its menu holds, and [settings],
+ * the permission modes, each provider's models and the effort, wherever the
+ * chip would open.
+ */
+data class ComposerChipSet(
+    val permission: Chip?,
+    val model: Chip,
+    val effort: Chip?,
+    val showsSettings: Boolean = false,
+    val settings: List<SettingsSection> = emptyList(),
+) {
     data class Option(val key: String, val label: String, val isDisabled: Boolean)
 
     data class Section(val title: String?, val options: List<Option>)
@@ -169,6 +230,18 @@ data class ComposerChipSet(val permission: Chip?, val model: Chip, val effort: C
 
     /** The copy the chips fall back to (en.ts `agentInput.*.title`). */
     data class Titles(val permission: String, val codexPermission: String, val geminiPermission: String, val model: String, val effort: String)
+
+    /** A section of the wide composer's settings menu, under its heading. */
+    data class SettingsSection(
+        val kind: Kind,
+        val title: String,
+        /** The glyph beside the heading: iOS's SF Symbol name ("shield", "cube", "bolt"). */
+        val systemImage: String,
+        val options: List<Option>,
+        val selectedKey: String?,
+    ) {
+        enum class Kind { Permission, Model, Effort }
+    }
 
     companion object {
         const val MODEL_LABEL_MAX_LENGTH = 16
@@ -230,7 +303,18 @@ data class ComposerChipSet(val permission: Chip?, val model: Chip, val effort: C
             } else {
                 null
             }
-            return ComposerChipSet(permission, model, effort)
+            val settings = buildList {
+                permission?.sections?.firstOrNull()?.let {
+                    add(SettingsSection(SettingsSection.Kind.Permission, permissionTitle, "shield", it.options, permission.selectedKey))
+                }
+                for (group in model.sections.orEmpty()) {
+                    add(SettingsSection(SettingsSection.Kind.Model, group.title ?: titles.model, "cube", group.options, model.selectedKey))
+                }
+                effort?.sections?.firstOrNull()?.let {
+                    add(SettingsSection(SettingsSection.Kind.Effort, titles.effort, "bolt", it.options, effort.selectedKey))
+                }
+            }
+            return ComposerChipSet(permission, model, effort, showsSettings = canPickPermission, settings = settings)
         }
 
         /** ModelModeOptions `truncateModelLabel`: cut at a word within 8 of the limit, else at the limit, with "…". */

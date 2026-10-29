@@ -5,6 +5,7 @@ import android.view.HapticFeedbackConstants
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentNotice
 import com.slopus.happy.attachments.planAttachmentSend
+import com.slopus.happy.chat.AgentInputDesktopSend
 import com.slopus.happy.chat.AgentInputPrimaryAction
 import com.slopus.happy.chat.ChatActions
 import com.slopus.happy.chat.ChatState
@@ -48,6 +49,11 @@ import java.util.Date
  * `SessionComposerView`): the session's status over the card, which sends,
  * stops, and switches the permission, model and effort. [AgentInputLayout]
  * places the status row and the card.
+ *
+ * In a window wider than 700 (happy-app's `screenWidth`, the window's, not
+ * the chat column's) the card is the flat panel with the gear, Stop, image
+ * and send (`desktopActionControls`). The same text view carries across the
+ * line as the window is resized.
  */
 class ChatComposerView(
     context: Context,
@@ -93,6 +99,9 @@ class ChatComposerView(
             if (restoredDraft) scope.launch { runCatching { actions.setDraft(sessionId, card.text) } }
         }
         card.onPrimary = ::primaryPressed
+        // The flat panel's send and stop are buttons of their own.
+        card.onSend = ::sendPressed
+        card.onStop = ::abort
         card.onAdd = images::attach
         card.onRemoveAttachment = images::remove
         card.onReceiveImages = images::receive
@@ -106,6 +115,30 @@ class ChatComposerView(
     override fun applyTheme() {
         applyStatus()
         card.applyTheme()
+    }
+
+    /** localSettings.zenMode, as SessionView passes it (the tablet shell's zen control). */
+    var zenMode = false
+        set(value) {
+            if (field == value) return
+            field = value
+            applyConfiguration()
+        }
+
+    /** useLayoutDimensions' width: the window's. Before the composer is in one, its own. */
+    private val screenWidth: Double
+        get() = rootView?.width?.takeIf { it > 0 }?.let { com.slopus.happy.ui.view.px(it) } ?: com.slopus.happy.ui.view.px(width)
+
+    private val isWide get() = AgentInputLayout.isWide(screenWidth)
+
+    /**
+     * The window crossed 700 (split screen, a rotation, the composer arriving
+     * in its window): the panel follows. True if it changed.
+     */
+    private fun followWindow(): Boolean {
+        if (state == null || isWide == (card.configuration.desktop != null)) return false
+        applyConfiguration()
+        return true
     }
 
     fun update(state: ChatState, mirror: ComposerMirror, overrides: AgentDefaultOverrides?) {
@@ -166,6 +199,22 @@ class ChatComposerView(
             primaryAction = primary,
             isPrimaryBusy = isAborting,
             primaryAccessibilityLabel = if (primary == AgentInputPrimaryAction.Voice) context.getString(R.string.settings_voice_assistant) else null,
+            zenMode = zenMode,
+            desktop = if (isWide) {
+                AgentInputDesktopConfiguration(
+                    settings = if (chips.showsSettings) chips.settings else null,
+                    showsStop = SessionComposerRules.canAbort(state),
+                    isStopBusy = isAborting,
+                    // SessionView passes no `isSending`: a send never spins here.
+                    send = AgentInputDesktopSend(
+                        hasText = card.hasContent,
+                        hasComposerContent = hasComposerContent,
+                        isSendBlocked = SessionComposerRules.isSendBlocked(state),
+                    ),
+                )
+            } else {
+                null
+            },
         )
     }
 
@@ -259,10 +308,15 @@ class ChatComposerView(
     }
 
     private fun primaryPressed() {
-        val state = state ?: return
+        state ?: return
         val action = card.configuration.primaryAction
         if (!hasComposerContent && action == AgentInputPrimaryAction.Stop) return abort()
         if (!hasComposerContent && action == AgentInputPrimaryAction.Voice) return
+        sendPressed()
+    }
+
+    private fun sendPressed() {
+        val state = state ?: return
         if (SessionComposerRules.isSendBlocked(state)) {
             // The agent refuses steering while it works.
             if (!hasComposerContent || isSending) return
@@ -348,6 +402,8 @@ class ChatComposerView(
                 throw e
             } catch (_: Exception) {
                 stopRequested = false
+                // A stop that failed: the panel's stop shakes (`shakerRef`).
+                card.shakeStop()
             } finally {
                 isAborting = false
                 applyConfiguration()
@@ -360,13 +416,16 @@ class ChatComposerView(
     fun layout(width: Double): AgentInputLayout {
         val screenWidth = rootView?.width?.takeIf { it > 0 }?.let { com.slopus.happy.ui.view.px(it) } ?: width
         val paddingH = AgentInputLayout.paddingH(screenWidth)
+        val innerWidth = AgentInputLayout.innerWidth(width, paddingH, Double.MAX_VALUE)
+        val desktop = card.desktopLayoutInput(innerWidth)
         return AgentInputLayout(
             AgentInputLayout.Input(
                 width = width,
                 paddingH = paddingH,
                 screenWidth = screenWidth,
                 statusText = if (status == null) null else statusLabel.measure(Double.MAX_VALUE),
-                card = card.layoutInput(AgentInputLayout.innerWidth(width, paddingH, Double.MAX_VALUE)),
+                card = if (desktop == null) card.layoutInput(innerWidth) else null,
+                desktop = desktop,
             ),
         )
     }
@@ -379,6 +438,10 @@ class ChatComposerView(
     override fun sizeThatFits(width: Double, height: Double): Size = Size(width, composerHeight(width))
 
     override fun layoutSubviews(width: Double, height: Double) {
+        if (followWindow()) {
+            // The panel changed without the screen asking for a height: it hears of it after this pass.
+            post { requestLayout(); onHeightChanged?.invoke() }
+        }
         val l = layout(width)
         l.status?.let {
             statusDot.setFrame(it.dot)

@@ -331,8 +331,8 @@ data class AgentInputCardLayout(
  *
  * The status and usage rows fade while the reader is back in history and
  * keep their space. Frames are in the composer's bounds; the card's own
- * content is in [cardLayout], in the card's bounds. (The flat panel of a
- * window wider than 700 is the tablet stage's.)
+ * content is in [cardLayout] (the compact card) or [desktopLayout] (the
+ * flat panel of a window wider than 700), in the card's bounds.
  */
 data class AgentInputLayout(
     val size: Size,
@@ -340,7 +340,8 @@ data class AgentInputLayout(
     val inner: Rect,
     val status: StatusRow?,
     val card: Rect,
-    val cardLayout: AgentInputCardLayout,
+    val cardLayout: AgentInputCardLayout?,
+    val desktopLayout: AgentInputDesktopLayout?,
     val usage: UsageRow?,
     /** The window is wider than 700. */
     val isWide: Boolean,
@@ -384,7 +385,10 @@ data class AgentInputLayout(
         val screenWidth: Double? = null,
         /** The status row's text, measured; null hides the row. */
         val statusText: Size? = null,
-        val card: AgentInputCardLayout.Input,
+        /** The compact card; its width is the layout's to set. */
+        val card: AgentInputCardLayout.Input? = null,
+        /** The flat panel instead, when set. */
+        val desktop: AgentInputDesktopLayout.Input? = null,
         val usageWeek: Size? = null,
         val usageContext: Size? = null,
     )
@@ -452,8 +456,9 @@ data class AgentInputLayout(
             }
 
             val isWide = isWide(input.screenWidth ?: width)
-            val cardLayout = AgentInputCardLayout(input.card.copy(width = innerWidth))
-            val card = Rect(innerX, y, innerWidth, cardLayout.size.height)
+            val desktopLayout = input.desktop?.let { AgentInputDesktopLayout(it.copy(width = innerWidth)) }
+            val cardLayout = if (desktopLayout != null) null else AgentInputCardLayout(requireNotNull(input.card).copy(width = innerWidth))
+            val card = Rect(innerX, y, innerWidth, desktopLayout?.size?.height ?: cardLayout!!.size.height)
             y += card.height
 
             // Right-aligned: [week] 10 [context 5 gauge].
@@ -485,7 +490,7 @@ data class AgentInputLayout(
 
             y += m.containerPaddingBottom
             val inner = Rect(innerX, m.containerPaddingTop, innerWidth, y - m.containerPaddingTop - m.containerPaddingBottom)
-            return AgentInputLayout(Size(width, y), inner, status, card, cardLayout, usage, isWide)
+            return AgentInputLayout(Size(width, y), inner, status, card, cardLayout, desktopLayout, usage, isWide)
         }
     }
 }

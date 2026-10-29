@@ -36,7 +36,8 @@ import kotlin.math.min
 object ChoiceMenu {
     data class Option(val key: String, val label: String, val isDisabled: Boolean = false, val isAction: Boolean = false)
 
-    data class Section(val title: String?, val options: List<Option>)
+    /** [selectedKey], when set, is the section's own checked row, over the menu's. */
+    data class Section(val title: String?, val options: List<Option>, val selectedKey: String? = null)
 
     private val TITLE = TextStyle(FontFace.System, 13)
     private val ROW = TextStyle(FontFace.System, 17)
@@ -120,7 +121,7 @@ object ChoiceMenu {
                 section.title?.let { title ->
                     pieces += Label(context, TITLE, Palette.textSecondary, maxLines = 1).apply { text = title } to null
                 }
-                for (option in section.options) pieces += Row(context, option, !option.isAction && option.key == selectedKey).also { row ->
+                for (option in section.options) pieces += Row(context, option, !option.isAction && option.key == (section.selectedKey ?: selectedKey)).also { row ->
                     row.setOnClickListener { if (!option.isDisabled) onPick?.invoke(option.key) }
                 } to option
             }

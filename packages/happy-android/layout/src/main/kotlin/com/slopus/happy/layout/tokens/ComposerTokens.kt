@@ -29,6 +29,15 @@ val Palette.composerNewSessionPrimaryIcon get() = ColorToken("#FFFFFF", "#111111
 /** HomeDock.tsx `primaryActionFlash`: the wash over Stop's fill when a press is refused. */
 val Palette.composerPrimaryFlash get() = ColorToken("#FFFFFF", "#4A4A4E")
 
+/**
+ * The wide composer's send (`sendButton`): theme.colors.button.primary
+ * `background` with text (`sendButtonActive`), `disabled` without
+ * (`sendButtonInactive`), and its `tint` for the arrow and spinner.
+ */
+val Palette.composerSendFill get() = ColorToken("#000000")
+val Palette.composerSendDisabled get() = ColorToken("#C0C0C0")
+val Palette.composerSendIcon get() = ColorToken("#FFFFFF")
+
 /** `unifiedPanelShadow`: black, 0/2 radius 8 at 0.08 in light; 0/6 radius 16 at 0.22 in dark. */
 object ComposerShadow {
     const val lightOffsetY = 2.0

@@ -657,6 +657,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     private fun applyTabletBranch() {
         header.tablet = !branches.chatHeaderGlass
         header.headerMaxWidth = ContentWidth.headerMaxWidth(context)
+        composer.zenMode = isZenMode
         if (branches.isTablet && !dockDetailsVisible) {
             dockDetailsVisible = true
             composer.setDetailsVisible(true, animated = false)

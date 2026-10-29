@@ -22,6 +22,7 @@ import com.slopus.happy.layout.Rect
 import com.slopus.happy.layout.Size
 import com.slopus.happy.layout.TextStyles
 import com.slopus.happy.layout.composer.AgentInputCardLayout
+import com.slopus.happy.layout.composer.AgentInputDesktopLayout
 import com.slopus.happy.layout.composer.AgentInputPrimaryFlash
 import com.slopus.happy.layout.composer.ComposerShake
 import com.slopus.happy.layout.composer.MobileComposerMetrics
@@ -72,6 +73,10 @@ enum class AgentInputPrimaryStyle {
  * material; Android has no backdrop blur behind a view, so the capsule is
  * solid ([composerCapsuleFill]) with the same rim and shadow. The chips open
  * the platform's popup menu where iOS opens a UIMenu.
+ *
+ * In a window wider than 700 the chat's card is the flat panel instead
+ * ([Configuration.desktop], [AgentInputDesktopControlsView]), keeping the
+ * text view.
  */
 class AgentInputCardView(context: Context, private val metrics: MobileComposerMetrics = MobileComposerMetrics.mobile) :
     ManualLayout(context), ThemeAware {
@@ -92,6 +97,20 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         val refusesControls: Boolean = false,
         /** A bot's name: words capitalised, Return makes it. */
         val capitalizesWords: Boolean = false,
+        /**
+         * AgentInput.tsx `zenMode` (the tablet shell's zen control): the add
+         * button and the chips go; the text, any picked pictures and the
+         * round button stay.
+         */
+        val zenMode: Boolean = false,
+        /**
+         * The flat panel and its `desktopActionControls`, AgentInput.tsx in a
+         * window wider than 700; null is the compact card. The chips and the
+         * primary action are then unused, [showsAdd] is the image button, and
+         * [refusesControls] is not consulted (only Home's dock refuses, and it
+         * has no panel).
+         */
+        val desktop: AgentInputDesktopConfiguration? = null,
     )
 
     var configuration = Configuration()
@@ -107,6 +126,9 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     /** The card's height may have changed. */
     var onHeightChanged: (() -> Unit)? = null
     var onPrimary: (() -> Unit)? = null
+    /** The flat panel's stop and send ([Configuration.desktop]). */
+    var onStop: (() -> Unit)? = null
+    var onSend: (() -> Unit)? = null
     var onAdd: (() -> Unit)? = null
     var onRemoveAttachment: ((String) -> Unit)? = null
     /** Pictures pasted or inserted by the keyboard into the text, while [Configuration.showsAdd]. */
@@ -136,6 +158,17 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     private val separator = Label(context, TextStyles.composerChip, Palette.textSecondary, maxLines = 1)
     private val effortChip = ChipButton(context, AgentInputChip.Effort)
     private val primaryButton = PrimaryButton(context)
+    private var installedDesktopControls: AgentInputDesktopControlsView? = null
+    /** A phone's compact card never builds the desktop row; kept after the first wide layout so resizing keeps it. */
+    private val desktopControls: AgentInputDesktopControlsView
+        get() = installedDesktopControls ?: AgentInputDesktopControlsView(context).also { controls ->
+            controls.onSelect = { chip, key -> onSelect?.invoke(chip, key) }
+            controls.onStop = { onStop?.invoke() }
+            controls.onImage = { onAdd?.invoke() }
+            controls.onSend = { onSend?.invoke() }
+            installedDesktopControls = controls
+            addView(controls)
+        }
     private var lastHeight = -1.0
 
     val text: String get() = textView.string
@@ -210,10 +243,12 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
 
     override fun applyTheme() {
         val dark = Theme.isDark
-        surfaceShape.setColor(Theme.color(Palette.composerCapsuleFill))
-        surfaceShape.setStroke(1, Theme.color(Palette.glassBorder))
-        surfaceShape.cornerRadius = dp(metrics.shellRadius)
-        surface.elevation = dp(if (dark) ComposerShadow.darkRadius / 2 else ComposerShadow.lightRadius / 2)
+        // The flat panel (`unifiedPanel`) has no shadow and no rim; its fill is input.background.
+        val isDesktop = configuration.desktop != null
+        surfaceShape.setColor(Theme.color(if (isDesktop) Palette.inputBackground else Palette.composerCapsuleFill))
+        surfaceShape.setStroke(if (isDesktop) 0 else 1, Theme.color(Palette.glassBorder))
+        surfaceShape.cornerRadius = dp(if (isDesktop) AgentInputDesktopLayout.Metrics.panelRadius else metrics.shellRadius)
+        surface.elevation = if (isDesktop) 0f else dp(if (dark) ComposerShadow.darkRadius / 2 else ComposerShadow.lightRadius / 2)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             // As the home dock's capsule: the platform's spot shadow is far lighter than a CALayer's.
             val opacity = if (dark) ComposerShadow.darkOpacity else ComposerShadow.lightOpacity
@@ -231,6 +266,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         primaryButton.applyTheme()
         separator.applyTheme()
         attachmentStrip.applyTheme()
+        installedDesktopControls?.applyTheme()
     }
 
     private fun apply(previous: Configuration?) {
@@ -238,15 +274,25 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         textView.hint = config.placeholder
         textView.isEnabled = config.isEditable
         textView.alpha = if (config.isEditable) 1f else AgentInputCardLayout.Metrics.readOnlyTextOpacity.toFloat()
-        addButton.visibility = if (config.showsAdd) VISIBLE else GONE
+        val isDesktop = config.desktop != null
+        if (previous == null || isDesktop != (previous.desktop != null)) applyPanel()
+        addButton.visibility = if (config.showsAdd && !config.zenMode && !isDesktop) VISIBLE else GONE
         // The glyph turns blue while pictures are attached.
         addButton.iconView.tint = if (config.attachments.isEmpty()) Palette.text else Palette.radioActive
         attachmentStrip.attachments = config.attachments
-        permissionChip.configure(config.permission)
-        modelChip.configure(config.model)
-        effortChip.configure(config.effort)
-        separator.visibility = if (config.effort == null) GONE else VISIBLE
+        permissionChip.configure(if (config.zenMode) null else config.permission)
+        modelChip.configure(if (config.zenMode) null else config.model)
+        effortChip.configure(if (config.zenMode) null else config.effort)
+        separator.visibility = if (config.zenMode || config.effort == null) GONE else VISIBLE
         primaryButton.configure(config.primaryAction, config.isPrimaryBusy, config.primaryAccessibilityLabel, config.primaryStyle)
+        config.desktop?.let { desktop ->
+            desktopControls.configure(
+                desktop,
+                showsImage = config.showsAdd,
+                hasAttachments = config.attachments.isNotEmpty(),
+                imageAccessibilityLabel = context.getString(com.slopus.happy.R.string.composer_add_photo),
+            )
+        }
         if (previous == null || previous.capitalizesWords != config.capitalizesWords) {
             // A bot's name is one line that Return makes; a prompt takes newlines.
             textView.inputType = if (config.capitalizesWords) {
@@ -259,12 +305,35 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         }
         if (previous == null || previous.permission != config.permission || previous.model != config.model ||
             previous.effort != config.effort || previous.showsAdd != config.showsAdd ||
-            previous.attachments.size != config.attachments.size
+            previous.attachments.size != config.attachments.size || previous.zenMode != config.zenMode ||
+            panelShape(previous.desktop) != panelShape(config.desktop)
         ) {
             requestLayout()
             reportHeight()
         }
     }
+
+    /** What of the flat panel moves its frames: whether it is there, the gear, stop and stop's spinner. */
+    private fun panelShape(desktop: AgentInputDesktopConfiguration?): List<Boolean>? =
+        desktop?.let { listOf(it.settings != null, it.showsStop, it.isStopBusy) }
+
+    /** The compact card's capsule and its controls, or the flat panel's fill and its row. The text view stays, with its padding. */
+    private fun applyPanel() {
+        val isDesktop = configuration.desktop != null
+        middle.visibility = if (isDesktop) GONE else VISIBLE
+        primaryButton.visibility = if (isDesktop) GONE else VISIBLE
+        installedDesktopControls?.visibility = if (isDesktop) VISIBLE else GONE
+        val (top, bottom) = if (isDesktop) {
+            AgentInputDesktopLayout.Metrics.textPaddingTop to AgentInputDesktopLayout.Metrics.textPaddingBottom
+        } else {
+            metrics.inputPaddingTop to metrics.inputPaddingBottom
+        }
+        textView.setPadding(0, dp(top.toInt()), 0, dp(bottom.toInt()))
+        applyTheme()
+    }
+
+    /** The flat panel's stop failed: only it shakes (`shakerRef`). */
+    fun shakeStop() = installedDesktopControls?.shakeStop()
 
     fun setText(text: String) {
         if (text == this.text) return
@@ -313,13 +382,36 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
 
     // Layout
 
-    private fun textContentHeight(width: Double): Double {
+    private fun textContentHeight(width: Double, desktop: Boolean = false): Double {
         val text = textView.string
         if (text.isEmpty()) return 0.0
         // A trailing newline starts a line StaticLayout already counts.
         val measured = TextLayouts.measure(text, TextStyles.composerInput, width, env).height
-        return measured + metrics.inputPaddingTop + metrics.inputPaddingBottom
+        return measured + if (desktop) {
+            AgentInputDesktopLayout.Metrics.textPaddingTop + AgentInputDesktopLayout.Metrics.textPaddingBottom
+        } else {
+            metrics.inputPaddingTop + metrics.inputPaddingBottom
+        }
     }
+
+    /** The flat panel's input at a panel [width] wide; null for the compact card. */
+    fun desktopLayoutInput(width: Double): AgentInputDesktopLayout.Input? {
+        val config = configuration
+        val desktop = config.desktop ?: return null
+        return AgentInputDesktopLayout.Input(
+            width = width,
+            attachmentCount = config.attachments.size,
+            textContentHeight = textContentHeight(AgentInputDesktopLayout.textWidth(width), desktop = true),
+            hasText = textView.string.isNotEmpty(),
+            lineHeight = TextLayouts.lineHeight(TextStyles.composerInput, env),
+            showsSettings = desktop.settings != null,
+            stopContentWidth = if (desktop.showsStop) desktopControls.stopContentWidth else null,
+            imageContentWidth = if (config.showsAdd) desktopControls.imageContentWidth else null,
+            zenMode = config.zenMode,
+        )
+    }
+
+    fun desktopLayout(width: Double): AgentInputDesktopLayout? = desktopLayoutInput(width)?.let { AgentInputDesktopLayout(it) }
 
     fun layout(width: Double): AgentInputCardLayout = AgentInputCardLayout(layoutInput(width))
 
@@ -340,6 +432,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             modelIsMenu = config.model?.sections != null,
             effort = config.effort?.let { AgentInputCardLayout.Chip(effortChip.contentSize) },
             separator = if (config.effort == null) Size.Zero else separator.measure(Double.MAX_VALUE),
+            zenMode = config.zenMode,
         )
     }
 
@@ -350,7 +443,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         return maxOf(0.0, width - 2 * border - 2 * metrics.shellInset - 2 * offset)
     }
 
-    fun height(width: Double): Double = layout(width).size.height
+    fun height(width: Double): Double = desktopLayout(width)?.size?.height ?: layout(width).size.height
 
     override fun sizeThatFits(width: Double, height: Double): Size = Size(width, height(width))
 
@@ -364,6 +457,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     }
 
     override fun layoutSubviews(width: Double, height: Double) {
+        desktopLayout(width)?.let { return layoutDesktop(it, width) }
         val l = layout(width)
         lastHeight = l.size.height
         surface.setFrame(Rect(0.0, 0.0, width, l.size.height))
@@ -383,6 +477,22 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         effortChip.place(content.effort)
         content.separator?.let { separator.setFrame(it) }
         primaryButton.setFrame(l.primary)
+    }
+
+    /** The flat panel: the strip and text where [AgentInputDesktopLayout] puts them, and its own action row. */
+    private fun layoutDesktop(l: AgentInputDesktopLayout, width: Double) {
+        lastHeight = l.size.height
+        surface.setFrame(Rect(0.0, 0.0, width, l.size.height))
+        textView.setFrame(l.text)
+        textView.isVerticalScrollBarEnabled = l.textScrolls
+        val strip = l.attachments
+        attachmentStrip.visibility = if (strip == null) GONE else VISIBLE
+        if (strip != null) {
+            attachmentStrip.insets = AgentInputCardLayout.AttachmentInsets.panel
+            attachmentStrip.setFrame(strip)
+        }
+        desktopControls.setFrame(Rect(0.0, 0.0, width, l.size.height))
+        desktopControls.place(l)
     }
 
     /** A plain box whose children are clipped to it (the middle of the action row). */

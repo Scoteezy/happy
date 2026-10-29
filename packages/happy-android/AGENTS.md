@@ -443,7 +443,11 @@ sidebar, Header.tsx screens set `dropsBackButtonOnTablet`, and chat takes the
 plain header, the docked composer and the tablet permission footer
 (`TabletBranches`). A screen about one session implements `SessionRoute` so
 the sidebar highlights its row. `ContentWidth` caps the content at 800 only on
-a 13-inch tablet. Not ported yet: the grouped sidebar list (flat rows stand in).
+a 13-inch tablet. A window wider than 700 (the window's width, not the chat
+column's) turns the chat's composer into the flat panel
+(`AgentInputCardView.Configuration.desktop`, `AgentInputDesktopControls.kt`),
+which `ChatComposerView` follows as the window crosses the line. Not ported
+yet: the grouped sidebar list (flat rows stand in).
 
 ## Settings
 
