@@ -24,6 +24,7 @@ play-review = "2.0.2"
 zxing = "3.5.4"
 firebase-messaging = "25.0.1"
 coil = "3.6.3"
+lottie = "6.6.7"
 revenuecat = "10.28.1"
 livekit = "2.26.0"
 gson = "2.10.1"
@@ -56,6 +57,7 @@ play-review = { module = "com.google.android.play:review", version.ref = "play-r
 play-services-code-scanner = { module = "com.google.android.gms:play-services-code-scanner", version.ref = "play-services-code-scanner" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }
+lottie = { module = "com.airbnb.android:lottie", version.ref = "lottie" }
 coil = { module = "io.coil-kt.coil3:coil", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 coil-test = { module = "io.coil-kt.coil3:coil-test", version.ref = "coil" }

@@ -2,4 +2,6 @@
 <resources>
     <!-- The chat's ChatAttachmentImages, on the chat screen's view. -->
     <item name="chat_attachments" type="id" />
+    <!-- A story's source view's corner radius (dp, Double), for the viewer to open out of. -->
+    <item name="stories_corner_radius" type="id" />
 </resources>

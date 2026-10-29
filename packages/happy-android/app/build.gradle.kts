@@ -347,6 +347,8 @@ dependencies {
 
     // Push (AGENTS.md "Push"): FCM, configured from google-services.json when it is there.
     implementation(libs.firebase.messaging)
+    // Animated (tgs) stickers in Stories, as happy-ios plays them with lottie-ios.
+    implementation(libs.lottie)
     implementation(libs.coil)
     implementation(libs.coil.network.okhttp)
     implementation(libs.revenuecat.purchases)

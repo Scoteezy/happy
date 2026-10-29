@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Stories (happy-ios Strings/Stories.swift), spelled as happy-agent's API.md
+  "Stories" and "Stickers" name them, and as Telegram's stories say the
+  rest. English only, as desktop and iOS are. strings.xml is generated from
+  happy-app's catalogs; this file is not.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- The row. -->
+    <string name="stories_my_story">My Story</string>
+    <string name="stories_author_unseen">%1$s, %2$d new</string>
+    <string name="stories_collapsed">Stories</string>
+    <string name="stories_collapsed_names">Stories: %1$s</string>
+    <!-- ChatList.StoryFeedTooltipUsers, naming up to three. -->
+    <string name="stories_tooltip">Tap above to view stories from %1$s</string>
+    <string name="stories_list_two">%1$s and %2$s</string>
+    <string name="stories_list_more">%1$s, and %2$s</string>
+
+    <!-- Settings. -->
+    <string name="stories_setting">Stories</string>
+    <string name="stories_setting_detail">Experimental. Share what your work looks like in a row of circles in the header.</string>
+
+    <!-- The viewer. -->
+    <string name="stories_close">Close</string>
+    <!-- Telegram's Story.CaptionShowMore. -->
+    <string name="stories_caption_show_more">Show more</string>
+    <string name="stories_photo_unavailable">This photo is no longer available</string>
+    <string name="stories_video_unavailable">This video is no longer available</string>
+    <string name="stories_open">Open</string>
+    <string name="stories_cancel">Cancel</string>
+    <string name="stories_copy_link">Copy link</string>
+    <string name="stories_delete">Delete</string>
+    <string name="stories_delete_story">Delete story?</string>
+    <string name="stories_delete_detail">This story will be removed for everyone.</string>
+    <string name="stories_delete_failed">Couldn\'t delete the story</string>
+    <string name="stories_open_conversation">Open conversation</string>
+    <string name="stories_viewers">Viewers</string>
+    <string name="stories_no_viewers">No views yet</string>
+    <string name="stories_one_view">1 view</string>
+    <string name="stories_views">%1$d views</string>
+    <string name="stories_react">React</string>
+    <!-- Telegram's Story.TooltipVideoHasNoSound. -->
+    <string name="stories_mute">Mute</string>
+    <string name="stories_unmute">Unmute</string>
+    <string name="stories_video_has_no_sound">This video has no sound</string>
+    <string name="stories_just_now">just now</string>
+    <string name="stories_minutes_ago">%1$dm ago</string>
+    <string name="stories_hours_ago">%1$dh ago</string>
+    <string name="stories_yesterday_at">yesterday at %1$s</string>
+
+    <!-- The inline story. -->
+    <string name="stories_post">Post</string>
+    <string name="stories_edit">Edit</string>
+    <string name="stories_draft">Draft</string>
+    <string name="stories_posted">Posted</string>
+    <string name="stories_deleted">This story was deleted</string>
+    <string name="stories_unavailable">This story isn\'t available</string>
+    <string name="stories_post_failed">Couldn\'t post</string>
+    <string name="stories_newer_version">The story changed. Check it and post again.</string>
+
+    <!-- The editor. -->
+    <string name="stories_new_story">New Story</string>
+    <string name="stories_add">Add</string>
+    <string name="stories_add_count">Add %1$d</string>
+    <string name="stories_text">Text</string>
+    <string name="stories_link">Link</string>
+    <string name="stories_stickers">Stickers</string>
+    <string name="stories_emoji">Emoji</string>
+    <string name="stories_reaction">Reaction</string>
+    <string name="stories_caption">Add a caption…</string>
+    <string name="stories_save">Save</string>
+    <string name="stories_done">Done</string>
+    <string name="stories_link_url">URL</string>
+    <string name="stories_link_label">Name (optional)</string>
+    <string name="stories_invalid_link">Enter an http or https link.</string>
+    <string name="stories_uploading">Uploading…</string>
+    <string name="stories_save_failed">Couldn\'t save the story</string>
+    <string name="stories_add_frame">Add frame</string>
+    <string name="stories_discard_changes">Discard changes?</string>
+    <string name="stories_discard_detail">Your edits to this story will be lost.</string>
+    <string name="stories_discard">Discard</string>
+    <string name="stories_save_draft">Save draft</string>
+    <string name="stories_keep_editing">Keep editing</string>
+    <string name="stories_delete_frame">Delete frame</string>
+    <string name="stories_saving">Saving…</string>
+    <string name="stories_couldnt_open">Couldn\'t open that photo or video</string>
+    <string name="stories_fill">Fill</string>
+    <string name="stories_align">Alignment</string>
+    <string name="stories_trash">Delete</string>
+    <string name="stories_color">Color</string>
+    <string name="stories_font">Font</string>
+    <string name="stories_text_size">Text size</string>
+    <string name="stories_frames">Frames</string>
+    <string name="stories_use_latest">Use the newer version</string>
+    <string name="stories_overwrite">Keep my edits</string>
+    <string name="stories_newer_version_detail">It was saved somewhere else since you opened it.</string>
+    <string name="stories_font_san_francisco">San Francisco</string>
+    <string name="stories_font_typewriter">Typewriter</string>
+    <string name="stories_font_avenir_next">Avenir Next</string>
+    <string name="stories_font_courier_new">Courier New</string>
+    <string name="stories_font_noteworthy">Noteworthy</string>
+    <string name="stories_font_georgia">Georgia</string>
+    <string name="stories_font_papyrus">Papyrus</string>
+    <string name="stories_font_snell_roundhand">Snell Roundhand</string>
+
+    <!-- The sticker picker. -->
+    <string name="stories_search">Search</string>
+    <string name="stories_recently_used">Recently used</string>
+    <string name="stories_clear_recents">Clear recently used</string>
+    <string name="stories_no_results">No stickers found</string>
+    <string name="stories_emoji_people">Smileys &amp; People</string>
+    <string name="stories_emoji_nature">Animals &amp; Nature</string>
+    <string name="stories_emoji_food">Food &amp; Drink</string>
+    <string name="stories_emoji_activity">Activity</string>
+    <string name="stories_emoji_travel">Travel &amp; Places</string>
+    <string name="stories_emoji_objects">Objects</string>
+    <string name="stories_emoji_symbols">Symbols</string>
+    <string name="stories_emoji_flags">Flags</string>
+</resources>
