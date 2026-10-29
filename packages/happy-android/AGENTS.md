@@ -824,9 +824,37 @@ harness shows desktop's sidebar). A Surface row opens
 `StemCellMediaOpener`, which the conversation uses too. Home's computer
 mark opens `StemCellsSettingsScreen` (`openSettings`), which asks
 everything outside it (profiles, switching, renaming, pages and flows,
-the theme) of a `StemCellsSettingsHost`; the debug harness's is
-`StemCellsHarnessSettingsHost`. Its QR button adds `StemCellsQRSheet`
+the theme) of a `StemCellsSettingsHost`; `AppStemCellsSettingsHost` runs
+the real account actions and opens existing settings pages. The standalone
+debug harness's action recorder remains `StemCellsHarnessSettingsHost`.
+Its QR button adds `StemCellsQRSheet`
 over its root and blurs what is under it.
+
+`AppGraph.direct` shares auth's secure store. `shellAccount` publishes only
+after the selected account's preferences/store are ready; the coordinator
+opens `StemCellsDirectHomeScreen` for Direct, and retains a top-level Stem
+Cells settings screen while its carousel changes the home beneath it.
+Relay sync is stopped while Direct is selected. A proven pairing and account
+removal finish in the graph's scope even when their screen leaves. A relay
+sign-in clears Direct selection; removing a retained relay account must not
+clear the selected computer's preferences. Computers use `files/direct/<id>`
+for the engine and offline files, and `local-settings-<id>` preferences.
+`DirectPairingScreen` uses `DirectIdentityLayout` and the real pairing
+service, including emoji confirmation, expiry and background cancellation.
+
+For fake-backed verification of the **real MainActivity shell**, build debug
+with `-Phappy.shellHarness=true`. This changes only debug's application ID to
+`com.slopus.happy.dev.shellharness`, so fixtures cannot share normal app data.
+Launch that APK's `com.slopus.happy.harness.ShellHarnessActivity` once to seed
+two fake computers and a fake relay account, then use MainActivity normally.
+`ShellHarnessApplication` installs fakes only under that exact APK suffix;
+ordinary debug uses the real graph, and preview/release contain neither
+fixture class. The fixture relay points at loopback port 1, not a real server.
+`ShellPairingTransport` supplies the fake daemon side of the real random-key
+handshake for a `shell-fixture-*` address (port 1234, token 32 bytes of 7).
+Tests and videos using it establish shell/handshake behavior, never successful
+Tailcat/real-daemon connectivity. Do not inject these credentials into a
+normal development, preview or production application.
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one
