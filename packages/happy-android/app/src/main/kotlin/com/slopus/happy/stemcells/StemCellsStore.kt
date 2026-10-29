@@ -97,6 +97,8 @@ class StemCellsStore(
     /** A monotonic clock in milliseconds, for attention. */
     private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     private val now: () -> Long = System::currentTimeMillis,
+    /** Where the offline file is read. */
+    private val io: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
 ) {
     private val confined = scope.coroutineContext.minusKey(Job)
     private val updatesFlow = MutableStateFlow(StemCellsSnapshot())
@@ -946,7 +948,7 @@ class StemCellsStore(
     private suspend fun restoreOffline() {
         val offline = offline ?: return
         if (held != null) return
-        val kept = withContext(Dispatchers.IO) { offline.read() }?.sidebar ?: return
+        val kept = withContext(io) { offline.read() }?.sidebar ?: return
         if (held != null) return
         artifactId = kept.artifactId
         held = Held(kept.version, kept.html)
