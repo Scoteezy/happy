@@ -513,6 +513,11 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
                 }
             }
             is ChatRowAction.CopyMenu -> showCopyMenu(action.text, frame)
+            is ChatRowAction.MarkdownSelectable -> if (graph.localSettings.values.value.markdownCopyV2) {
+                push(TextSelectionScreen(context, action.markdown))
+            } else {
+                showCopyMenu(action.paragraph, frame)
+            }
             is ChatRowAction.ToggleTool -> {
                 expandedTools = if (action.id in expandedTools) expandedTools - action.id else expandedTools + action.id
                 requestPlans(pinning = action.id)

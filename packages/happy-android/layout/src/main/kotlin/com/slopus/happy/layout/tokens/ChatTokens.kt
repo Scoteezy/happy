@@ -71,6 +71,8 @@ val Palette.sessionStatusOnline get() = ColorToken("#34C759")
 object ChatTextStyles {
     // MarkdownView.tsx
     val markdownText = TextStyle(FontFace.Regular, 16, 25)
+    /** text-selection.tsx: the text to select, in mono. */
+    val textSelection = TextStyle(FontFace.Mono, 14, 20)
     val markdownCode = TextStyle(FontFace.Mono, 16, 24)
     /** header1 is weight 900, header2–6 600; IBM Plex SemiBold draws both. */
     fun markdownHeader(level: Int) = when (level) {

@@ -276,7 +276,7 @@ class ChatRowRenderer(private val resources: Resources) {
 
     private fun agentText(row: ChatRow.AgentText, copied: Boolean, diagrams: ChatMermaidHeights, width: Double, style: ChatRowStyle): ChatRowPlan {
         val message = row.message
-        val markdown = MarkdownPiece(row.blocks, Palette.text, style.env, diagrams = diagrams)
+        val markdown = MarkdownPiece(row.blocks, Palette.text, style.env, diagrams = diagrams, source = message.text)
         val layout = AgentTextLayout(width, style.maxContentWidth, markdown.blocks)
         val (drawn, drawnHits) = markdown.draw(layout.markdown, layout.markdownOrigin.x, layout.markdownOrigin.y)
         val slop = AgentTextLayout.Metrics.copyHitSlop
@@ -565,7 +565,7 @@ class ChatRowRenderer(private val resources: Resources) {
 
     /** ExitPlanToolView: the plan as markdown, 8 in, pulled 10 up. */
     private fun exitPlanView(plan: String, diagrams: ChatMermaidHeights, env: ChatTextEnv): ChatStackEntry {
-        val markdown = MarkdownPiece(parseMarkdown(plan), Palette.text, env, diagrams = diagrams)
+        val markdown = MarkdownPiece(parseMarkdown(plan), Palette.text, env, diagrams = diagrams, source = plan)
         val piece = ChatPiece(Measurable { MarkdownLayout(it, markdown.blocks).size }) { frame ->
             markdown.draw(MarkdownLayout(frame.width, markdown.blocks), frame.minX, frame.minY)
         }
@@ -816,6 +816,8 @@ class MarkdownPiece(
     selectable: Boolean = true,
     /** The row it is in and the heights its diagrams' pages reported. */
     diagrams: ChatMermaidHeights = ChatMermaidHeights(),
+    /** The markdown it was parsed from: what Markdown Copy v2's text selection screen shows. */
+    source: String = "",
 ) {
     val blocks: List<MarkdownLayout.Block>
     private val drawers: List<(MarkdownLayout.Placed, Double, Double) -> Pair<List<ChatDrawItem>, List<ChatHit>>>
@@ -827,7 +829,7 @@ class MarkdownPiece(
         var diagramIndex = 0
 
         fun hold(frame: Rect, paragraph: String): List<ChatHit> =
-            if (selectable) listOf(ChatHit(frame, ChatRowAction.CopyMenu(paragraph), hold = true)) else emptyList()
+            if (selectable) listOf(ChatHit(frame, ChatRowAction.MarkdownSelectable(paragraph, source), hold = true)) else emptyList()
 
         fun text(measured: MeasuredText): (MarkdownLayout.Placed, Double, Double) -> Pair<List<ChatDrawItem>, List<ChatHit>> = { placed, x, y ->
             val frame = placed.frame.offsetBy(x, y)

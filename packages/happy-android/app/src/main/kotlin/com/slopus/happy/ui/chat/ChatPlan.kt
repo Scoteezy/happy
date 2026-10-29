@@ -65,6 +65,11 @@ sealed interface ChatRowAction {
     data class CopyMessage(val id: String, val text: String) : ChatRowAction
     /** LongPressCopyable: a menu with Copy over the message. */
     data class CopyMenu(val text: String) : ChatRowAction
+    /**
+     * Selectable markdown: a menu with Copy for its [paragraph], or with
+     * Markdown Copy v2 the text selection screen for the whole [markdown].
+     */
+    data class MarkdownSelectable(val paragraph: String, val markdown: String) : ChatRowAction
     data class ToggleTool(val id: String) : ChatRowAction
     data class OpenMessage(val id: String) : ChatRowAction
     /** An edit tool's file, in the file viewer. */

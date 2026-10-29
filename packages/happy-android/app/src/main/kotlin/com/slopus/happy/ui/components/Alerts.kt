@@ -28,11 +28,13 @@ object Alerts {
         if (Theme.isDark) android.R.style.Theme_DeviceDefault_Dialog_Alert else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert,
     )
 
-    fun show(context: Context, title: String, message: String? = null) {
+    /** An alert with OK; [then] runs once it is gone. */
+    fun show(context: Context, title: String, message: String? = null, then: (() -> Unit)? = null) {
         AlertDialog.Builder(themed(context))
             .setTitle(title)
             .apply { message?.let(::setMessage) }
             .setPositiveButton(context.getString(R.string.common_ok), null)
+            .apply { then?.let { action -> setOnDismissListener { action() } } }
             .show()
     }
 
