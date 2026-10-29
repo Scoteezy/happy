@@ -335,7 +335,7 @@ class DirectAccounts(
         accounts.removeAll { it.id == id }
         accounts += account
         activeId = id
-        for ((other, engine) in engines) if (other != id) engine.pause()
+        for ((other, engine) in engines.toList()) if (other != activeId && engines[other] === engine) engine.pause()
         publish()
         startConnections()
         account
@@ -347,7 +347,12 @@ class DirectAccounts(
         withContext(io) { storage.select(id) }
         activeId = id
         publish()
-        for ((accountId, engine) in engines) if (foreground && accountId == id) engine.start() else engine.pause()
+        // Publishing lets the coordinator create the incoming home's engine.
+        // pause() suspends, so never retain a live map iterator across it.
+        for ((accountId, engine) in engines.toList()) {
+            if (engines[accountId] !== engine) continue
+            if (foreground && accountId == activeId) engine.start() else engine.pause()
+        }
     }
 
     /**

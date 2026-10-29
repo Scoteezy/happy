@@ -5,6 +5,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
@@ -219,5 +222,28 @@ class DirectAccountsTest {
         assertNull(manager.syncEngine("unknown"))
         manager.select(first.id)
         assertEquals(first.id, manager.state.value.active?.id)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun selectionCanCreateTheIncomingHomesEngineWhileOldEnginesPause() = runTest {
+        val manager = accounts(InMemoryDirectCredentialStore(), null) { IdentityTransport() }
+        manager.setForeground(false)
+        val first = manager.add(value("one"))
+        val second = manager.add(value("two"))
+        val incoming = manager.add(value("incoming"))
+        manager.syncEngine(first.id)
+        manager.syncEngine(second.id)
+        manager.select(first.id)
+        // The real coordinator and Settings observe selection and lazily create
+        // its engine while select() is suspended in an old engine's pause().
+        backgroundScope.launch {
+            manager.state.collect { state ->
+                if (state.activeId == incoming.id) manager.syncEngine(incoming.id)
+            }
+        }
+        runCurrent()
+        manager.select(incoming.id)
+        assertEquals(incoming.id, manager.state.value.activeId)
+        assertTrue(manager.syncEngine(incoming.id) === manager.syncEngine(incoming.id))
     }
 }
