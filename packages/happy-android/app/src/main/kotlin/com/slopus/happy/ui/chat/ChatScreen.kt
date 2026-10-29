@@ -20,10 +20,12 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.PopupMenu
-import android.widget.ProgressBar
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.chat.ChatEmptyState
 import com.slopus.happy.chat.ChatFeed
+import com.slopus.happy.chat.ChatOlderPaging
+import com.slopus.happy.chat.ChatSnapshot
 import com.slopus.happy.chat.ChatMessagesSource
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.ChatState
@@ -125,7 +127,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     private val scrim = ChatScrimView(context)
     private val composer = ChatComposerView(context, sessionId, actions, scope)
     private val scrollButton = ScrollButton(context)
-    private val spinner = ProgressBar(context)
+    private val placeholder = ChatPlaceholderView(context)
     private val inactiveHint = ChatInactiveHintView(context, scope)
     private val goalBar = ChatGoalBarView(context)
     private val questionBanner = ChatQuestionBannerView(context)
@@ -156,8 +158,22 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     private var workGroups = WorkGroupExpansion()
     /** The work groups on screen, by id, for a header's tap. */
     private var shownGroups = mapOf<String, AgentWorkGroup>()
-    private var loadingOlder = false
     private var listWidth = 0.0
+    /** The chat's paging past its newest page (happy-ios `ChatHistoryPager` over [ChatOlderPaging]). */
+    private val paging = ChatOlderPaging()
+    /** EmptyMessages pages on its own; the list after it starts over. */
+    private var showsEmpty = false
+    /** A page that moved the history back, until the snapshot holds it. */
+    private var joining: Joining? = null
+    /** Moves when paging starts over: answers to fetches from before drop. */
+    private var pagingGeneration = 0
+    private var oldestDistance = Double.MAX_VALUE
+    /** [ChatOlderPaging.boundary] of the rows on screen. */
+    private var oldestBoundary: String? = null
+    /** Plans asked for and not on screen yet: until then the rows on screen are not the snapshot's. */
+    private var plansRequested = 0
+    private var plansShown = 0
+    private var shown = false
     private val planRequests = MutableStateFlow<PlanRequest?>(null)
     /** The plans made so far, by row id, with what each was made from; touched only on [planner]. */
     private val plans = HashMap<String, Pair<PlanKey, ChatRowPlan>>()
@@ -165,6 +181,9 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
 
     /** A row's [ChatRowInput], or a work header's [HeaderInput], at a width. */
     private data class PlanKey(val input: Any, val width: Double)
+
+    /** An older page, asked for before [before] (the oldest stored seq then), that has not reached the snapshot; [empty] if EmptyMessages asked. */
+    private data class Joining(val request: Int, val before: Long?, val empty: Boolean)
 
     private data class HeaderInput(val group: AgentWorkGroup, val placement: WorkHeaderPlacement, val expanded: Boolean, val style: ChatRowStyle)
 
@@ -185,9 +204,17 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         val width: Double,
         /** A row the reader just opened or closed. */
         val pinning: String? = null,
+        val number: Int = 0,
     )
 
-    private class Planned(val footer: ChatRowPlan, val rows: List<ChatRowPlan>, val pinning: String?, val groups: Map<String, AgentWorkGroup>)
+    private class Planned(
+        val footer: ChatRowPlan,
+        val rows: List<ChatRowPlan>,
+        val pinning: String?,
+        val groups: Map<String, AgentWorkGroup>,
+        val boundary: String?,
+        val number: Int,
+    )
 
     override fun createView(): View = root
 
@@ -208,6 +235,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         applyTabletBranch()
         list.onScroll = ::scrolled
         list.onAction = ::perform
+        list.onOlderAction = ::olderAction
+        placeholder.onAction = ::olderAction
         composer.onHeightChanged = { root.requestLayout() }
         composer.onSent = { list.scrollToNewest(animated = true) }
         composer.onSuggestionsChanged = { root.requestLayout() }
@@ -261,9 +290,13 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             planRequests.filterNotNull()
                 .map { request -> plan(request) }
                 .flowOn(planner)
-                .collect {
-                    shownGroups = it.groups
-                    list.submit(it.footer, it.rows, it.pinning)
+                .collect { planned ->
+                    shownGroups = planned.groups
+                    list.submit(planned.footer, planned.rows, planned.pinning) {
+                        oldestBoundary = planned.boundary
+                        plansShown = maxOf(plansShown, planned.number)
+                        checkPaging()
+                    }
                 }
         }
     }
@@ -274,13 +307,143 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         this.mirror = mirror
         val machineId = state.session?.metadata?.machineId
         if (machine?.id != machineId) machine = HomeServices.of(graph).machine(machineId)
-        list.isLoadingOlder = state.snapshot.isLoadingOlder
         updateHeader()
         composer.update(state, mirror, settings.agentDefaultOverrides)
-        spinner.visibility = if (!state.snapshot.loaded && state.snapshot.rows.isEmpty()) View.VISIBLE else View.GONE
+        receivePaging(state.snapshot)
         requestPlans()
         updateDockBars()
+        updatePaging()
+        if (showsEmpty) checkPaging()
         root.requestLayout()
+    }
+
+    /**
+     * SessionView's states around the conversation: a spinner until
+     * sessions have been fetched, the deleted state once they have and this
+     * one is gone, over the whole screen; in a session, a spinner until its
+     * messages are in and EmptyMessages if there are none. The first page
+     * never fails here (the catch-up retries on its own), so the loading
+     * placeholder's Retry never shows.
+     */
+    private fun updatePlaceholder() {
+        val record = state.session
+        val snapshot = state.snapshot
+        val content = when {
+            record != null -> when {
+                snapshot.rows.isNotEmpty() -> null
+                snapshot.loaded -> ChatPlaceholderView.Content.Empty(
+                    ChatEmptyState.of(record.metadata, record.session.createdAt, System.currentTimeMillis()),
+                    paging.emptyStatus(snapshot.hasMoreOlder),
+                )
+                else -> ChatPlaceholderView.Content.Loading
+            }
+            state.sessionLoaded -> ChatPlaceholderView.Content.Deleted
+            else -> ChatPlaceholderView.Content.Loading
+        }
+        content?.let(placeholder::show)
+        placeholder.visibility = if (content == null) View.GONE else View.VISIBLE
+        val fullScreen = record == null
+        list.visibility = if (fullScreen) View.INVISIBLE else View.VISIBLE
+        val dock = if (fullScreen) View.GONE else View.VISIBLE
+        if (composer.visibility != dock) {
+            composer.visibility = dock
+            scrim.visibility = dock
+            root.requestLayout()
+        }
+    }
+
+    // History paging
+
+    /**
+     * The snapshot's facts as its rows come in (`ChatHistoryPager.receive`):
+     * a change between EmptyMessages and the list starts paging over, and a
+     * page still joining settles once the snapshot holds it.
+     */
+    private fun receivePaging(snapshot: ChatSnapshot) {
+        val empty = snapshot.loaded && snapshot.rows.isEmpty()
+        if (empty != showsEmpty) {
+            startPagingOver()
+            showsEmpty = empty
+        }
+        val page = joining ?: return
+        val oldest = snapshot.oldestSeq ?: return
+        if (page.before != null && oldest >= page.before) return
+        joining = null
+        if (page.empty) paging.settledEmpty(page.request, advanced = true) else paging.settled(page.request, advanced = true)
+    }
+
+    private fun startPagingOver() {
+        paging.reset()
+        joining = null
+        pagingGeneration += 1
+    }
+
+    /** `fillOlder` for the list once its rows are on screen, or EmptyMessages' own paging. A screen not shown asks for nothing. */
+    private fun checkPaging() {
+        val snapshot = state.snapshot
+        if (!snapshot.loaded) return
+        val step = if (showsEmpty) {
+            if (!shown) return
+            paging.checkEmpty(snapshot.hasMoreOlder, snapshot.isLoadingOlder)
+        } else {
+            if (plansShown < plansRequested) return
+            paging.check(
+                ChatOlderPaging.Reading(
+                    laidOut = list.height > 0 && listWidth > 0,
+                    storeHasMessages = true,
+                    growthPending = false,
+                    nearOldest = oldestDistance < px(list.height),
+                    // The list renders all the store holds.
+                    windowCanGrow = false,
+                    oldestBoundary = oldestBoundary,
+                    hasMore = snapshot.hasMoreOlder,
+                    loading = snapshot.isLoadingOlder,
+                    active = shown,
+                ),
+            )
+        }
+        if (step is ChatOlderPaging.Step.FetchOlder) fetchOlder(step.request, showsEmpty)
+    }
+
+    private fun fetchOlder(request: Int, empty: Boolean) {
+        val generation = pagingGeneration
+        val before = state.snapshot.oldestSeq
+        updatePaging()
+        scope.launch {
+            val result = runCatching { messages.loadOlder(sessionId) }
+            if (generation != pagingGeneration) return@launch
+            val advanced = result.getOrNull()
+            when {
+                // Whichever way it failed, Retry asks for an older page again.
+                advanced == null -> paging.failed(request)
+                !advanced -> if (empty) paging.settledEmpty(request, advanced = false) else paging.settled(request, advanced = false)
+                // Counted, and followed by the next page, once the snapshot holds its rows.
+                else -> {
+                    joining = Joining(request, before, empty)
+                    receivePaging(state.snapshot)
+                    if (joining == null) checkPaging()
+                }
+            }
+            updatePaging()
+        }
+    }
+
+    /** The older end's or EmptyMessages' button: Retry after a failure, Load more after five pages that showed nothing. */
+    private fun olderAction() {
+        when (paging.blocked) {
+            ChatOlderPaging.Block.Error -> paging.retry()
+            ChatOlderPaging.Block.Limit -> paging.loadMore()
+            null -> return
+        }
+        updatePaging()
+        checkPaging()
+    }
+
+    /** The older end's status and the placeholder, which read the paging. */
+    private fun updatePaging() {
+        val snapshot = state.snapshot
+        list.olderStatus = paging.status(snapshot.hasMoreOlder, snapshot.isLoadingOlder, windowReachesOldest = true)
+        updatePlaceholder()
     }
 
     private val dockBarViews: List<View> get() = listOf(inactiveHint, goalBar, questionBanner, rigActivity)
@@ -434,9 +597,11 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         val rows = state.snapshot.rows
         val currentTurnComplete = isCurrentTurnComplete(state.thinking, state.session?.agentState)
         workGroups = workGroups.observed(sessionId, foreground = true, rows, currentTurnComplete)
+        plansRequested += 1
         planRequests.value = PlanRequest(
             rows, settings.groupToolCalls, currentTurnComplete, workGroups,
             expandedTools, copiedMessageId, permissionBusy, diffExpanded, questionStates(), mermaidHeights, style(), listWidth, pinning,
+            plansRequested,
         )
     }
 
@@ -473,7 +638,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             }.also { plans[item.key] = key to it }
         }
         plans.keys.retainAll(seen)
-        return Planned(renderer.footer(request.width), rows, request.pinning, groups)
+        return Planned(renderer.footer(request.width), rows, request.pinning, groups, ChatOlderPaging.boundary(items), request.number)
     }
 
     // List
@@ -489,14 +654,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         }
         scrollButton.shown = ChatScreenLayout.showsScrollButton(distanceFromNewest)
         // The next page of history goes on once the oldest row is within a screen.
-        val snapshot = state.snapshot
-        if (!loadingOlder && snapshot.hasMoreOlder && !snapshot.isLoadingOlder && distanceFromOldest < px(list.height)) {
-            loadingOlder = true
-            scope.launch {
-                runCatching { messages.loadOlder(sessionId) }
-                loadingOlder = false
-            }
-        }
+        oldestDistance = distanceFromOldest
+        checkPaging()
     }
 
     private fun perform(action: ChatRowAction, frame: Rect, hold: Boolean) {
@@ -691,17 +850,20 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         super.onAppear()
         // voiceHooks.onSessionFocus: a running call follows the chat on screen.
         VoiceCoordinator.of(graph).focus(sessionId)
+        shown = true
+        checkPaging()
     }
 
     override fun onDisappear() {
         super.onDisappear()
+        shown = false
         composer.card.blur()
     }
 
     private inner class Root(context: Context) : ManualLayout(context), ThemeAware {
         init {
             addView(list)
-            addView(spinner)
+            addView(placeholder)
             addView(scrim)
             addView(header)
             for (bar in dockBarViews) addView(bar)
@@ -713,7 +875,6 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
 
         override fun applyTheme() {
             setBackgroundColor(Theme.color(Palette.surface))
-            spinner.indeterminateTintList = android.content.res.ColorStateList.valueOf(Theme.color(Palette.textSecondary))
         }
 
         override fun layoutSubviews(width: Double, height: Double) {
@@ -745,8 +906,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             composer.suggestionFrame(composerFrame.width)?.let { composer.suggestionList.setFrame(it.offsetBy(composerFrame.minX, composerFrame.minY)) }
             for ((bar, frame) in bars.zip(layout.accessories)) bar.first.setFrame(frame.offsetBy(layout.dock.minX, layout.dock.minY))
             scrollButton.setFrame(layout.scrollButton)
-            val s = 32.0
-            spinner.setFrame(Rect(layout.placeholder.midX - s / 2, layout.placeholder.midY - s / 2, s, s))
+            placeholder.setFrame(if (composer.visibility == View.GONE) Rect(0.0, 0.0, width, height) else layout.placeholder)
             if (layout.list.width != listWidth) {
                 listWidth = layout.list.width
                 requestPlans()

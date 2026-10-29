@@ -17,4 +17,7 @@
     <string name="chat_rig_activity_tasks">%1$s tasks</string>
     <!-- happy-ios Strings.Tools.commandNoOutput: the message screen's CommandView with nothing printed. -->
     <string name="chat_command_no_output">[Command completed with no output]</string>
+    <!-- EmptyMessages.tsx literals -->
+    <string name="chat_no_messages">No messages yet</string>
+    <string name="chat_created">Created %1$s</string>
 </resources>

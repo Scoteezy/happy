@@ -196,6 +196,12 @@ object ChatTextStyles {
     // EmptyMessages.tsx
     val emptyTitle = TextStyle(FontFace.Regular, 20)
     val emptyPath = TextStyle(FontFace.Regular, 14)
+    val emptyHost = TextStyle(FontFace.SemiBold, 18)
+    val emptyCreated = TextStyle(FontFace.Regular, 16, 24)
+
+    // PendingChatPlaceholder.tsx; its folder line is emptyPath's 14
+    val pendingQueued = TextStyle(FontFace.Regular, 15, 21)
+    val pendingChatTitle = TextStyle(FontFace.SemiBold, 18)
 }
 
 // AgentInput.tsx and MultiTextInput.tsx (happy-ios TextStyles extension).

@@ -61,6 +61,8 @@ data class ChatSnapshot(
     val isLoadingOlder: Boolean = false,
     val todos: List<TodoItem>? = null,
     val usage: ContextUsage? = null,
+    /** The oldest stored message's seq; null with none stored. An older page has joined once this is below where it was fetched from. */
+    val oldestSeq: Long? = null,
 )
 
 /**
@@ -127,8 +129,9 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             lastDelivery = delivery
             changed = true
         }
+        val oldestSeq = page.records.minOfOrNull { it.seq }
         if (!changed && snapshot.hasMoreOlder == page.hasMoreOlder && snapshot.isLoadingOlder == page.isLoadingOlder &&
-            snapshot.loaded == page.loaded
+            snapshot.loaded == page.loaded && snapshot.oldestSeq == oldestSeq
         ) {
             return snapshot
         }
@@ -149,6 +152,7 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             isLoadingOlder = page.isLoadingOlder,
             todos = reducer.todos,
             usage = reducer.usage,
+            oldestSeq = oldestSeq,
         )
         return snapshot
     }

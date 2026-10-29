@@ -11,10 +11,15 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.slopus.happy.R
+import com.slopus.happy.chat.ChatOlderPaging
 import com.slopus.happy.layout.Palette
+import com.slopus.happy.layout.RoundButtonDisplay
+import com.slopus.happy.layout.RoundButtonSize
 import com.slopus.happy.layout.Rect
 import com.slopus.happy.layout.chat.ChatOlderEndLayout
 import com.slopus.happy.layout.chat.ChatScrollAnchor
+import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
 import com.slopus.happy.ui.view.ManualLayout
@@ -51,11 +56,15 @@ class ChatListView(context: Context) : RecyclerView(context), ThemeAware {
     private var newestInset = 0.0
     private var oldestInset = 0.0
 
-    var isLoadingOlder = false
+    /** Retry or Load more at the older end was pressed; which one is [olderStatus]. */
+    var onOlderAction: (() -> Unit)? = null
+
+    /** What the older end shows (`ChatOlderPaging.status`). */
+    var olderStatus = ChatOlderPaging.Status.Idle
         set(value) {
             if (field == value) return
             field = value
-            adapter.olderEnd?.loading = value
+            adapter.olderEnd?.status = value
         }
 
     init {
@@ -222,7 +231,11 @@ class ChatListView(context: Context) : RecyclerView(context), ThemeAware {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
             val view: View = if (viewType == 1) {
-                OlderEndView(parent.context).also { olderEnd = it; it.loading = isLoadingOlder }
+                OlderEndView(parent.context).also {
+                    olderEnd = it
+                    it.status = olderStatus
+                    it.onAction = { onOlderAction?.invoke() }
+                }
             } else {
                 ChatRowView(parent.context)
             }
@@ -253,27 +266,46 @@ class ChatListView(context: Context) : RecyclerView(context), ThemeAware {
         }
     }
 
-    /** OlderEnd: the 32dp slot past the oldest message, holding the spinner while older history loads. */
+    /**
+     * ChatList's OlderEnd (happy-ios `ChatOlderEndView`): past the oldest
+     * message, a spinner while the screen waits on an older page it asked
+     * for, Retry after one failed, Load more after five that showed nothing
+     * new. Always the 32dp slot, so a change of status never moves the
+     * conversation.
+     */
     private class OlderEndView(context: Context) : ManualLayout(context) {
         private val spinner = ProgressBar(context, null, android.R.attr.progressBarStyleSmall)
+        private val button = RoundButton(context, context.getString(R.string.common_retry), RoundButtonSize.Small, RoundButtonDisplay.Inverted)
 
-        var loading = false
+        var onAction: (() -> Unit)? = null
+
+        var status = ChatOlderPaging.Status.Idle
             set(value) {
                 field = value
-                spinner.visibility = if (value) VISIBLE else INVISIBLE
+                spinner.visibility = if (value == ChatOlderPaging.Status.Loading) VISIBLE else INVISIBLE
+                when (value) {
+                    ChatOlderPaging.Status.Error -> button.title = context.getString(R.string.common_retry)
+                    ChatOlderPaging.Status.LoadMore -> button.title = context.getString(R.string.common_load_more)
+                    else -> Unit
+                }
+                button.visibility = if (value == ChatOlderPaging.Status.Error || value == ChatOlderPaging.Status.LoadMore) VISIBLE else GONE
+                requestLayout()
             }
 
         init {
             spinner.indeterminateTintList = ColorStateList.valueOf(Theme.color(Palette.textSecondary))
             spinner.visibility = INVISIBLE
             addView(spinner)
+            button.onTap = { onAction?.invoke() }
+            button.visibility = GONE
+            addView(button)
         }
 
         override fun sizeThatFits(width: Double, height: Double) = com.slopus.happy.layout.Size(width, ChatOlderEndLayout.height)
 
         override fun layoutSubviews(width: Double, height: Double) {
-            val l = ChatOlderEndLayout(width, com.slopus.happy.layout.Size(20.0, 20.0))
-            spinner.setFrame(l.control)
+            spinner.setFrame(ChatOlderEndLayout(width, com.slopus.happy.layout.Size(20.0, 20.0)).control)
+            button.setFrame(ChatOlderEndLayout(width, button.sizeThatFits(width, Double.MAX_VALUE)).control)
         }
     }
 }
