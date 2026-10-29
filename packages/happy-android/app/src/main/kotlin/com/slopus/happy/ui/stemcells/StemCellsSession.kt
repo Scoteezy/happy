@@ -38,6 +38,22 @@ class StemCellsSession private constructor(val accountId: String, val engine: Di
     }
     private var storiesMade = false
     private val following: Job
+    private var carryWork: Job? = null
+
+    /** The drop must reach the store before buffered document events are released. */
+    private fun carryInOrder(work: suspend () -> Unit) {
+        val previous = carryWork
+        carryWork = scope.launch { previous?.join(); work() }
+    }
+
+    fun setDragging(active: Boolean) = carryInOrder {
+        if (active) store.attentionInput().join()
+        store.setDragging(active).join()
+    }
+
+    fun drop(drag: com.slopus.happy.stemcells.StemCellsDrag, to: Int) = carryInOrder {
+        drag.after(to)?.let { store.move(drag.moving, it.after).join() }
+    }
 
     init {
         models.load()
