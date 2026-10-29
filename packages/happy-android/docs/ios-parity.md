@@ -48,9 +48,78 @@ item once it exists.
   Screen 15 shows the final sharp vector pairing mark; screen 16 shows Stories
   appearing on the first cold-start Settings open, without a carousel switch.
   No release was made.
-- Remaining next slices after the inline Stories milestone below:
-  proposal cards and header rename. These remain separate unchecked/partial
-  features below; wiring the real shell does not mark them complete.
+- Inline Stories and proposal cards now have their own verified integration
+  records below. The remaining checklist is still partial: in particular relay
+  Home task/bot rows and dock creation modes need separate work. A fresh audit
+  must compare current iOS source, not assume every historical gap still exists.
+
+## Real conversation sidebar proposal verification (2026-10-29)
+
+- `7f63acafb` adds the native proposal state owner: wanted reads, event and
+  reconnect refreshes, local folds, names refreshed from current spaces,
+  version/terminal-status guards, bounded retries with one mutation ID,
+  server refusal notices and cancellation on owner destruction.
+- `4d7e40ad6` adds proposal tool presentations only for new
+  `shell-fixture-proposals-*` computers in the isolated debug shell APK.
+  Acceptance actually applies the document diff and emits sidebar/proposal
+  events; decline preserves the sidebar. It is not a canned success message.
+- `0d58e06b5` replaces the permanent Loading line with real proposal cards
+  in Direct conversations. Existing sidebar rows render full-height without
+  their own scrolling; the ported layout supplies frames. The header/version,
+  local folds, two answer pills, chosen spinner/both-disabled state, refusal
+  notice, accepted line and dimmed declined state follow native. Pill drawing
+  remains 28 dp high with 44 dp hit bounds. Planner caches include the shown
+  proposal values; read-only previews bind no decision or fold actions.
+- Fifteen affected tests passed: `StemCellSidebarProposalsTest` (6),
+  `StemCellsProposalCardTest` (3), `StemCellsInlineStoryTest` (5),
+  `StemCellsPreviewTest` (1). Real-card tests verify local fold without a
+  sidebar write, accepted card plus actual store update, decline without
+  sidebar change, stable card reuse and read-only preview behavior. The
+  initial state-owner compile error was a Kotlin val assignment inside its
+  retry loop; corrected before passing tests. It was not a device failure.
+- Real MainActivity evidence under `proposals/`: `proposal-accept.mp4`
+  (48.092 s) shows fold, acceptance, then Home adopting Proposed work;
+  `proposal-decline.mp4` (59.446 s) shows fold, decline and original Home
+  retained. Fresh synthetic computers 1 and 2 isolate their writes. Screens
+  `accept-01-card.png` through `accept-04-home.png` and corresponding
+  `decline-*` files record each step. Both video contact sheets and the finer
+  `proposal-decline-edge.png` were inspected; coarse sampling alone skipped
+  the short declined state. Android was shut down afterward and no own
+  happy36 qemu remained.
+- Native reference uses the actual Direct home, production tablet container
+  and conversation over the same proposal document. Only the ignored host
+  adapter/fixture changed, never iOS app sources. Its initial helper-only
+  build error called `SpaceSidebarDiff.diff` instead of Swift's
+  `SpaceSidebar.diff`; the corrected build passed. The native UI driver
+  passed (158.296 s). `ios-proposals.mp4` is 88.178 s, not the whole driver
+  duration; `ios-before.png`, `ios-fold.png`, `ios-accepted.png`,
+  `ios-declined.png` and both `ios-home-*` screens capture the states.
+  HappyRef 17 Pro alone ran, after Android/Gradle stopped, and was shut down
+  before the full test batch. All verification here is fake-backed, not
+  successful live Tailcat/daemon access or a spoken TalkBack test.
+- Full milestone batch passed at exact code HEAD
+  `0d58e06b5724fe4e2e0ab378d669247b489df7d46`:
+  `.context/scripts/g.sh testDebugUnitTest :layout:test :crypto:test :icons:test :app:compileReleaseKotlin :app:assembleDebug -Phappy.shellHarness=true --console=plain`.
+  Result XML totals: **1903 tests in 292 suites**, zero failures, errors or
+  skips. App's 1270 tests/178 suites ran; unchanged layout 591/107,
+  crypto 36/5 and icons 6/2 remained up-to-date. Production release Kotlin
+  compilation and isolated debug APK assembly passed. Gradle was stopped;
+  no Gradle/Kotlin daemon or own qemu remained afterward. Both native movie
+  contact sheets, including the fine action sampling, were inspected.
+
+## Current-source parity audit (2026-10-29, continuing)
+
+- The old “rename in the chat header” gap is stale: native
+  `StemCellChatHeaderView.swift:57` routes the whole capsule to details and
+  disables title interaction; no `titleView.onRename` assignment exists in
+  current iOS Sources. Android already routes its capsule to details.
+  Renaming belongs in the detail screen, which both platforms implement;
+  its complete current flow will be verified separately, not replaced with
+  a new header behavior absent from the reference.
+- Relay Home task/bot rendering is a real remaining gap: native
+  `HomeRowDrawing.swift:190` and `TabletHomeRowDrawing.swift` handle these
+  row kinds; native `HomeDockScreens.swift` also has Bot/Task creation modes.
+  Direct's existing task/bot sidebar does not complete these relay features.
 
 ## Real conversation inline Stories verification (2026-10-29)
 
@@ -176,8 +245,8 @@ item once it exists.
   only HappyRef 17 Pro was booted and it was shut down afterward. Android
   was off throughout the native build/capture. Four Android video contact
   sheets and their passing step screenshots were also inspected.
-- Inline story cards are addressed in their later milestone above;
-  proposal cards and header rename remain separate partial features.
+- Inline story and proposal cards are addressed in their later milestones
+  above. The current-source audit supersedes the historical header-rename gap.
 - Full milestone batch passed at exact code HEAD
   `ac70aa5b595162e118b14f6acb94e4012f07e00c`:
   `.context/scripts/g.sh testDebugUnitTest :layout:test :crypto:test :icons:test :app:compileReleaseKotlin :app:assembleDebug -Phappy.shellHarness=true --console=plain`.

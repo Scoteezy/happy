@@ -898,6 +898,16 @@ on Activity destruction; stack View detachment alone may be reparenting.
 The application-scoped per-computer session survives Activity recreation,
 but the old screen's subscriptions and scopes must not survive it.
 
+Direct conversation proposal cards use `StemCellSidebarProposals` for reads,
+event/reconnect refreshes, reader-local folds and accept/decline. Keep one
+mutation ID across retries; a stale read must not reopen an answered proposal
+or replace a newer revision. The screen owns the feed and stops it on destroy.
+`ChatRowPlan.proposals` carries measured frames; the owning chat hosts
+`StemCellSidebarProposalView` in each row, using the actual sidebar renderer
+at full height with scrolling disabled. Include each row's shown proposals
+in planner caching. A hold preview reads them but binds no decision or fold
+actions. Its 28 dp answer pills own 44 dp hit bounds, as native's touch inset.
+
 For fake-backed verification of the **real MainActivity shell**, build debug
 with `-Phappy.shellHarness=true`. This changes only debug's application ID to
 `com.slopus.happy.dev.shellharness`, so fixtures cannot share normal app data.
@@ -923,6 +933,13 @@ activity accepts `offlineComputer` (a `shell-fixture-*` address) and boolean
 `offline`; this rejects requests and new streams, not an existing stream.
 Background to flush, then restart only the fixture APK. Restore the flag
 after verification. This hook is debug-only and never proves Tailcat access.
+
+`shell-fixture-proposals-*` addresses add an actual sidebar-proposal tool
+presentation. The debug transport applies accepted proposal documents through
+the same sidebar diff/applier and emits change events; decline only changes
+the proposal status. This proves real client/store/Views integration against
+fiction, never real-daemon connectivity. Pair fresh fixture addresses for
+write checks after process restart, as for other fake computer versions.
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one
