@@ -73,6 +73,8 @@ class StemCellIntroView(context: Context) : ManualLayout(context), ThemeAware {
     }
     private var settled = false
     private var placed: MakeStuffIntroLayout? = null
+    private var currentMark: Mark? = null
+    private var hatch: StemCellHatchView? = null
 
     init {
         tag = "stem-intro"
@@ -82,6 +84,9 @@ class StemCellIntroView(context: Context) : ManualLayout(context), ThemeAware {
     }
 
     fun configure(mark: Mark, settled: Boolean) {
+        val previous = currentMark
+        if (mark != previous) { hatch?.finish(); clay.alpha = 1f }
+        currentMark = mark
         when (mark) {
             is Mark.StemCell -> {
                 stemCell.seed = mark.seed
@@ -89,9 +94,23 @@ class StemCellIntroView(context: Context) : ManualLayout(context), ThemeAware {
                 clay.visibility = GONE
             }
             is Mark.Clay -> {
-                clay.setImageBitmap(ClayIconImages.image(context, mark.slug))
+                val image = ClayIconImages.image(context, mark.slug)
+                clay.setImageBitmap(image)
                 clay.visibility = VISIBLE
                 stemCell.visibility = GONE
+                if (previous is Mark.StemCell && image != null && StemCellHatchView.canPlay(this)) {
+                    val frame = placed?.mark
+                    if (frame != null) {
+                        val overlay = StemCellHatchView(context)
+                        hatch = overlay
+                        clay.alpha = 0f
+                        addView(overlay)
+                        overlay.setFrame(frame)
+                        overlay.play(previous.seed, image) {
+                            if (hatch === overlay) { hatch = null; clay.alpha = 1f }
+                        }
+                    }
+                }
             }
         }
         this.settled = settled
@@ -109,6 +128,7 @@ class StemCellIntroView(context: Context) : ManualLayout(context), ThemeAware {
         val layout = placed ?: return
         stemCell.setFrame(layout.mark)
         clay.setFrame(layout.mark)
+        hatch?.setFrame(layout.mark)
         line.setFrame(layout.line)
     }
 

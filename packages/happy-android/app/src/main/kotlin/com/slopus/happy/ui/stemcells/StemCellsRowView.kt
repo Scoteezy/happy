@@ -66,6 +66,7 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
     private val add = IconView(context, StemCellsGlyphs.icon("add"), StemCellsMetrics.addGlyph, StemCellsPalette.stemCellsRowText)
     private val rule = View(context)
     private var pictureJob: Job? = null
+    private var hatch: StemCellHatchView? = null
     private var renameField: TextField? = null
     private var renameDone: ((String?) -> Unit)? = null
     private var heldLabel: String? = null
@@ -156,7 +157,12 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
         val previous = this.row
         this.row = row
         if (heldLabel == row.label) { heldLabel = null; removeCallbacks(releaseLabel) }
-        if (previous?.mark != row.mark) applyMark(row.mark)
+        if (previous?.mark != row.mark) {
+            applyMark(row.mark)
+            val old = previous?.mark as? Mark.StemCell
+            val next = row.mark as? Mark.Clay
+            if (old != null && next != null) ClayIconImages.image(context, next.slug)?.let { hatch(old.seed, it) }
+        }
         applyText(row)
         applyTrailing(row)
         applyState()
@@ -169,6 +175,8 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
     }
 
     private fun applyMark(mark: Mark) {
+        hatch?.finish()
+        picture.alpha = 1f
         pictureJob?.cancel()
         pictureJob = null
         stemCell.seed = null
@@ -217,6 +225,20 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
     private fun showPicture(bitmap: Bitmap?) {
         picture.visibility = VISIBLE
         picture.setImageBitmap(bitmap)
+    }
+
+    private fun hatch(seed: String, image: Bitmap) {
+        val frames = frames ?: return
+        val mark = frames.mark ?: return
+        if (!StemCellHatchView.canPlay(this)) return
+        val overlay = StemCellHatchView(context)
+        hatch = overlay
+        picture.alpha = 0f
+        addView(overlay, indexOfChild(picture) + 1)
+        overlay.setFrame(mark.offsetBy(-frames.box.minX, -frames.box.minY))
+        overlay.play(seed, image) {
+            if (hatch === overlay) { hatch = null; picture.alpha = 1f }
+        }
     }
 
     private fun applyText(row: StemCellsRow) {
@@ -289,6 +311,7 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
         val mark = frames.mark?.let(::local) ?: Rect.Zero
         stemCell.setFrame(mark)
         picture.setFrame(mark)
+        hatch?.setFrame(mark)
         glyph.setFrame(mark)
         label.setFrame(local(frames.label))
         renameField?.setFrame(local(frames.label))
