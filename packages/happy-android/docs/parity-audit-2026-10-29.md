@@ -13,9 +13,9 @@ old partial checklist item has received a fresh device test.
 The Task Home row implementation has passed focused/full tests and isolated
 Android/native comparison. It adds task
 classification, ordering, retired-task exclusion, name/folder presentation,
-checkbox avatars and grouped/flat row bindings. Task dock creation is still
-absent. The inventory below separates the verified row slice from unfinished
-creation. Task actions have a later verified slice below.
+checkbox avatars and grouped/flat row bindings. Task dock creation was absent
+at this row checkpoint. Actions and text Task creation have later verified
+slices below; dock pictures and bot faces remain separate gaps.
 
 The initial affected test command compiled main Kotlin but failed while
 compiling two existing test shape helpers whose sealed-type `when` expressions
@@ -199,13 +199,103 @@ remained off and owned Gradle/Kotlin PIDs 773/862 exited afterward. Log:
 `.context/evidence/relay-task-actions/full-milestone.log`. The earlier row
 checkpoint's totals counted only the four main modules, not vendor tests.
 
+## Relay Task dock text creation: verified milestone
+
+Source checkpoint: `0f3e74eea870e1438dbc08b516cb684080bcd2d2`.
+The frozen iOS tree remains unchanged. Strict advertised `tasks` capability
+now offers Session / Bot / Task in native order. Task mode is memory-only,
+keeps the machine row, omits session mode chips, retains the prompt across
+Bot/Task and dock close/reopen, and resets after successful creation or an
+account change. Unsupported/stale capabilities cannot silently turn a chosen
+Task into an ordinary Session.
+
+Creation forces the Happy Agent route with an unnamed `{kind:"task"}` target,
+without a directory/worktree target, then sends the first user message through
+the normal sender. Account and target identity are bound through spawn,
+readiness, send and cleanup. Retry retains its request/task after a refused
+first send; abandoning or stopping it retires the old request. Regression
+tests cover an immediate Stop/retry before the old operation unwinds, late
+cleanup, account changes, unsupported capability, real dock/controller submit
+and reset, dynamic segmented controls, and encrypted transport association.
+
+The earlier rendering/refusal Android capture is
+`.context/evidence/relay-task-dock/android-fixed/task-dock-flow.mp4`
+(85.582633s). Native reference is `native/ios-task-dock.mp4` (742.603333s);
+its UI test passed **1 test / 731.816s**, including long XCTest animation-idle
+waits. Task card, retained prompt and refusal stills were personally inspected.
+These refusals are **pre-RPC missing-key errors**, not network failures:
+Android says “Machine encryption key not found”; native says “notDecryptable”.
+Both captures predate the final raw-selected-kind and atomic request guards;
+the subsequent tests and successful device capture include those guards.
+
+Successful real-shell capture is under
+`.context/evidence/relay-task-dock/android-success/`, movie
+`task-success-flow.mp4` (**61.392767s**). The unchanged real MainActivity,
+controller, account sync, encrypted Socket.IO RPC and HTTP message transport
+created a Task, opened its chat with the first-message bubble, returned to its
+new TASKS row, and reopened an empty Session-mode dock. Those stills and the
+cold-restart still were personally inspected; all seven XML hierarchies parse.
+`created.json` verifies exactly one Task-target spawn, matching response/store/
+Home session identity, one decrypted first message, empty draft and reset mode.
+`restarted.json` verifies a fresh namespace/account/loopback relay and no old
+Task after process restart. `closed.json` confirms explicit relay close,
+fixture-scope cancellation and account stop before process/emulator shutdown.
+Controlled happy36 PID 58441 exited. This is **synthetic protocol/device
+verification**, not live pairing, a real daemon, or actual agent execution.
+
+The shared `src/sharedTest` FakeHappyServer implementation is compiled into
+unit tests or the explicitly opted-in `.shellharness` debug APK only. Its
+listener binds `127.0.0.1:0` inside the app, before graph initialization;
+there is no host listener, port forwarding or production transport hook.
+Generated account/machine/session keys and software secure-store keys are
+disposable. Every process gets fresh namespaced files/preferences, an in-memory
+database and its newly bound server URL, so no old account/port/real relay can
+restore. Cleartext is permitted only for numeric loopback in this harness.
+Ordinary debug excludes the harness sources/assets/manifest and mockwebserver
+dependency; production excludes them too.
+
+The first protocol checks caught and corrected incomplete fixture capabilities
+and a `localhost` advertisement. The first device attempt then caught a
+fixture-only reverse-DNS call on the UI thread; the URL now uses the numeric
+address and bound port directly, without relaxing StrictMode. That failed
+startup is diagnostic only. Final affected checks passed **60 tests / 6 suites**
+and required-Tailcat harness assembly (1m06s, `affected-8.log`). The successful
+capture APK was built before the source commit, with `fbed351` build metadata;
+its runtime code is the committed implementation (only comments changed before
+commit). Preserved `app-shellharness-capture347.apk` SHA-256:
+`85e51437c480a4525dc9ecd76703a0d90514314595f1a80272c668864f1bc363`.
+
+At exact source `0f3e74eea`, the full **ordinary-debug, no-harness** batch passed
+in 2m46s: app **1313/185**, layout **591/107**, crypto **36/5**, icons **6/2**
+tests/suites, plus vendor ElevenLabs **4/1**: **1950 tests / 300 suites**, zero
+failures/errors/skips. All five test tasks actually ran with `--rerun`.
+Command: `testDebugUnitTest --rerun :layout:test --rerun :crypto:test --rerun :icons:test --rerun :app:assembleDebug -Phappy.requireTailcat=true --console=plain`.
+Log: `full-ordinary-debug.log`; XML preserved under `full-test-results/`.
+Gradle: 38 executed, 2 from cache, 61 up-to-date; owned PIDs 62403/62559 exited.
+
+Genuine no-harness `:app:compileReleaseKotlin :app:assembleRelease
+-Phappy.requireTailcat=true` also passed at that source in **5m29s**: 22 executed,
+2 from cache, 73 up-to-date, including R8, lint and release keep checks.
+Owned PIDs 64407/64499 exited. Log: `production-release.log`. Preserved unsigned
+`app-release-0f3e74eea-unsigned.apk`: **96,379,480 bytes**, SHA-256
+`c8ab309981d8567b6cb8435fdaea03d3816273a9684818b7f07f50c4e7be35ef`.
+Actual ordinary-debug and release manifests, DEX classes, APK entries and
+release R8 mapping confirm no fixture/testing/mockwebserver code, fixture
+routes/assets or permissive network configuration. Correct package IDs are
+`com.slopus.happy.dev` and `com.ex3ndr.happy`; both contain both Tailcat JNI ABIs
+and pass `zipalign -c -P 16 4`. Production is non-debuggable and unsigned
+(`apksigner` reports the expected missing signature manifest). All build and
+device jobs remained sequential and bounded. No production install, signing,
+publication or store validation occurred. Dock attachments and bot faces are
+not covered by this text-creation milestone.
+
 ## Confirmed missing behavior
 
 | Area | Native reference | Android gap |
 | --- | --- | --- |
 | Relay Home task rows | `HappyCore/Home/ProjectHomeList.swift:119,256`, `HappyCore/Home/SessionList.swift:312`, `HappyStore/SessionState.swift:72` | Closed for row rendering: classification, ordering, retired exclusion, name/folder/glyph and grouped/flat rows pass focused/full tests and isolated Android/native comparison. Dock creation remains separate below. |
 | Relay Home task actions | `HappyCore/Home/SessionQuickActions.swift:100`, `HappyUI/Screens/SessionListScreens.swift:714`, `HappyUI/Screens/HomeSessionActions.swift:225` | Implemented and focused/device verified above: capability Leave/swipe, ownership Archive, machine-only routes, optimistic restoration and account isolation. Successful live machine operations remain unverified. |
-| Home dock Task mode | `HappyCore/Home/HomeDockKind.swift`, `HappyUI/Screens/HomeDockScreens.swift:596` | `ui/home/HomeDockController.kt:132` and `HomeDockFocusView.kt:85` offer Session/Bot only. Task capability/creation and selection persistence need a separate slice. |
+| Home dock Task mode | `HappyCore/Home/HomeDockKind.swift`, `HappyUI/Screens/HomeDockScreens.swift:596` | Text creation is implemented and verified above, including real-shell encrypted fake RPC/message flow, navigation and reset. Pictures remain separate below; no successful live machine claim. |
 | Dock bot face picker and pictures | Native `HomeDockScreens.swift:463,732` | Android has Bot naming/creation but no face picker in `HomeDockFocusView`; dock attachments need wiring. Do not equate generic chat attachment support with the dock. |
 | Relay troubleshooting | Native `HappyUI/Screens/HomeScreens.swift:650` | `ui/home/HomeScreen.kt:216,343` still routes to `notPorted`. This remains an unfinished required action. |
 | Imported-account server confirmation | Native `HappyUI/Screens/AccountServerScreens.swift`, `Navigation/AppCoordinator.swift:282` | No equivalent confirmation route found in Android auth/coordinator. |
@@ -237,15 +327,15 @@ remaining off-main measurement/motion. Keep their limitations in
 - `app/build.gradle.kts:126,227,314` separates production/preview from the
   debug-only `.shellharness` APK. Production release Kotlin compilation
   and unsigned assembly are now verified at
-  `0103c67b0dd821702806d42096559a48bac4a9a4`; the installed UI
+  `0f3e74eea870e1438dbc08b516cb684080bcd2d2`; the installed UI
   evidence is the isolated debug APK, not a signed release install. Release
   and preview require the source-built Tailcat AAR. Signing/store/service
   credentials and a production distribution are not validated by compilation.
 
 ## Stale checklist wording to remove or replace
 
-- “Tasks and bots rows” must split: Task rendering/actions are now verified,
-  Task dock creation remains missing, and Bots were already implemented.
+- “Tasks and bots rows” must split: Task rendering/actions and dock text
+  creation are verified, dock pictures remain missing, and Bots were already implemented.
 - “Bots (Session | Bot, faces) ... to do” must split: mode/name/create exists;
   face picker remains missing and device parity awaits verification.
 - “Rename in the header” is not native behavior now:

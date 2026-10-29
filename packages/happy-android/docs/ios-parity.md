@@ -50,7 +50,8 @@ item once it exists.
   No release was made.
 - Inline Stories and proposal cards now have their own verified integration
   records below. The remaining checklist is still partial: in particular relay
-  Home task/bot rows and dock creation modes need separate work. A fresh audit
+  bot face choices and dock pictures need separate work. Relay Task rows,
+  actions and text creation have later verification records below. A fresh audit
   must compare current iOS source, not assume every historical gap still exists.
 
 ## Real conversation sidebar proposal verification (2026-10-29)
@@ -120,8 +121,8 @@ item once it exists.
   Renaming belongs in the detail screen, which both platforms implement;
   its complete current flow will be verified separately, not replaced with
   a new header behavior absent from the reference.
-- Relay Home Task rendering/actions are verified by tests and isolated
-  Android/native comparison below. Dock Task mode remains a gap.
+- Relay Home Task rendering/actions and dock text creation are verified by
+  tests and isolated Android/native comparison below. Dock pictures remain a gap.
   Further inspection found Bot grouping and Session/Bot creation already
   implemented in Android; bot face choices remain absent. Native
   `HomeRowDrawing.swift:190` and `HomeDockScreens.swift` are the reference.
@@ -209,6 +210,43 @@ item once it exists.
   off; owned Gradle/Kotlin PIDs 773/862 exited. Exact command/log are in the
   audit. Dock Task creation and successful live-machine operations remain
   separate from this verified action milestone.
+
+## Relay Task dock text-creation verification (2026-10-29)
+
+- Source `0f3e74eea870e1438dbc08b516cb684080bcd2d2` adds strict Task capability,
+  native Session/Bot/Task ordering, memory-only mode selection, machine-only
+  Task card, unnamed Happy Agent Task spawn and the normal first-message send.
+  Stop/retry, late completion, account/target change and stale-capability guards
+  prevent request reuse/cleanup races or an unintended ordinary Session spawn.
+- Earlier Android rendering/refusal video: **85.582633s**. Frozen-native dock
+  UI test: **1 test / 731.816s**, video **742.603333s**, with XCTest idle waits.
+  Refusals are missing-key **pre-RPC** errors, not network failures. Those
+  captures predate the final capability/atomic guards; later tests and the
+  successful capture include them. Native source remains unchanged.
+- Real-shell successful capture: `.context/evidence/relay-task-dock/android-success/`,
+  `task-success-flow.mp4` **61.392767s**. Personally inspected Task card,
+  created chat/first-message bubble, new TASKS row, empty Session dock and cold
+  restart. Sanitized JSON asserts Task—not Session—payload, matching returned/
+  stored/Home identity, encrypted first-message delivery, draft/mode reset,
+  fresh account/relay after restart, and explicit server/scope/account teardown.
+  Owned emulator PID 58441 exited. The relay is a disposable in-process
+  numeric-loopback fixture in the isolated APK, never a real daemon or account.
+  There are no production transport hooks or host listeners.
+- The captured APK predates the commit and records `fbed351` build metadata;
+  its runtime implementation is the committed source (only comments changed).
+  Full ordinary-debug checks at exact `0f3e74eea` passed **1950 tests / 300
+  suites**, no failures/errors/skips; all five test tasks ran afresh. App
+  1313/185, layout 591/107, crypto 36/5, icons 6/2, vendor 4/1. No-harness
+  required-Tailcat debug assembly passed; owned PIDs 62403/62559 exited.
+- Genuine unsigned production compilation/assembly at the same source passed
+  **5m29s**, including R8/lint/keep checks. Actual debug/release manifests,
+  DEX/assets and release mapping exclude harness/testing/mockwebserver code,
+  fixture routes and permissive network configuration. Both JNI ABIs and 16KB
+  ZIP alignment pass; production is non-debuggable and unsigned. Owned PIDs
+  64407/64499 exited. No production install, signing or publication. Exact
+  logs, artifact hash and checkpoint details are in the parity audit.
+- Task dock pictures and bot faces remain unfinished. Successful live machine
+  creation/agent execution and spoken TalkBack are not claimed by this fixture.
 
 ## Real conversation inline Stories verification (2026-10-29)
 
