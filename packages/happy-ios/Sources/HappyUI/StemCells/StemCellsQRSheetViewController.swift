@@ -98,7 +98,7 @@ final class StemCellsQRSheetViewController: UIViewController {
             avatar.image = image
             avatar.contentMode = .scaleAspectFill
         } else {
-            avatar.image = isDirect ? UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate) : StemCellsGlyphs.image("person-outline", size: 44)
+            avatar.image = isDirect ? UIImage.happyMark(side: 44) : StemCellsGlyphs.image("person-outline", size: 44)
             avatar.contentMode = .center
         }
         view.addSubview(avatar)

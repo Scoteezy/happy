@@ -230,7 +230,7 @@ final class StemCellsProfileCarouselView: UIView, UIScrollViewDelegate {
                 picture.backgroundColor = nil
             } else {
                 picture.image = item.isDirect
-                    ? UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
+                    ? UIImage.happyMark(side: 28)
                     : StemCellsGlyphs.image("person-outline", size: 28)
                 picture.contentMode = .center
                 picture.tintColor = UIColor(Palette.stemCellsSettingsText)

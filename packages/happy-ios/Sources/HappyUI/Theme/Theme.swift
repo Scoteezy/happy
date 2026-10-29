@@ -130,6 +130,16 @@ extension UIImage {
         UIImage(named: name, in: .module, compatibleWith: nil)
     }
 
+    /// Happy's mark as a template `side` points square. `logo-black` is
+    /// 1024 points as it comes, so a view that centres it unscaled shows
+    /// only its middle.
+    static func happyMark(side: CGFloat) -> UIImage? {
+        guard let logo = happy("logo-black") else { return nil }
+        let size = CGSize(width: side, height: side)
+        return UIGraphicsImageRenderer(size: size).image { _ in logo.draw(in: CGRect(origin: .zero, size: size)) }
+            .withRenderingMode(.alwaysTemplate)
+    }
+
     /// An SF Symbol at a point size, standing in for happy-app's Ionicons.
     static func symbol(_ name: String, pointSize: CGFloat, weight: UIImage.SymbolWeight = .regular) -> UIImage? {
         UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: pointSize, weight: weight))

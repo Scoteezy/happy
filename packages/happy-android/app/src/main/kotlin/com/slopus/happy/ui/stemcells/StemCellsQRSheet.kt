@@ -200,7 +200,8 @@ class StemCellsQRSheet(context: Context, name: String, image: Bitmap?, isDirect:
         override fun layoutSubviews(width: Double, height: Double) {
             picture.setFrame(Rect(0.0, 0.0, width, height))
             person.setFrame(Rect(0.0, 0.0, width, height))
-            val side = width * 0.36
+            // At the person glyph's 44 (iOS `happyMark(side: 44)`).
+            val side = 44.0
             mark.setFrame(Rect((width - side) / 2, (height - side) / 2, side, side))
         }
 

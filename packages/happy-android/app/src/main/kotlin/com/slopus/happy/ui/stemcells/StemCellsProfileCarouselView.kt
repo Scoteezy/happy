@@ -310,8 +310,8 @@ class StemCellsProfileCarouselView(context: Context) : ManualLayout(context), Th
             val inner = Rect(outset, outset, width - 2 * outset, height - 2 * outset)
             picture.setFrame(inner)
             glyph.setFrame(inner)
-            // Happy's mark at a third of the circle, as a picture's stand-in.
-            val side = inner.width * 0.36
+            // Happy's mark at the person glyph's 28, unscaled as the circle grows (iOS `happyMark(side: 28)`, centred).
+            val side = 28.0
             mark.setFrame(Rect(inner.midX - side / 2, inner.midY - side / 2, side, side))
         }
 
