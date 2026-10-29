@@ -90,6 +90,7 @@ class StoryViewerPageView(context: Context) : ManualLayout(context) {
         }
         closeButton.contentDescription = context.getString(R.string.stories_close)
         closeButton.tag = "story-close"
+        moreButton.contentDescription = context.getString(R.string.stories_more)
         moreButton.tag = "story-more"
         addView(closeButton)
         addView(moreButton)

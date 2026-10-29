@@ -116,6 +116,7 @@ class StemCellsInlineStoryTest {
             val viewer = StoriesViewerPresenter.presented(activity.window.decorView)
             assertNotNull(viewer)
             assertSame(canvas, viewer!!.origin)
+            assertEquals("More", viewer.findViewWithTag<View>("story-more").contentDescription)
             assertEquals("TalkBack must not reach the chat under a full-screen viewer", View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS,
                 underlay.importantForAccessibility)
             stack.setScreens(emptyList())
