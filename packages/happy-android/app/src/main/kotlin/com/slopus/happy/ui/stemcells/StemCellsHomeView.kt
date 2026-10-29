@@ -26,6 +26,8 @@ import com.slopus.happy.ui.composer.AgentInputCardView
 import com.slopus.happy.ui.composer.AgentInputChip
 import com.slopus.happy.stemcells.StemCellModelMenus
 import com.slopus.happy.ui.home.HeaderScrimView
+import com.slopus.happy.ui.stories.StoriesHomeController
+import com.slopus.happy.ui.view.BounceScrollView
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
 import com.slopus.happy.ui.view.ManualLayout
@@ -54,6 +56,8 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
     private val dockScrim = HeaderScrimView(context, fromTop = false)
     /** The dock, which new work's own composer stands in for as it opens. */
     val dock = AgentInputCardView(context)
+    val stories = StoriesHomeController(this)
+    private var storiesChange: StoriesHomeController.Change? = null
 
     /** A row was opened: its conversation, its Surface, or the artifacts. */
     var onOpen: ((StemCellsRow) -> Unit)? = null
@@ -89,6 +93,23 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         // The conversation's own ground, light and dark.
         setBackgroundColor(Theme.color(Palette.surface))
         addView(sidebar)
+        stories.list = sidebar.list
+        stories.onInsetChange = { change ->
+            storiesChange = change
+            try {
+                layoutSubviews(com.slopus.happy.ui.view.px(width), com.slopus.happy.ui.view.px(height))
+            } finally { storiesChange = null }
+        }
+        sidebar.list.listener = object : BounceScrollView.Listener {
+            override fun willBeginDragging() {
+                stories.listWillBeginDragging()
+                session?.store?.attentionInput()
+            }
+            override fun didScroll() = stories.listDidScroll()
+            override fun willEndDragging(velocity: Double, target: DoubleArray) = stories.listWillEndDragging(velocity, target)
+            override fun didEndDragging(decelerate: Boolean) = stories.listDidEndDragging(decelerate)
+            override fun didEndDecelerating() = stories.listDidEndDecelerating()
+        }
         addView(empty)
         addView(banner)
         addView(dockScrim)
@@ -133,6 +154,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         modelsWatch = null
         picker?.close(animated = false)
         this.session = session
+        stories.attach(session?.stories, session?.images?.let { images -> { path, hash, pixels -> images.picture(path, hash, pixels) } })
         sidebar.images = session?.images
         sidebar.apply(emptyList())
         snapshot = StemCellsSnapshot()
@@ -159,6 +181,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
     }
 
     fun disappear() {
+        stories.covered()
         sidebar.finishRename()
         session?.store?.attentionVisibleUpdate(false)
         picker?.close(animated = false)
@@ -221,6 +244,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
 
     fun close() {
         attach(null)
+        stories.close()
         scope.cancel()
     }
 
@@ -254,6 +278,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         empty.message = context.getString(if (!hasComputer) R.string.stem_no_computer else R.string.stem_unsupported)
         empty.showsPair = !hasComputer
         sidebar.visibility = if (shown) VISIBLE else GONE
+        stories.isSuppressed = !shown
         fun reason(text: String) = text.ifEmpty { context.getString(R.string.stem_unanswered) }
         val notice = snapshot.stemCellError?.let { context.getString(R.string.stem_new_work_failed, reason(it)) } ?: snapshot.error?.let(::reason)
         // Prioritizing being off is Settings' business: home says nothing of it.
@@ -271,7 +296,8 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         dockScrim.setFrame(docked.scrim)
         val restingBottom = if (dock.visibility == VISIBLE) docked.listBottom else contentInsets.listBottom
         val listBottom = if (sidebar.isEditing && keyboardHeight > 0) maxOf(restingBottom, keyboardHeight + safeArea.bottom + 12) else restingBottom
-        val layout = StemCellsHomeLayout(size, contentInsets.contentTop, contentInsets.chromeTop, listBottom, bannerHeight)
+        val layout = StemCellsHomeLayout(size, contentInsets.contentTop, contentInsets.chromeTop, listBottom, bannerHeight,
+            if (sidebar.visibility == VISIBLE) stories.inset else 0.0)
         banner.setFrameOrHide(if (banner.isEmpty) null else layout.banner)
         sidebar.setFrame(com.slopus.happy.layout.Rect(0.0, 0.0, width, height))
         val list = sidebar.list
@@ -279,8 +305,12 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         if (list.insetTop != insets.top || list.insetBottom != insets.bottom) {
             val atTop = list.contentOffset <= -list.insetTop + 1
             list.setInsets(insets.top, insets.bottom)
-            // A shrinking top leaves nothing scrolled past it.
-            if (atTop || (!list.isDragging && list.contentOffset < -insets.top)) list.setContentOffset(-insets.top)
+            when (storiesChange) {
+                StoriesHomeController.Change.Held -> Unit // Never move the rows under a held finger.
+                StoriesHomeController.Change.Animated -> list.setContentOffset(-insets.top, animated = true)
+                StoriesHomeController.Change.Immediate, null ->
+                    if (atTop || (!list.isDragging && list.contentOffset < -insets.top)) list.setContentOffset(-insets.top)
+            }
         }
         sidebar.revealRename()
         empty.setFrame(layout.empty)

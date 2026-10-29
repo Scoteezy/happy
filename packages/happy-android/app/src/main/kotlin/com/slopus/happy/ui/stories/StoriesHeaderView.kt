@@ -130,6 +130,21 @@ class StoriesHeaderView(context: Context) : ManualLayout(context) {
         }
     }
 
+    /** Another computer: remove even circles already fading out, without a cross-account fade. */
+    fun reset() {
+        for (index in 0 until strip.childCount) {
+            val child = strip.getChildAt(index)
+            child.animate().cancel()
+            (child as? StoriesCircleView)?.leave()
+        }
+        strip.removeAllViews()
+        strip.frames.clear()
+        circles.clear()
+        items = emptyList()
+        collapsed.visibility = GONE
+        pager.scrollTo(0, 0)
+    }
+
     /** Shows [items]; returns how many circles it touched. */
     fun apply(items: List<StoriesRowItem>): Int {
         if (items == this.items) return 0

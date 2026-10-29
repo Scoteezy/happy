@@ -63,6 +63,7 @@ object StoriesViewerPresenter {
             object : DefaultLifecycleObserver {
                 override fun onPause(owner: LifecycleOwner) = viewer.setBackgrounded(true)
                 override fun onResume(owner: LifecycleOwner) = viewer.setBackgrounded(false)
+                override fun onDestroy(owner: LifecycleOwner) = viewer.dismissViewer(animated = false)
             }.also { observer -> it.lifecycle.addObserver(observer) }
         }
         shown[viewer] = Presented(viewer, root, back, bars, lifecycle)
@@ -104,16 +105,20 @@ object StoriesViewerPresenter {
     }
 
     /** Closes [viewer] back into what it opened from; [done] once it's gone. */
-    fun dismiss(viewer: StoryViewerController, done: () -> Unit) {
+    fun dismiss(viewer: StoryViewerController, animated: Boolean = true, done: () -> Unit) {
         val presented = shown[viewer] ?: return done()
         presented.back?.isEnabled = false
-        StoriesViewerTransition.close(viewer, presented.root) {
+        val remove = {
             presented.back?.remove()
             presented.lifecycle?.let { (viewer.context as? ComponentActivity)?.lifecycle?.removeObserver(it) }
             presented.bars?.show(WindowInsetsCompat.Type.statusBars())
             presented.root.removeView(viewer)
             shown.remove(viewer)
             done()
+        }
+        if (animated) StoriesViewerTransition.close(viewer, presented.root, remove) else {
+            StoriesViewerTransition.cancel(viewer)
+            remove()
         }
     }
 }
@@ -127,6 +132,16 @@ object StoriesViewerPresenter {
  */
 object StoriesViewerTransition {
     private val M = StoryOpeningLayout.Metrics
+    private val animations = HashMap<StoryViewerController, MutableSet<ValueAnimator>>()
+
+    /** A removed account/window must not finish opening a viewer after it is gone. */
+    fun cancel(viewer: StoryViewerController) {
+        animations.remove(viewer)?.forEach {
+            it.removeAllListeners()
+            it.removeAllUpdateListeners()
+            it.cancel()
+        }
+    }
 
     /** [view]'s frame (its own [local] rect, dp) in [root]'s dp, through every transform between. */
     fun frame(view: View, root: View, local: Rect? = null): Rect? {
@@ -153,14 +168,21 @@ object StoriesViewerTransition {
         return StoryOpeningLayout(frame, radius, circle, viewer.page.layout, px(root.height))
     }
 
-    private fun run(duration: Double, interpolator: android.animation.TimeInterpolator = StoryViewerController.openingCurve, step: (Float) -> Unit, end: (() -> Unit)? = null) {
+    private fun run(viewer: StoryViewerController, duration: Double, interpolator: android.animation.TimeInterpolator = StoryViewerController.openingCurve, step: (Float) -> Unit, end: (() -> Unit)? = null) {
         ValueAnimator.ofFloat(0f, 1f).apply {
             this.duration = (duration * 1000).toLong()
             this.interpolator = interpolator
             addUpdateListener { step(it.animatedValue as Float) }
-            if (end != null) addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: android.animation.Animator) = end()
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    animations[viewer]?.let { running ->
+                        running.remove(this@apply)
+                        if (running.isEmpty()) animations.remove(viewer)
+                    }
+                    end?.invoke()
+                }
             })
+            animations.getOrPut(viewer) { LinkedHashSet() }.add(this)
             start()
         }
     }
@@ -185,21 +207,21 @@ object StoriesViewerTransition {
             page.showOpeningControls(0f, opening)
             page.placeOpeningBar(opening, 0f)
             page.showOpeningBar(0f)
-            run(M.duration, step = { page.placeOpening(opening, it) }) {
+            run(viewer, M.duration, step = { page.placeOpening(opening, it) }) {
                 page.endOpening()
                 page.setBackgroundColor(Theme.color(Palette.storiesViewerGround))
                 viewer.opened()
             }
-            run(M.controlsFade, ease, { page.showOpeningControls(it, opening) })
-            run(M.barIn, step = { page.placeOpeningBar(opening, it) })
-            run(M.groundIn, ease, {
+            run(viewer, M.controlsFade, ease, { page.showOpeningControls(it, opening) })
+            run(viewer, M.barIn, step = { page.placeOpeningBar(opening, it) })
+            run(viewer, M.groundIn, ease, {
                 page.showOpeningBar(it)
                 ground(viewer, it)
             })
         } else {
             page.pivotX = page.width / 2f
             page.pivotY = page.height / 2f
-            run(M.duration, android.view.animation.DecelerateInterpolator(1.5f), {
+            run(viewer, M.duration, android.view.animation.DecelerateInterpolator(1.5f), {
                 val s = 0.9f + 0.1f * it
                 page.scaleX = s
                 page.scaleY = s
@@ -213,6 +235,7 @@ object StoriesViewerTransition {
     }
 
     fun close(viewer: StoryViewerController, root: View, done: () -> Unit) {
+        cancel(viewer)
         val page = viewer.page
         page.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         val opening = opening(viewer, root, viewer.closingOrigin)
@@ -222,20 +245,20 @@ object StoriesViewerTransition {
             page.beginOpening()
             val fromY = page.translationY
             val fromScale = page.scaleX
-            run(M.duration, step = { t ->
+            run(viewer, M.duration, step = { t ->
                 page.translationY = fromY * (1 - t)
                 val s = fromScale + (1 - fromScale) * t
                 page.scaleX = s
                 page.scaleY = s
                 page.placeOpening(opening, 1 - t)
             }) { done() }
-            run(M.controlsFade, ease, { page.showOpeningControls(1 - it, opening) })
-            run(M.barOut, step = {
+            run(viewer, M.controlsFade, ease, { page.showOpeningControls(1 - it, opening) })
+            run(viewer, M.barOut, step = {
                 page.placeOpeningBar(opening, 1 - it)
                 page.showOpeningBar(1 - it)
             })
             val from = viewer.groundAlpha
-            run(M.groundOut, ease, { ground(viewer, from * (1 - it)) })
+            run(viewer, M.groundOut, ease, { ground(viewer, from * (1 - it)) })
             return
         }
         // On from where a drag left it, never back up or larger.
@@ -247,7 +270,7 @@ object StoriesViewerTransition {
         val from = viewer.groundAlpha
         page.pivotX = page.width / 2f
         page.pivotY = page.height / 2f
-        run(M.duration, ease, { t ->
+        run(viewer, M.duration, ease, { t ->
             page.translationY = dp(startY + (y - startY) * t)
             val scale = (startScale + (s - startScale) * t).toFloat()
             page.scaleX = scale

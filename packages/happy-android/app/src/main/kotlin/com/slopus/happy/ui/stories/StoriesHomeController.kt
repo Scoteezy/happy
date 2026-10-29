@@ -21,6 +21,7 @@ import com.slopus.happy.ui.view.px
 import com.slopus.happy.ui.view.setFrame
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -165,16 +166,17 @@ class StoriesHomeController(private val host: ViewGroup) {
         layout()
     }
 
-    fun attach(stories: StoriesSession?) {
+    fun attach(stories: StoriesSession?, photos: (suspend (String, String?, Int) -> android.graphics.Bitmap?)? = null) {
         watch?.cancel()
         watch = null
-        stopOpening()
-        hideTooltip()
-        viewer = null
+        covered()
         held = null
         session = stories
-        view.photos = null
+        view.photos = photos
         snapshot = StoriesSnapshot()
+        items = emptyList()
+        view.reset() // Identical author IDs on another computer must not reuse old photos.
+        view.visibility = ViewGroup.GONE
         // Another computer's stories start closed, and decide again.
         unlocked = false
         launching = stories != null
@@ -182,6 +184,24 @@ class StoriesHomeController(private val host: ViewGroup) {
         settleWhenBack = false
         applyInset(Change.Immediate)
         if (stories != null) watch = stories.watch { apply(it) } else draw(StoriesSnapshot())
+    }
+
+    /** Home left the stack or changed computers: no old-account presentation survives. */
+    fun covered() {
+        stopOpening()
+        hideTooltip()
+        viewer?.let {
+            viewer = null
+            it.dismissViewer(animated = false)
+        }
+        release()
+    }
+
+    fun close() {
+        attach(null)
+        install(null)
+        view.ticking = false
+        scope.cancel()
     }
 
     /** A snapshot from the session: held while the viewer is up. */

@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         graph.setForeground(false)
+        com.slopus.happy.ui.stemcells.StemCellsSession.backgrounded()
         // happy-ios: voice stops when Happy enters the background.
         if (!isChangingConfigurations) VoiceCoordinator.of(graph).backgrounded()
     }

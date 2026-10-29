@@ -79,7 +79,7 @@ class StemCellsSession private constructor(val accountId: String, val engine: Di
         /** The session for a paired computer, made once and kept while the app runs. */
         fun session(accountId: String, engine: DirectSyncEngine): StemCellsSession {
             sessions[accountId]?.takeIf { it.engine === engine }?.let { return it }
-            sessions.remove(accountId)?.scope?.cancel()
+            forget(accountId)
             return StemCellsSession(accountId, engine).also { sessions[accountId] = it }
         }
 
@@ -89,6 +89,11 @@ class StemCellsSession private constructor(val accountId: String, val engine: Di
             session.following.cancel()
             session.scope.cancel()
             if (session.storiesMade) session.stories.close()
+        }
+
+        /** iOS's background notification: keep pending per-computer Stories snapshots. */
+        fun backgrounded() {
+            sessions.values.forEach { if (it.storiesMade) it.stories.flush() }
         }
     }
 }

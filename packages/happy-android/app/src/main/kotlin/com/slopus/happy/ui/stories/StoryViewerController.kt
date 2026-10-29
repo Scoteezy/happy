@@ -878,8 +878,8 @@ class StoryViewerController(
 
     // Acts
 
-    fun dismissViewer() {
-        if (isClosing || !presented) return
+    fun dismissViewer(animated: Boolean = true) {
+        if (finished || (animated && (isClosing || !presented))) return
         isClosing = true
         ticking = false
         burst?.let { removeView(it) }
@@ -889,7 +889,7 @@ class StoryViewerController(
         neighbor.canvas.pause()
         onClosing?.invoke()
         onClosing = null
-        StoriesViewerPresenter.dismiss(this) {
+        StoriesViewerPresenter.dismiss(this, animated) {
             finish()
             onClose?.invoke()
             onClose = null
@@ -1081,6 +1081,7 @@ class StoryViewerController(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        StoriesViewerTransition.cancel(this)
         finish()
     }
 

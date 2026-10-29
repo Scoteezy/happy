@@ -48,6 +48,7 @@ class StemCellsDirectHomeScreen(
     override fun createView(): View = Root(context)
 
     override fun viewCreated(view: View) {
+        stemCells.stories.install(header)
         header.stemCellsActions = true
         header.title = computerName
         header.searchButton.tag = "stem-search"
@@ -193,11 +194,12 @@ class StemCellsDirectHomeScreen(
         val rect = picture.frame.offsetBy(px(at[0] - base[0]), px(at[1] - base[1]) - sidebar.list.contentOffset)
         val overlay = StemCellsReorderOverlay(context, sidebar, drag, picture, rect, row.label)
         carry = overlay
+        stemCells.stories.carrying = true
         session.setDragging(true)
         val covered = listOf(stemCells, header).associateWith { it.importantForAccessibility }
         covered.keys.forEach { it.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS }
         overlay.onDrop = { session.drop(drag, it) }
-        overlay.onEnd = { session.setDragging(false) }
+        overlay.onEnd = { stemCells.stories.carrying = false; session.setDragging(false) }
         overlay.onGone = {
             if (carry === overlay) carry = null
             sidebar.onReorderInvalidated = null
@@ -242,6 +244,7 @@ class StemCellsDirectHomeScreen(
             header.setRenderEffect(effect)
         }
         init {
+            clipChildren = false // The expanded Stories row hangs below the floating header.
             setBackgroundColor(Theme.color(Palette.surface))
             addView(stemCells)
             addView(header)
