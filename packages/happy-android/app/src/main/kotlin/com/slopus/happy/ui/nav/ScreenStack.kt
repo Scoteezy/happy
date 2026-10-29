@@ -40,6 +40,8 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     private var safeArea = LayoutInsets.Zero
     private var keyboard = 0.0
     private var animating: Animator? = null
+    private var transition: ScreenTransition? = null
+    private var interactivePop = false
     /** 0 = top screen in place, 1 = fully slid away (the pop's progress). */
     private var popProgress = 0f
     private val dimPaint = Paint()
@@ -67,25 +69,23 @@ class ScreenStack(context: Context) : FrameLayout(context) {
         }
 
     val backCallback = object : OnBackPressedCallback(false) {
-        private var interactive = false
-
         override fun handleOnBackStarted(backEvent: BackEventCompat) {
-            interactive = canInteractivelyPop()
-            if (interactive) beginInteractivePop()
+            interactivePop = canInteractivelyPop()
+            if (interactivePop) beginInteractivePop()
         }
 
         override fun handleOnBackProgressed(backEvent: BackEventCompat) {
-            if (interactive) setPopProgress(backEvent.progress)
+            if (interactivePop) setPopProgress(backEvent.progress)
         }
 
         override fun handleOnBackCancelled() {
-            if (interactive) finishInteractivePop(commit = false)
-            interactive = false
+            if (interactivePop) finishInteractivePop(commit = false)
+            interactivePop = false
         }
 
         override fun handleOnBackPressed() {
-            if (interactive) {
-                interactive = false
+            if (interactivePop) {
+                interactivePop = false
                 finishInteractivePop(commit = true)
                 return
             }
@@ -155,7 +155,7 @@ class ScreenStack(context: Context) : FrameLayout(context) {
 
     /** Replaces the whole stack with [screens] (the root first). */
     fun setScreens(next: List<Screen>, animated: Boolean = false) {
-        animating?.end()
+        endForStackChange()
         val old = screens.toList()
         old.lastOrNull()?.onDisappear()
         screens.clear()
@@ -164,6 +164,7 @@ class ScreenStack(context: Context) : FrameLayout(context) {
             if (s.stack !== this) attach(s)
             s.view.visibility = if (i == next.lastIndex) View.VISIBLE else View.INVISIBLE
             s.view.translationX = 0f
+            s.view.translationY = 0f
         }
         val removed = old.filter { it !in next }
         // UIKit resigns the first responder of a screen leaving the window: the keyboard goes with it, not after its fade.
@@ -186,7 +187,7 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     }
 
     fun push(screen: Screen, animated: Boolean = true) {
-        animating?.end()
+        endForStackChange()
         val below = top
         screens += screen
         attach(screen)
@@ -198,9 +199,10 @@ class ScreenStack(context: Context) : FrameLayout(context) {
             onTopChanged?.invoke(screen)
             return
         }
+        beginTransition(pushing = true)
         popProgress = 1f
         applyProgress()
-        animateProgress(to = 0f, duration = PUSH_MS) {
+        animateProgress(to = 0f, duration = transition?.durationMillis ?: PUSH_MS) {
             below.view.visibility = View.INVISIBLE
             below.view.translationX = 0f
             onTopChanged?.invoke(screen)
@@ -209,7 +211,7 @@ class ScreenStack(context: Context) : FrameLayout(context) {
 
     fun pop(animated: Boolean = true) {
         if (screens.size < 2) return
-        animating?.end()
+        endForStackChange()
         val leaving = screens.last()
         val below = screens[screens.size - 2]
         below.view.visibility = View.VISIBLE
@@ -225,8 +227,9 @@ class ScreenStack(context: Context) : FrameLayout(context) {
             invalidate()
             return
         }
+        beginTransition(pushing = false)
         popProgress = 0f
-        animateProgress(to = 1f, duration = POP_MS) { completePop() }
+        animateProgress(to = 1f, duration = transition?.durationMillis ?: POP_MS) { completePop() }
     }
 
     /**
@@ -292,6 +295,7 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     private fun beginInteractivePop() {
         val below = screens[screens.size - 2]
         below.view.visibility = View.VISIBLE
+        beginTransition(pushing = false, interactive = true)
         popProgress = 0f
         applyProgress()
     }
@@ -306,23 +310,44 @@ class ScreenStack(context: Context) : FrameLayout(context) {
         val leaving = screens.last()
         val below = screens[screens.size - 2]
         val remaining = if (commit) 1f - popProgress else popProgress
-        val duration = (POP_MS * remaining.coerceIn(0.35f, 1f)).toLong()
+        val duration = ((transition?.durationMillis ?: POP_MS) * remaining.coerceIn(0.35f, 1f)).toLong()
         if (commit) {
             leaving.onDisappear()
             below.onAppear()
             animateProgress(1f, duration) { completePop() }
         } else {
-            animateProgress(0f, duration) {
+            animateProgress(0f, duration, cancelled = true) {
                 below.view.visibility = View.INVISIBLE
                 below.view.translationX = 0f
             }
         }
     }
 
-    private fun animateProgress(to: Float, duration: Long, end: () -> Unit) {
+    private fun beginTransition(pushing: Boolean, interactive: Boolean = false) {
+        finishTransition(cancelled = false)
+        val below = screens.getOrNull(screens.size - 2) ?: return
+        transition = (top as? NavigationTransitionProviding)?.navigationTransition(below, pushing)
+        transition?.begin(interactive)
+    }
+
+    private fun endForStackChange() {
+        interactivePop = false
+        // If a cancelled gesture is still settling, end it without restoring
+        // focus into the screen the caller is about to replace or detach.
+        finishTransition(cancelled = false)
+        animating?.end()
+    }
+
+    private fun finishTransition(cancelled: Boolean) {
+        val finishing = transition ?: return
+        transition = null
+        finishing.finish(cancelled)
+    }
+
+    private fun animateProgress(to: Float, duration: Long, cancelled: Boolean = false, end: () -> Unit) {
         val animator = ValueAnimator.ofFloat(popProgress, to)
         animator.duration = duration
-        animator.interpolator = EASE
+        animator.interpolator = transition?.interpolator ?: EASE
         animator.addUpdateListener {
             popProgress = it.animatedValue as Float
             applyProgress()
@@ -332,6 +357,7 @@ class ScreenStack(context: Context) : FrameLayout(context) {
                 animating = null
                 popProgress = to
                 applyProgress()
+                finishTransition(cancelled)
                 end()
             }
         })
@@ -342,7 +368,14 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     private fun applyProgress() {
         val top = screens.lastOrNull() ?: return
         val below = screens.getOrNull(screens.size - 2)
-        if (top.isModal) {
+        val custom = transition
+        if (custom != null) {
+            top.view.translationX = 0f
+            top.view.translationY = 0f
+            below?.view?.translationX = 0f
+            below?.view?.translationY = 0f
+            custom.apply(1f - popProgress)
+        } else if (top.isModal) {
             top.view.translationY = height.toFloat() * popProgress
             below?.view?.translationX = 0f
         } else {
@@ -357,7 +390,7 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     override fun drawChild(canvas: Canvas, child: View, drawingTime: Long): Boolean {
         val result = super.drawChild(canvas, child, drawingTime)
         val below = screens.getOrNull(screens.size - 2)?.view
-        if (child === below && below.visibility == View.VISIBLE && popProgress < 1f) {
+        if (transition == null && child === below && below.visibility == View.VISIBLE && popProgress < 1f) {
             dimPaint.color = Color.argb((DIM * (1f - popProgress) * 255).toInt(), 0, 0, 0)
             canvas.drawRect(child.left + child.translationX, 0f, child.right + child.translationX, height.toFloat(), dimPaint)
         }
@@ -370,6 +403,11 @@ class ScreenStack(context: Context) : FrameLayout(context) {
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (animating != null) return true
         return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onDetachedFromWindow() {
+        endForStackChange()
+        super.onDetachedFromWindow()
     }
 
     private fun updateBack() {
