@@ -151,7 +151,15 @@ data class AgentCapabilities(
     val sidebarProposals: Boolean?,
     val sidebarAttachments: Boolean?,
 ) {
+    fun json(): JsonObject = Wire.objectOf(
+        "stemCellIdentities" to stemCellIdentities?.let(::JsonPrimitive), "sidebarOperations" to sidebarOperations?.let(::JsonPrimitive),
+        "sidebarProposals" to sidebarProposals?.let(::JsonPrimitive), "sidebarAttachments" to sidebarAttachments?.let(::JsonPrimitive),
+    )
+
     companion object {
+        val none = AgentCapabilities(null, null, null, null)
+
+
         fun from(json: JsonElement?): AgentCapabilities? {
             val o = json as? JsonObject ?: return null
             return AgentCapabilities(
@@ -270,6 +278,8 @@ data class AgentTask(val id: String, val name: String?, val canArchive: Boolean?
 
 /** A Surface: a todo list, document, calendar, system monitor or chat. */
 data class Surface(val id: String, val type: String, val name: String, val version: String? = null) {
+    fun json(): JsonObject = Wire.objectOf("id" to JsonPrimitive(id), "type" to JsonPrimitive(type), "name" to JsonPrimitive(name), "version" to version?.let(::JsonPrimitive))
+
     companion object {
         fun from(json: JsonElement): Surface {
             val o = Wire.obj(json)
@@ -287,11 +297,11 @@ data class Todo(val id: String, val text: String, /** `active`, `completed` or `
     }
 }
 
-data class CreateStemCellResponse(val space: Space, val agent: Agent) {
+data class CreateStemCellResponse(val space: Space, val agent: Agent, /** The agent as sent, for the store's normalized copies. */ val agentJson: JsonElement = JsonNull) {
     companion object {
         fun from(json: JsonElement): CreateStemCellResponse {
             val o = Wire.obj(json)
-            return CreateStemCellResponse(Space.from(o["space"] ?: JsonNull), Agent.from(o["agent"] ?: JsonNull))
+            return CreateStemCellResponse(Space.from(o["space"] ?: JsonNull), Agent.from(o["agent"] ?: JsonNull), o["agent"] ?: JsonNull)
         }
     }
 }
