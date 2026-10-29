@@ -55,6 +55,10 @@ class StemCellsHarnessTransport(
     private val root: JsonObject
     private val health: JsonObject
     private val settings = LinkedHashMap<String, JsonElement>()
+    /** Each setting's version and write time, increasing with every write as the daemon's do. */
+    private val settingVersions = HashMap<String, Pair<String, Long>>()
+    private var settingWrites = 0
+    private var config: JsonObject
 
     // The sidebar.
     private val artifactId: String
@@ -100,7 +104,8 @@ class StemCellsHarnessTransport(
         val offset = now() - ((raw["now"] as JsonPrimitive).content.toLong())
         root = shift(raw, offset) as JsonObject
         health = root.obj("health")
-        root.obj("settings").forEach { (key, value) -> settings[key] = value }
+        root.obj("settings").forEach { (key, value) -> settings[key] = value; settingVersions[key] = "%08d".format(++settingWrites) to now() }
+        config = root.obj("config")
         val sidebar = root.obj("sidebar")
         artifactId = sidebar.str("artifactId")!!
         version = sidebar.num("version")!!.toInt()
@@ -193,16 +198,31 @@ class StemCellsHarnessTransport(
             method == "GET" && route == "/v0/health" -> return ok(health)
             parts.size == 3 && parts[1] == "user-settings" -> {
                 val key = parts[2]
-                if (method == "PUT") settings[key] = input["value"] ?: JsonNull
-                val setting = obj("key" to key, "value" to (settings[key] ?: JsonNull), "updatedAt" to settings[key]?.let { now() }, "version" to settings[key]?.let { "v-$key" })
-                if (method == "PUT") emit("user_setting.updated", obj("setting" to setting))
+                if (method == "PUT") {
+                    settings[key] = input["value"] ?: JsonNull
+                    settingVersions[key] = "%08d".format(++settingWrites) to now()
+                }
+                if (method == "GET" && key !in settings) return error(404, "not_found", "No such setting.")
+                val setting = setting(key)
+                if (method == "PUT") emit("user_settings.updated", obj("setting" to setting, "mutationId" to input.str("mutationId")))
                 return ok(obj("setting" to setting))
             }
-            method == "GET" && route == "/v0/config" -> return ok(root.obj("config"))
+            method == "GET" && route == "/v0/config" -> return ok(config)
+            method == "PATCH" && route == "/v0/config" -> {
+                val name = (input["node"] as? JsonObject)?.str("name")?.trim()
+                if (name.isNullOrEmpty() || name.length > 128) return error(400, "invalid_request", "The name is not valid.")
+                val node = JsonObject((config.obj("config")["node"] as? JsonObject ?: obj()) + ("name" to JsonPrimitive(name)))
+                config = obj("config" to JsonObject(config.obj("config") + ("node" to node)))
+                emit("config.updated", obj("changes" to obj("node" to node)))
+                return ok(config)
+            }
+            method == "GET" && route == "/v0/node/avatar" -> return error(404, "not_found", "No picture is set.")
+            method == "GET" && route == "/v0/profile" -> return ok(obj("profile" to profile()))
+            method == "GET" && route == "/v0/bootstrap/desktop" -> return ok(desktop())
             method == "GET" && route == "/v0/usage" -> return ok(root.obj("usage"))
             method == "POST" && route == "/v0/usage/refresh" -> return ok(root.obj("usage"))
             method == "GET" && route == "/v0/bots" -> return ok(obj("bots" to JsonArray(bots.map(::composedOwner))))
-            method == "GET" && route == "/v0/tasks" -> return ok(obj("tasks" to JsonArray(tasks.filter { it["archivedAt"] is JsonNull || it["archivedAt"] == null }.map(::composedOwner)), "memberships" to JsonArray(emptyList())))
+            method == "GET" && route == "/v0/tasks" -> return ok(obj("tasks" to JsonArray(tasks.filter { it["archivedAt"] is JsonNull || it["archivedAt"] == null }.map(::composedOwner)), "memberships" to memberships()))
             method == "GET" && route == "/v0/surfaces" -> return ok(obj("surfaces" to surfaces))
             method == "GET" && route == "/v0/artifacts" -> return ok(obj("artifacts" to JsonArray(artifacts.values.map { (it as JsonObject).obj("artifact") }), "nextPageCursor" to null))
         }
@@ -598,6 +618,34 @@ class StemCellsHarnessTransport(
         spaces[space.str("id")!!] = next
         emit("space.updated", obj("space" to next))
     }
+
+    // The desktop bootstrap
+
+    private fun setting(key: String): JsonObject {
+        val (version, updatedAt) = settingVersions[key] ?: (null to null)
+        return obj("key" to key, "value" to (settings[key] ?: JsonNull), "updatedAt" to updatedAt, "version" to version)
+    }
+
+    /** The standalone installation's one person. */
+    private fun profile() = obj("userId" to null, "name" to null, "email" to null, "photo" to null, "version" to "v-profile-1", "updatedAt" to null)
+
+    /** This person joined every task, in the fixture's order. */
+    private fun memberships() = JsonArray(tasks.filter { it["archivedAt"] is JsonNull || it["archivedAt"] == null }.mapIndexed { index, task ->
+        obj("taskId" to task.str("id"), "userId" to null, "orderKey" to "%04d".format(index), "joinedAt" to task.num("createdAt")?.toLong())
+    })
+
+    /**
+     * `GET /v0/bootstrap/desktop`, composed from the same objects the other
+     * routes answer with. The harness computer has no projects.
+     */
+    private fun desktop() = obj(
+        "config" to config.obj("config"), "profile" to profile(),
+        "userSettings" to JsonArray(settings.keys.map(::setting)),
+        "projects" to JsonArray(emptyList()), "workspaces" to JsonArray(emptyList()),
+        "bots" to JsonArray(bots.map(::composedOwner)), "tasks" to JsonArray(tasks.map(::composedOwner)),
+        "taskMemberships" to memberships(), "surfaces" to surfaces, "archivedAgents" to JsonArray(emptyList()),
+        "cursor" to current(),
+    )
 
     // Agents
 

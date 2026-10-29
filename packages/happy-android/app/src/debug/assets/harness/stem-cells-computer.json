@@ -2,8 +2,11 @@
   "about": "A paired computer for the Stem Cells harnesses, written from happy-agent's API.md. Android's debug harness and the iOS reference host both read this file and serve it as the daemon would. Every number under a key ending in 'At', and 'since', is a Unix millisecond time as of 'now'; a harness shifts them all by its own clock minus 'now', so relative times read the same on both.",
   "now": 1793000000000,
   "health": {
+    "healthy": true,
     "ready": true,
-    "protocol": 22,
+    "status": "ready",
+    "version": { "protocol": 27, "daemon": "harness" },
+    "draining": false,
     "capabilities": {
       "stemCellIdentities": true,
       "sidebarOperations": true,
@@ -185,8 +188,8 @@
     }
   ],
   "surfaces": [
-    { "id": "sfgroceries", "type": "todo", "name": "Groceries", "version": "v-sfgroceries-1" },
-    { "id": "sfchecklist", "type": "document", "name": "Release checklist", "version": "v-sfchecklist-1" }
+    { "id": "sfgroceries", "type": "todo", "name": "Groceries", "version": "v-sfgroceries-1", "members": [{ "userId": null, "orderKey": "a", "joinedAt": 1792500000000 }] },
+    { "id": "sfchecklist", "type": "document", "name": "Release checklist", "version": "v-sfchecklist-1", "members": [{ "userId": null, "orderKey": "b", "joinedAt": 1792600000000 }] }
   ],
   "todos": {
     "sfgroceries": [
@@ -201,6 +204,7 @@
   },
   "config": {
     "config": {
+      "node": { "name": "Studio Mac", "avatar": null },
       "defaults": { "providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "high", "permissionMode": "auto" },
       "models": {
         "anthropic/opus-5": { "name": "Opus 5", "efforts": ["off", "low", "medium", "high", "max"], "defaultEffort": "medium", "serviceTiers": [] },
