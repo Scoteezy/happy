@@ -9,5 +9,12 @@
     xmlns:tools="http://schemas.android.com/tools">
     <application
         android:usesCleartextTraffic="true"
-        tools:replace="android:usesCleartextTraffic" />
+        tools:replace="android:usesCleartextTraffic">
+        <!-- Stories over a computer of its own (happy-ios's `-screen stories`); see StoriesHarnessActivity. -->
+        <activity
+            android:name="com.slopus.happy.harness.StoriesHarnessActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|fontScale|density"
+            android:exported="true"
+            android:theme="@style/Theme.Happy" />
+    </application>
 </manifest>

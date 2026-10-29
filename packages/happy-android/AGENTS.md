@@ -752,6 +752,50 @@ interface (200 until reported, capped at 600). Where there is no WebView
 MarkdownView's code block shows instead; layout tests see the code block
 unless they provide `true`.
 
+## Stories
+
+Development and preview builds, over a Direct computer (happy-ios
+`Stories`). The wire, client routes, store, row and draft are in
+`stories/` and `direct/` (plain Kotlin, iOS's tests); the views are in
+`ui/stories/`. Nothing in the app shows them yet: they wait for Stem Cells
+home, so for now they run in the debug harness below.
+
+- `StoriesHomeController` puts the row in `HomeHeaderView`'s `accessory`
+  and drives it from the list's pull. The list must scroll as UIScrollView
+  does (an offset past the top that springs back, insets that change
+  without moving what is shown, a say in where a fling rests), so the
+  stories' home list is `ui/view/BounceScrollView`, not a RecyclerView.
+  The open row hangs below the header: the host turns off `clipChildren`
+  and hands its touches to `HomeHeaderView.dispatchFromParent` first,
+  since Android only offers a child the touches inside its bounds.
+- The viewer (`StoryViewerController`, `StoryViewerPageView`,
+  `StoryCanvasView`) and the viewers sheet are views added over the
+  activity's root by `StoriesViewerPresenter`, with a back callback and the
+  status bar hidden, so the circle-to-viewer transition can run between
+  them; not a second Activity. The cube is `rotationY` with a camera
+  distance, video is MediaPlayer on a TextureView reading ranges, iOS's
+  blur materials are their tint alone.
+- Animated stickers are Lottie (`com.airbnb.android:lottie`), the one
+  dependency the stories add: the daemon serves a `tgs` as Lottie JSON
+  (`?as=lottie`) and `StoryStickerLottie` draws it with `LottieDrawable`.
+- Inside a `TextPaint(...).apply { }` block, `density` is the paint's own
+  field (1.0), not `ui/view`'s: write `Theme.density` there.
+
+The debug build has iOS's `-screen stories` harness:
+`app/src/debug/.../harness/StoriesHarnessActivity` over
+`StoriesHarnessTransport`, a fake computer with three authors, drawn
+frames and sticker packs, keeping reactions and seen marks as the daemon
+does. No daemon or account is needed.
+
+```
+adb shell am start -n com.slopus.happy.dev/com.slopus.happy.harness.StoriesHarnessActivity \
+    --ez fresh true --el epoch 1767000000000 --ef showScale 4
+```
+
+Extras as iOS's launch arguments: `fresh`, `kept`, `tooltip`, `epoch`,
+`showScale`, `newer`, `slowFrames`. The view tagged `stories-probe`
+reports the screen in its content description, as iOS's probe does.
+
 ## Autocomplete
 
 `@` file mentions and `/` commands in the chat composer. Logic is in
