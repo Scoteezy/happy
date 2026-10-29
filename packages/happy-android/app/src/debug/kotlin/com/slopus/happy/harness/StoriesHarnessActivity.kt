@@ -36,6 +36,10 @@ import com.slopus.happy.stories.StoryOverlay
 import com.slopus.happy.stories.StoryStatus
 import com.slopus.happy.ui.stories.StoriesEditorPresenter
 import com.slopus.happy.ui.stories.StoriesHaptics
+import com.slopus.happy.ui.stories.StoriesProviding
+import com.slopus.happy.ui.stories.StoryInlineView
+import com.slopus.happy.layout.stories.StoryCardLayout
+import kotlinx.coroutines.MainScope
 import com.slopus.happy.ui.stories.StoriesMediaChooser
 import com.slopus.happy.ui.stories.StoriesHomeController
 import com.slopus.happy.ui.stories.StoriesSession
@@ -75,7 +79,9 @@ import kotlin.math.sin
  * one-time tooltip shows), `epoch` (the stories' clock, ms), `showScale`
  * (each frame shows N times as long), `newer` (a story posted since the
  * row was put away), `slowFrames`, `compose` (the editor opens on a
- * picture of the harness's own, as a conversation's draft would).
+ * picture of the harness's own, as a conversation's draft would), `card`
+ * (a conversation's story card alone, on the draft d1; the probe reads
+ * `card=draft viewer=0`, and `harness-delete-card` deletes d1).
  *
  * The view tagged `stories-probe` reports the screen in its content
  * description: `viewer=1 author=1 position=0 paused=0 chrome=1 reaction=🔥
@@ -86,11 +92,13 @@ import kotlin.math.sin
  * probe reads `editor=1 frames=1 selected=0 overlays=sticker,text top=…
  * trail=… saved=draft:2`.
  */
-class StoriesHarnessActivity : ComponentActivity() {
+class StoriesHarnessActivity : ComponentActivity(), StoriesProviding {
     private lateinit var transport: StoriesHarnessTransport
     private lateinit var session: StoriesSession
     private lateinit var home: Home
     private lateinit var probe: TextView
+    private var card: Card? = null
+    override val stories: StoriesSession? get() = if (::session.isInitialized) session else null
     private val events = MutableSharedFlow<DirectEvent>(extraBufferCapacity = 16)
     private val played = ArrayList<String>()
     private var snapshot = StoriesSnapshot()
@@ -155,6 +163,12 @@ class StoriesHarnessActivity : ComponentActivity() {
         watch = session.watch { snapshot = it }
         handler.post(report)
         if (extras.getBoolean("compose")) handler.postDelayed({ compose() }, 600)
+        // A conversation's story card over home, on a draft of the person's.
+        if (extras.getBoolean("card")) {
+            val card = Card(this, session)
+            this.card = card
+            addContentView(card, android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+        }
     }
 
     private fun compose() {
@@ -197,7 +211,10 @@ class StoriesHarnessActivity : ComponentActivity() {
         val haptics = played.joinToString(",")
         val viewer = StoriesViewerPresenter.presented(home)
         val editor = StoriesEditorPresenter.presented(home)
-        val value = if (editor != null) {
+        val card = card
+        val value = if (editor == null && card != null) {
+            "card=${card.state} viewer=${if (viewer != null) 1 else 0}"
+        } else if (editor != null) {
             val overlays = editor.draft.current?.overlays ?: emptyList()
             val kinds = overlays.joinToString(",") { overlay ->
                 when (overlay) {
@@ -316,6 +333,45 @@ class StoriesHarnessActivity : ComponentActivity() {
         override fun willEndDragging(velocity: Double, target: DoubleArray) = stories.listWillEndDragging(velocity, target)
         override fun didEndDragging(decelerate: Boolean) = stories.listDidEndDragging(decelerate)
         override fun didEndDecelerating() = stories.listDidEndDecelerating()
+    }
+
+    /**
+     * A conversation's story card alone (iOS's `-storiesCard`), on the
+     * draft d1: Post, a delete as the viewer's would make, and the viewer
+     * it opens.
+     */
+    private class Card(context: Context, private val session: StoriesSession) : ManualLayout(context) {
+        private val card = StoryInlineView(context)
+        private val delete = View(context)
+        var safeTop = 0.0
+
+        /** What the card shows, for the probe. */
+        val state: String get() = card.state.substringBefore('#')
+
+        init {
+            setBackgroundColor(Theme.color(Palette.groupedBackground))
+            isClickable = true
+            addView(card)
+            card.apply("d1")
+            delete.tag = "harness-delete-card"
+            delete.contentDescription = "harness-delete-card"
+            delete.setBackgroundColor(0x05000000)
+            delete.setOnClickListener {
+                MainScope().launch { runCatching { session.store.delete("d1") } }
+            }
+            addView(delete)
+            ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
+                safeTop = com.slopus.happy.ui.view.px(insets.getInsets(WindowInsetsCompat.Type.systemBars()).top)
+                requestLayout()
+                insets
+            }
+        }
+
+        override fun layoutSubviews(width: Double, height: Double) {
+            val size = StoryCardLayout.size(width - 32)
+            card.setFrame(Rect(16.0, safeTop + 24, size.width, size.height))
+            delete.setFrame(Rect(width - 44, height - 60, 44.0, 44.0))
+        }
     }
 
     companion object {

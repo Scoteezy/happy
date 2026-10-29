@@ -43,6 +43,9 @@ val Palette.storiesEditorHandle get() = ColorToken("#0A60FF")
 val Palette.storiesStickerSheet get() = ColorToken("#1C1C1E")
 val Palette.storiesStickerPill get() = ColorToken(RGBA(1, 1, 1, 0.11), RGBA(1, 1, 1, 0.11))
 
+/** The inline story's Post and Edit: UIButton's system tint, iOS's systemBlue. */
+val Palette.storiesInlineTint get() = ColorToken("#007AFF", "#0A84FF")
+
 /**
  * The views sheet, as the dark theme draws it: its ground (the navigation
  * bar's #1D1D1D at 0.9 over the black Telegram keeps under the list, so the

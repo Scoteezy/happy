@@ -787,6 +787,9 @@ home, so for now they run in the debug harness below.
   `BounceScrollView`. Glass is a dark fill; UIColorPicker, which Android
   lacks, is a spectrum dialog; the font menu is a PopupMenu. Media comes
   from the system photo picker (`StoriesMediaChooser`).
+- `StoryInlineView`, the story card in a conversation, finds its session
+  through `StoriesProviding` on a parent view or the activity, as iOS
+  walks the responder chain.
 - Inside a `TextPaint(...).apply { }` block, `density` is the paint's own
   field (1.0), not `ui/view`'s: write `Theme.density` there.
 
@@ -803,7 +806,8 @@ adb shell am start -n com.slopus.happy.dev/com.slopus.happy.harness.StoriesHarne
 
 Extras as iOS's launch arguments: `fresh`, `kept`, `tooltip`, `epoch`,
 `showScale`, `newer`, `slowFrames`, `compose` (`-storiesCompose`: the
-editor on a picture of the harness's own). `harness-edit-draft` (bottom
+editor on a picture of the harness's own), `card` (`-storiesCard`: the
+inline story card alone on the draft d1; `harness-delete-card` deletes it). `harness-edit-draft` (bottom
 left) opens the editor on the newest draft. The view tagged
 `stories-probe` reports the screen in its content description, as iOS's
 probe does (`editor=1 frames=1 overlays=sticker,text …` over the editor).
