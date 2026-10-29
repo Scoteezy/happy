@@ -31,6 +31,12 @@ class StemCellsSession private constructor(val accountId: String, val engine: Di
     /** The models the composer's pickers offer, and the dock's pick. */
     val models = StemCellModelState(engine.client, engine.offline, scope)
     private val watchers = LinkedHashMap<Any, (StemCellsSnapshot) -> Unit>()
+    /** The computer's Stories, made when first asked for, on the store's one event stream (happy-ios `StoriesSession.session(for:)`). */
+    val stories: com.slopus.happy.ui.stories.StoriesSession by lazy {
+        storiesMade = true
+        com.slopus.happy.ui.stories.StoriesSession(accountId, engine.client, engine.offline?.file, null) { store.events(listOf("story.")) }
+    }
+    private var storiesMade = false
     private val following: Job
 
     init {
@@ -66,6 +72,7 @@ class StemCellsSession private constructor(val accountId: String, val engine: Di
             val session = sessions.remove(accountId) ?: return
             session.following.cancel()
             session.scope.cancel()
+            if (session.storiesMade) session.stories.close()
         }
     }
 }

@@ -782,11 +782,16 @@ harness shows desktop's sidebar). A Surface row opens
 `StemCellsSearchScreen`, which opens what it finds through
 `StemCellsHomeView.open`. The conversation's capsule pushes
 `StemCellSessionDetailScreen` (a plain `Screen` under
-`StemCellsGlassBarView`, the glass bar settings will share, with
+`StemCellsGlassBarView`, the glass bar settings shares, with
 `StemCellsSettingsCardView` rows): it reads the detail through
 `StemCellsSessionDetailFeed`, what was shared from the conversation's
 `updates` plus `StemCellsSharedFeed`, and opens media through
-`StemCellMediaOpener`, which the conversation uses too.
+`StemCellMediaOpener`, which the conversation uses too. Home's computer
+mark opens `StemCellsSettingsScreen` (`openSettings`), which asks
+everything outside it (profiles, switching, renaming, pages and flows,
+the theme) of a `StemCellsSettingsHost`; the debug harness's is
+`StemCellsHarnessSettingsHost`. Its QR button adds `StemCellsQRSheet`
+over its root and blurs what is under it.
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one

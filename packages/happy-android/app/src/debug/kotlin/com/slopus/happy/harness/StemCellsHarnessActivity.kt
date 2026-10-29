@@ -36,7 +36,8 @@ import java.io.File
  *
  * Extras: `epoch` (the computer's clock, ms; the fixture's times are moved
  * to it), `kept` (keep what the last run saved on this phone; otherwise
- * it starts from nothing), `latency` (ms each request takes).
+ * it starts from nothing), `latency` (ms each request takes), `account`
+ * (settings lists a Happy account after the computer).
  *
  * The view tagged `stem-probe` reports the screen in its content
  * description: `live=1 rows=12 selected=space:sp1 opened=space:sp1
@@ -50,6 +51,7 @@ class StemCellsHarnessActivity : ComponentActivity() {
     private lateinit var session: StemCellsSession
     private lateinit var home: StemCellsDirectHomeScreen
     private lateinit var probe: TextView
+    private lateinit var settingsHost: StemCellsHarnessSettingsHost
     private lateinit var stack: ScreenStack
     private val played = ArrayList<String>()
     private var opened = "none"
@@ -92,6 +94,11 @@ class StemCellsHarnessActivity : ComponentActivity() {
         home = StemCellsDirectHomeScreen(this, session, COMPUTER)
         home.open = { row -> opened = row.id }
         home.newWork = { creation, _ -> created++; opened = "space:${creation.spaceId}" }
+        settingsHost = StemCellsHarnessSettingsHost(transport, session, ACCOUNT, COMPUTER) {
+            Theme.applyTree(stack)
+            androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = !Theme.isDark
+        }.also { it.withAccount = extras.getBoolean("account") }
+        home.openSettings = { stack.push(com.slopus.happy.ui.stemcells.StemCellsSettingsScreen(this, settingsHost, ACCOUNT)) }
         stack.setScreens(listOf(home))
         setContentView(stack)
         probe = TextView(this).apply {
@@ -112,7 +119,8 @@ class StemCellsHarnessActivity : ComponentActivity() {
             ((stack.top as? com.slopus.happy.ui.stemcells.StemCellArtifactScreen)?.let { " artifact=" + it.shows } ?: "") +
             ((stack.top as? com.slopus.happy.ui.stemcells.StemCellsSurfaceScreen)?.let { " " + it.probe } ?: "") +
             ((stack.top as? com.slopus.happy.ui.stemcells.StemCellsSearchScreen)?.let { " " + it.probe } ?: "") +
-            ((stack.top as? com.slopus.happy.ui.stemcells.StemCellSessionDetailScreen)?.let { " " + it.probe } ?: "")
+            ((stack.top as? com.slopus.happy.ui.stemcells.StemCellSessionDetailScreen)?.let { " " + it.probe } ?: "") +
+            ((stack.top as? com.slopus.happy.ui.stemcells.StemCellsSettingsScreen)?.let { " " + it.probe + " asked=" + settingsHost.asked } ?: "")
         if (probe.contentDescription != value) probe.contentDescription = value
     }
 

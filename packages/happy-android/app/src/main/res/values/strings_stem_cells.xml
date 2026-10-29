@@ -180,4 +180,34 @@
     <string name="stem_activity_working">working</string>
     <string name="stem_terminal_running">running</string>
     <string name="stem_token_count">%1$s tokens</string>
+    <!-- Stem Cells settings and its QR sheet (happy-ios Strings.StemCells). -->
+    <string name="stem_search_settings">Search settings</string>
+    <string name="stem_show_qr">QR code</string>
+    <string name="stem_add_profile">Add computer</string>
+    <string name="stem_status">Status</string>
+    <string name="stem_language">Language</string>
+    <string name="stem_disconnect">Disconnect</string>
+    <string name="stem_sign_out">Sign out</string>
+    <string name="stem_add_happy_account">Add Happy account</string>
+    <string name="stem_direct_computer">Direct computer</string>
+    <string name="stem_happy_account">Happy account</string>
+    <string name="stem_disconnect_title">Disconnect computer?</string>
+    <string name="stem_sign_out_title">Sign out?</string>
+    <string name="stem_remove_detail">This removes the connection and its credentials from this phone.</string>
+    <string name="stem_could_not_rename">Could not rename</string>
+    <string name="stem_could_not_switch">Could not switch</string>
+    <string name="stem_could_not_remove">Could not remove</string>
+    <string name="stem_nothing_found">Nothing found</string>
+    <string name="stem_qr_code">QR Code</string>
+    <string name="stem_qr_text">Scan a computer’s pairing code, or a code from the terminal or another device.</string>
+    <string name="stem_scan_qr_code">Scan QR Code</string>
+    <string name="stem_enter_link">Enter link manually</string>
+    <string name="stem_sign_in_first">Sign in to Happy</string>
+    <string name="stem_sign_in_first_detail">Sign in to a Happy account before connecting this kind of code.</string>
+    <string name="stem_hide_projects">Hide projects</string>
+    <string name="stem_status_connecting">Connecting</string>
+    <string name="stem_status_connected">Connected</string>
+    <string name="stem_status_retrying">Reconnecting</string>
+    <string name="stem_status_paused">Paused</string>
+    <string name="stem_status_revoked">Pair again</string>
 </resources>

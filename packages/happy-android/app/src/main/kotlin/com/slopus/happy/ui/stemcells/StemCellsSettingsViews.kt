@@ -100,7 +100,9 @@ class StemCellsSettingsCardView(context: Context) : ManualLayout(context), Theme
         private val title = Label(context, titleStyle, StemCellsPalette.stemCellsSettingsText, maxLines = 1).apply { followsTextSize = false }
         private val value = Label(context, valueStyle, StemCellsPalette.stemCellsSettingsSecondary, maxLines = 1, alignment = Layout.Alignment.ALIGN_OPPOSITE).apply { followsTextSize = false }
         private val chevron = IconView(context, StemCellsGlyphs.icon("chevron-right"), 14.0, StemCellsPalette.stemCellsSettingsSecondary)
-        private val toggle: Switch = ItemRowView.switch(context)
+        /** The platform's switch, made again when the theme turns, since it takes its look from the theme it was made in. */
+        private var toggle: Switch = makeToggle()
+        private var toggleDark = Theme.isDark
         private val separator = View(context)
         private var row: StemCellsSettingsRow? = null
         private var frames: StemCellsSettingsLayout.Row? = null
@@ -119,14 +121,17 @@ class StemCellsSettingsCardView(context: Context) : ManualLayout(context), Theme
                 view.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
                 addView(view)
             }
-            toggle.setOnCheckedChangeListener { _, on ->
-                if (updating) return@setOnCheckedChangeListener
-                StemCellsHaptics.play(this, StemCellsHaptics.Moment.Pick)
-                row?.toggled?.invoke(on)
-            }
             addView(toggle)
             setOnClickListener { row?.action?.invoke() }
             applyTheme()
+        }
+
+        private fun makeToggle() = ItemRowView.switch(context).apply {
+            setOnCheckedChangeListener { _, on ->
+                if (updating) return@setOnCheckedChangeListener
+                StemCellsHaptics.play(this@RowView, StemCellsHaptics.Moment.Pick)
+                row?.toggled?.invoke(on)
+            }
         }
 
         fun show(row: StemCellsSettingsRow, frames: StemCellsSettingsLayout.Row) {
@@ -197,6 +202,17 @@ class StemCellsSettingsCardView(context: Context) : ManualLayout(context), Theme
             title.applyTheme()
             value.applyTheme()
             applyPressed()
+            if (toggleDark != Theme.isDark) {
+                toggleDark = Theme.isDark
+                val old = toggle
+                toggle = makeToggle()
+                toggle.isChecked = old.isChecked
+                toggle.tag = old.tag
+                toggle.contentDescription = old.contentDescription
+                removeView(old)
+                addView(toggle)
+                place()
+            }
         }
     }
 }
