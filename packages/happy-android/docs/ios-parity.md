@@ -120,8 +120,8 @@ item once it exists.
   Renaming belongs in the detail screen, which both platforms implement;
   its complete current flow will be verified separately, not replaced with
   a new header behavior absent from the reference.
-- Relay Home Task rendering is verified by focused/full tests and isolated
-  Android/native comparison below. Task actions and dock Task mode remain gaps.
+- Relay Home Task rendering/actions are verified by tests and isolated
+  Android/native comparison below. Dock Task mode remains a gap.
   Further inspection found Bot grouping and Session/Bot creation already
   implemented in Android; bot face choices remain absent. Native
   `HomeRowDrawing.swift:190` and `HomeDockScreens.swift` are the reference.
@@ -155,10 +155,60 @@ item once it exists.
   executed, 2 from cache, 67 up-to-date (1m59s). Release compilation was not
   attempted without the absent Tailcat AAR. The capped build ran with both
   simulators off; owned Gradle/Kotlin PIDs 46331/47697 exited afterward.
-- Home Task Leave/swipe/menu capabilities, archive ownership and machine-only
-  guards remain unfinished, as does dock Task creation. Row verification does
-  not complete these actions. Evidence is fake-backed and node-tree based,
+- Home Task actions were unfinished at this row checkpoint and are covered
+  by the next slice below. Dock Task creation remains unfinished. Evidence is fake-backed and node-tree based,
   not successful live daemon access or spoken TalkBack.
+
+## Relay Task Home action verification (2026-10-29)
+
+- Code `0103c67b0dd821702806d42096559a48bac4a9a4` adds capability-gated
+  Leave in Home menus and grouped/flat swipe actions, strict ownership-gated
+  Archive, machine-only Task RPC routes and shared Home/detail optimistic
+  hiding/restoration. Duplicate in-flight actions and stale-account results
+  cannot affect the next account. Task HTTP archive/delete fallback is blocked
+  even if unrelated metadata fails typed parsing.
+- Focused verification passed **102 tests / 8 suites**, zero failures/errors/
+  skips, and the isolated debug APK assembled with Tailcat required (1m14s).
+  Real-View tests cover unsupported drags not clicking, normal taps, reveal
+  and activation, right drags, recycling/detach and grouped pill hit bounds.
+- The initial action recording exposed two real issues: the flat action
+  treatment clipped in a short grouped row, and unsupported swipes opened
+  the conversation. Both are fixed. Accepted evidence is under
+  `.context/evidence/relay-task-actions/android-fixed/`: owner/member/
+  unsupported menus, compact grouped Leave, flat Leave, unsupported flat
+  swipe staying on Home, and offline Leave/Archive refusal restoration.
+  `task-actions-flow.mp4` is 96.098522s. Stills and sampled frames were
+  personally inspected; happy36 PID 92253 exited afterward.
+- Frozen-source native host XCTest passed (1 test, 371.149s); its recording
+  `native/ios-task-actions.mp4` is 384.066667s including animation-idle waits.
+  Inspected native grouped pill/menu evidence informed the Android control.
+  HappyRef was shut down. These fixtures use offline transports: successful
+  machine operations are unit-fake coverage, not a live relay claim; spoken
+  TalkBack remains unverified.
+- Source-built Tailcat is restored for both `arm64-v8a` and `x86_64`, with
+  16 KiB ELF LOAD alignment. The documented native build, 11 package checks,
+  check-package and Go validation passed using workspace-local Go 1.27.1/NDK
+  27.2.12479018. Artifact hash, sizes, setup footprint and exact evidence are
+  recorded in [the audit](parity-audit-2026-10-29.md). No binary/cache was
+  committed, no live peer was contacted, and no app was released.
+- Genuine no-harness production `:app:compileReleaseKotlin :app:assembleRelease
+  -Phappy.requireTailcat=true` passed at the code checkpoint above (6m51s;
+  77 executed, 11 from cache, 9 up-to-date). Release lint, R8 and
+  `verifyReleaseKeeps` passed (68 serializer types/manifest). The unsigned
+  `com.ex3ndr.happy` APK contains both Tailcat ABIs and passes 16 KiB ZIP
+  alignment; signature verification rejects it as intentionally unsigned.
+  The 96,377,460-byte artifact/hash is recorded in the audit. No production
+  install, signing or publication occurred. Both simulators stayed off;
+  owned Gradle/Kotlin PIDs 94483/94701 exited afterward.
+- Full native-linked milestone passed at the same code HEAD: app 1297/182,
+  layout 591/107, crypto 36/5, icons 6/2 tests/suites (**1930/296**, following
+  earlier four-module reporting), plus vendor lifecycle 4/1: **1934 tests /
+  297 suites total**, zero failures/errors/skips. All five test tasks ran
+  afresh using `--rerun`; isolated debug assembly with required Tailcat
+  passed. Gradle: 15 executed, 86 up-to-date, 2m02s. Both simulators stayed
+  off; owned Gradle/Kotlin PIDs 773/862 exited. Exact command/log are in the
+  audit. Dock Task creation and successful live-machine operations remain
+  separate from this verified action milestone.
 
 ## Real conversation inline Stories verification (2026-10-29)
 
@@ -598,8 +648,8 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [~] Relay Bot rows already exist in `ProjectHomeRows` and `SessionListView`.
   Task classification, ordering, retired-task exclusion and glyph now have
   passing focused/full tests and isolated Android/native evidence. See the
-  verification record above; Task actions and dock Task
-  creation is a separate missing feature.
+  verification records above, including Task actions. Dock Task creation
+  remains a separate missing feature.
 - [~] Update banner and offline machines banner: offline plaque and What's new shown (`home/compare-offline-list.png`); What's new opens the changelog; the Play Store update check is to do
 - [~] Home dock: resting capsule with the placeholder and send button, its fade-in and the list scrim (`:layout` `HomeDockLayout`, focus layout, motion, fade and refusal with the iOS tests)
 - [~] Dock composer (`ui/home/HomeDockController.kt`, `HomeDockFocusView.kt`): opens over home with the dim and a faint blur (RenderEffect, Android 12+), the shell growing from the capsule and the rows and card revealing in turn (`HomeDockFocusMotion`), rides the IME, closes on the backdrop or Back. Machine, project (with Enter custom path), worktree and harness pickers and the permission, model and effort chips open `ChoiceMenu` (iOS's inline-section UIMenu as a popup window that keeps the keyboard up); Send runs `SessionStarter` with the progress line, the stop hint, Stop, refusal shakes and flash, then opens the chat. Project + and No Sessions' Start New Session open it too. Evidence: `dock/d12-open.png`, `d20-project-menu.png`, `d22-starting.png`, `d23-chat.png`, `dock-open-menus.mp4`, `dock-start-session.mp4` vs `ios-ref/41-dock-open.png` … `45-dock-harness-menu.png`. Bots (Session | Bot, faces), tasks and pictures are to do; the text heights are measured on the main thread
