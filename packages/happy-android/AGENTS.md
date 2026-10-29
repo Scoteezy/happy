@@ -839,6 +839,9 @@ removal finish in the graph's scope even when their screen leaves. A relay
 sign-in clears Direct selection; removing a retained relay account must not
 clear the selected computer's preferences. Computers use `files/direct/<id>`
 for the engine and offline files, and `local-settings-<id>` preferences.
+When iterating Direct engines across a suspending start/pause, snapshot the
+map first: publishing selection lets the coordinator lazily add an engine
+while an old one pauses. `DirectAccountsTest` reproduces that interleaving.
 `DirectPairingScreen` uses `DirectIdentityLayout` and the real pairing
 service, including emoji confirmation, expiry and background cancellation.
 
@@ -861,6 +864,15 @@ from a read-only preview. `StemCellsPreviewTest` checks the real renderer's
 requests and preservation of an unsynced draft. Inline rename belongs to
 `StemCellsSidebarView`/`StemCellsRowView`; IME-aware list insets keep the field
 visible, and removed rows cancel it rather than sending a stale rename.
+
+`StemCellHatchView` draws the pure hatch's 151 keyframes over 2.5 seconds when
+a visible sidebar/intro stem cell becomes a clay icon. Hidden/reduced-motion
+owners take the final mark immediately. Completion, replacement, window loss
+and detach restore the destination and release animation/haptic callbacks;
+never recycle the shared clay bitmap. Detach callbacks must defer removing
+the overlay, because the parent may already be iterating its children.
+Android uses native haptic taps at the cleavage/formation times, without a
+new vibration permission, not iOS's continuous Core Haptics waveform.
 
 For fake-backed verification of the **real MainActivity shell**, build debug
 with `-Phappy.shellHarness=true`. This changes only debug's application ID to
