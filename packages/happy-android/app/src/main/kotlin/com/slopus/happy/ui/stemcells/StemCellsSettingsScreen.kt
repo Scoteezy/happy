@@ -211,8 +211,7 @@ class StemCellsSettingsScreen(
         }
         val held = heldName
         if (held != null && host.profiles.firstOrNull { it.id == held.first }?.name == held.second) heldName = null
-        if (profiles.isEmpty()) return
-        if (shown == null) shownId = (profiles.firstOrNull { it.isActive } ?: profiles[0]).id
+        if (shown == null) shownId = (profiles.firstOrNull { it.isActive } ?: profiles.firstOrNull())?.id
         watchShown()
         showCarousel()
         rebuild(animated = false)
@@ -225,18 +224,23 @@ class StemCellsSettingsScreen(
     }
 
     private var watchedId: String? = null
+    private var watchedSession: StemCellsSession? = null
 
     /** The shown computer's settings and Stories, while its page shows. */
     private fun watchShown() {
-        val profile = shown ?: return
-        if (watchedId == profile.id) return
-        watchedId = profile.id
+        val profile = shown
+        val session = if (profile?.isDirect == true) host.session(profile.id) else null
+        // The real host obtains the engine asynchronously. An initially
+        // unavailable session must bind when it arrives, even on the same profile.
+        if (watchedId == profile?.id && watchedSession === session) return
+        watchedId = profile?.id
+        watchedSession = session
         for (stop in watchingShown) stop()
         watchingShown = emptyList()
         projectsHidden = false
         stories = null
-        if (!profile.isDirect) return
-        val session = host.session(profile.id) ?: return
+        if (profile?.isDirect != true) return
+        if (session == null) return
         val settings = scope.launch {
             session.engine.updates.collect { snapshot ->
                 val hidden = DirectSettings.projectsHidden(snapshot.settings)
@@ -409,7 +413,19 @@ class StemCellsSettingsScreen(
     /** Fades the cards in, and crosses the name and line, as iOS's 0.2 s transitions do. */
     private fun rebuild(animated: Boolean) {
         if (!::root.isInitialized) return
-        val profile = shown ?: return
+        val profile = shown
+        if (profile == null) {
+            rows = emptyList()
+            for (card in cards) {
+                scroll.content.frames.remove(card)
+                scroll.content.removeView(card)
+            }
+            cards.clear()
+            name.text = ""
+            subtitle.text = ""
+            root.requestLayout()
+            return
+        }
         val query = query
         rows = when {
             query != null && query.isNotEmpty() -> searchRows(query).let { if (it.isEmpty()) emptyList() else listOf(it) }

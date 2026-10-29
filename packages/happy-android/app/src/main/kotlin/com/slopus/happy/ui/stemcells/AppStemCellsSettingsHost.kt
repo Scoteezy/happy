@@ -17,6 +17,7 @@ import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.settings.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,13 +40,20 @@ class AppStemCellsSettingsHost(private val graph: AppGraph, private val scope: C
     override fun watch(changed: () -> Unit): () -> Unit {
         val job = scope.launch {
             combine(graph.direct.state, graph.auth.registry, graph.shellAccount, graph.profiles()) { _, _, shell, profile -> shell to profile }
-                .collect { (shell, currentProfile) ->
+                .collectLatest { (shell, currentProfile) ->
                     profile = currentProfile
                     val ids = graph.direct.state.value.accounts.map { it.id }.toSet()
                     (sessions.keys - ids).forEach { sessions.remove(it); StemCellsSession.forget(it) }
                     val allIds = ids + graph.auth.registry.value.entries.map { it.id }
                     (pictureKeys.keys - allIds).forEach { pictureKeys.remove(it); pictures.remove(it) }
-                    shell?.directId?.let { id -> graph.direct.syncEngine(id)?.let { sessions[id] = StemCellsSession.session(id, it) } }
+                    shell?.directId?.let { id ->
+                        val engine = graph.direct.syncEngine(id)
+                        // Selection/removal may change while the confined engine
+                        // request is pending. Never reinsert a forgotten session.
+                        if (engine != null && graph.shellAccount.value?.directId == id && graph.direct.state.value.accounts.any { it.id == id }) {
+                            sessions[id] = StemCellsSession.session(id, engine)
+                        }
+                    }
                     changed()
                     fun picture(id: String, key: Any?, load: suspend () -> Bitmap?) {
                         if (pictureKeys.containsKey(id) && pictureKeys[id] == key) return
