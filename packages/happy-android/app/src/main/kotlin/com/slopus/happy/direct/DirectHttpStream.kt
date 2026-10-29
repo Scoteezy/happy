@@ -11,7 +11,7 @@ import java.io.ByteArrayOutputStream
 class DirectHttpStream(val status: Int, val headers: Map<String, String> = emptyMap(), val body: Flow<ByteArray>)
 
 /** The tunnel or the computer could not be reached (happy-ios `DirectPairingError.unavailable`). */
-class DirectUnavailableException(message: String = "The computer could not be reached.") : Exception(message)
+open class DirectUnavailableException(message: String = "The computer could not be reached.") : Exception(message)
 
 /** An answer that is not HTTP (happy-ios `DirectPairingError.invalidResponse`). */
 class DirectProtocolException(message: String = "The computer's answer could not be read.") : Exception(message)

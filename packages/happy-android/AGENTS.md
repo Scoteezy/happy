@@ -752,6 +752,41 @@ interface (200 until reported, capped at 600). Where there is no WebView
 MarkdownView's code block shows instead; layout tests see the code block
 unless they provide `true`.
 
+## Tailcat
+
+A paired computer is reached through Tailcat, its private WireGuard tunnel.
+happy-ios links tailcat-swift, a pure-Swift port; this app links
+expo-tailcat's Go library (`packages/expo-tailcat/go/mobile`) built with
+gomobile into `packages/expo-tailcat/android/libs/ExpoTailcat.aar`.
+
+- The AAR is built from source and never committed or downloaded (as
+  expo-tailcat's own AGENTS.md says):
+  `ANDROID_HOME=… ANDROID_NDK_HOME=… bash packages/expo-tailcat/scripts/build-native.sh android`.
+  It needs Go (the version in `go/go.mod`, fetched by `GOTOOLCHAIN=auto`)
+  and an NDK. Agents on the shared Mac keep both under `.context/`
+  (`GOPATH`, `GOMODCACHE`, `GOCACHE` in `.context/go`; an SDK root
+  `.context/android-sdk` linking the real SDK's platforms and build tools,
+  with its own NDK) and never write to `~/go` or `~/Library/Android/sdk`.
+- `app/build.gradle.kts` links it when the file is there (`src/tailcat`,
+  its JNI libraries and keep rules) and builds without it otherwise
+  (`src/notailcat`): there every tunnel throws `TailcatUnlinkedException`,
+  and pairing says Tailcat isn't in this build. Release and preview refuse
+  to build without it (`checkTailcat`), and so does any build with
+  `-Phappy.requireTailcat=true`, which CI passes after building the AAR
+  (`.github/workflows/happy-android.yml`, cached on the Go sources).
+- `Tailcat` (`TailcatTunnels`) is the native side: `open` hands Go a
+  snapshot of the network interfaces (Go can't list Android's), opens a
+  tunnel to the daemon's port with `Host: server.tailcat`, and returns a
+  loopback URL with a random capability path; a network change closes every
+  tunnel. Call `Tailcat.install(context)` once. `TailcatHttpTransport` is
+  the `DirectTransport` over it: OkHttp to the loopback end, one tunnel per
+  transport opened on first use, let go after any request the tunnel
+  carried nothing back for (an I/O failure, or the proxy's own plain-text
+  502), so the next request opens a new one. Its tests run against a local
+  server (`TailcatHttpTransportTest`); the library itself on a device in
+  the debug `TailcatProbeActivity`. Addresses and capability URLs are
+  secrets: never log them.
+
 ## Direct and Stem Cells
 
 Development and preview builds (happy-ios `Direct`, `StemCells`). The

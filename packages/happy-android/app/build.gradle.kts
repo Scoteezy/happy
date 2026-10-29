@@ -310,6 +310,38 @@ val verifyReleaseKeeps = tasks.register<VerifyReleaseKeeps>("verifyReleaseKeeps"
 }
 tasks.matching { it.name == "assembleRelease" }.configureEach { dependsOn(verifyReleaseKeeps) }
 
+// Tailcat (AGENTS.md "Tailcat"): expo-tailcat's gomobile AAR, the private
+// tunnel to a paired computer. Built from source by
+// packages/expo-tailcat/scripts/build-native.sh android, never committed and
+// never downloaded. Linked when it is there (src/tailcat); without it the app
+// still builds (src/notailcat) and Direct pairing says the tunnel isn't in
+// this build. Release and preview refuse to build without it, and so does
+// any build given -Phappy.requireTailcat=true (CI).
+val tailcatAar: File = rootProject.file("../expo-tailcat/android/libs/ExpoTailcat.aar")
+val tailcatLinked = tailcatAar.exists()
+val requireTailcat = providers.gradleProperty("happy.requireTailcat").orNull == "true"
+val tailcatUnpacked = layout.buildDirectory.dir("tailcat-aar")
+val unpackTailcat = tasks.register<Sync>("unpackTailcat") {
+    from(zipTree(tailcatAar))
+    into(tailcatUnpacked)
+}
+android.sourceSets.getByName("main").kotlin.srcDir(if (tailcatLinked) "src/tailcat/kotlin" else "src/notailcat/kotlin")
+if (tailcatLinked) {
+    android.sourceSets.getByName("main").jniLibs.srcDir(tailcatUnpacked.get().dir("jni").asFile)
+    // gomobile's JNI and reflection entry points, kept under R8.
+    android.buildTypes.configureEach { proguardFile(tailcatUnpacked.map { it.file("proguard.txt") }.get().asFile) }
+    tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(unpackTailcat) }
+}
+val checkTailcat = tasks.register("checkTailcat") {
+    val linked = tailcatLinked
+    val path = tailcatAar.path
+    doLast {
+        if (!linked) throw GradleException("Missing $path. Run packages/expo-tailcat/scripts/build-native.sh android first (AGENTS.md \"Tailcat\").")
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" || it.name == "prePreviewBuild" || (requireTailcat && it.name == "preDebugBuild") }
+    .configureEach { dependsOn(checkTailcat) }
+
 kotlin {
     jvmToolchain(libs.versions.java.toolchain.get().toInt())
     compilerOptions {
@@ -335,6 +367,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    if (tailcatLinked) implementation(files(tailcatUnpacked.map { it.file("classes.jar") }).builtBy(unpackTailcat))
     implementation(project(":elevenlabs"))
 
     // QR codes (AGENTS.md "QR codes"): Google Code Scanner reads them, as

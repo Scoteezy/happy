@@ -2,10 +2,10 @@ name: happy-android
 
 on:
   pull_request:
-    paths: ['packages/happy-android/**', 'packages/happy-app/app.config.js', '.github/workflows/happy-android.yml']
+    paths: ['packages/happy-android/**', 'packages/happy-app/app.config.js', 'packages/expo-tailcat/go/**', 'packages/expo-tailcat/scripts/build-native.sh', 'packages/expo-tailcat/native-tags.txt', '.github/workflows/happy-android.yml']
   push:
     branches: [main]
-    paths: ['packages/happy-android/**', 'packages/happy-app/app.config.js', '.github/workflows/happy-android.yml']
+    paths: ['packages/happy-android/**', 'packages/happy-app/app.config.js', 'packages/expo-tailcat/go/**', 'packages/expo-tailcat/scripts/build-native.sh', 'packages/expo-tailcat/native-tags.txt', '.github/workflows/happy-android.yml']
   workflow_dispatch:
 
 permissions:
@@ -32,9 +32,37 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
+      # Tailcat (packages/happy-android/AGENTS.md "Tailcat"): expo-tailcat's
+      # AAR, built from source first, as expo-tailcat's own workflow does it.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/expo-tailcat/go/go.mod
+          cache-dependency-path: packages/expo-tailcat/go/go.sum
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+      - name: Install pinned Android NDK
+        run: sdkmanager 'ndk;27.2.12479018'
+      - name: Cache the Tailcat AAR
+        id: tailcat-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/expo-tailcat/android/libs
+          key: happy-android-tailcat-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/expo-tailcat/go/go.*', 'packages/expo-tailcat/go/mobile/*.go', 'packages/expo-tailcat/scripts/build-native.sh', 'packages/expo-tailcat/native-tags.txt') }}
+      - name: Build the Tailcat AAR
+        if: steps.tailcat-cache.outputs.cache-hit != 'true'
+        working-directory: .
+        run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018" bash packages/expo-tailcat/scripts/build-native.sh android
+      - name: Save the Tailcat AAR
+        if: steps.tailcat-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/expo-tailcat/android/libs
+          key: ${{ steps.tailcat-cache.outputs.cache-primary-key }}
       # No signing secrets: release builds unsigned, preview debug-signed.
+      # requireTailcat: a debug build without the AAR fails here too.
       - name: Build and test
-        run: ./gradlew --console=plain assembleDebug assembleRelease testDebugUnitTest :crypto:test :layout:test :icons:test
+        run: ./gradlew --console=plain -Phappy.requireTailcat=true assembleDebug assembleRelease testDebugUnitTest :crypto:test :layout:test :icons:test
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4

@@ -9,3 +9,4 @@ This is a standalone Expo module, not an integration into happy-app.
 - Treat Tailcat addresses and local endpoint capability paths as secrets; do not log them.
 - Native artifacts are built ahead of publishing, never downloaded during consumer installation.
 - Keep Go/mobile dependencies pinned and test real HTTP and WebSocket traffic through Tailcat.
+- happy-android links `android/libs/ExpoTailcat.aar` directly (its AGENTS.md "Tailcat"): rebuild it with `scripts/build-native.sh android` after changing `go/`, and keep `mobile.Manager`'s JSON options and answer compatible or change both.
