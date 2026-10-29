@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The voice screen and the composer's voice status (happy-ios
+  Strings/Voice.swift, which writes these in English with no happy-app key).
+-->
+<resources>
+    <string name="voice_call_close">Close</string>
+    <string name="voice_call_listening">Listening</string>
+    <string name="voice_call_user_speaking">You’re speaking</string>
+    <string name="voice_call_agent_speaking">Happy is speaking</string>
+    <string name="voice_call_muted">Microphone muted</string>
+    <string name="voice_call_mute">Mute microphone</string>
+    <string name="voice_call_unmute">Unmute microphone</string>
+    <string name="voice_call_stop">Stop voice</string>
+    <string name="voice_call_ended">Voice session ended</string>
+    <string name="voice_call_footer">Voice uses your microphone and shares session context with ElevenLabs. Voice stops when Happy enters the background.</string>
+    <string name="voice_call_permission_denied">Allow microphone access in Settings to use voice.</string>
+    <string name="voice_call_open_settings">Open Settings</string>
+    <string name="voice_call_authentication">Sign in again to use voice.</string>
+    <string name="voice_call_subscription_required">Your free voice time has been used. More voice time requires an active subscription.</string>
+    <string name="voice_call_conversation_limit">You’ve reached the maximum number of voice conversations for the last 30 days.</string>
+    <!-- The composer's status row during a call: "Voice Assistant · Listening". -->
+    <string name="voice_call_status">%1$s · %2$s</string>
+</resources>

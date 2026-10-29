@@ -100,6 +100,8 @@ class TextField(
     }
 
     override fun applyTheme() {
+        // A live text size or display size change re-applies the theme: the text takes its new size too.
+        applyStyle()
         setTextColor(Theme.color(color))
         setHintTextColor(Theme.color(placeholderColor))
         highlightColor = Theme.color(Palette.iconBlue) and 0x40FFFFFF

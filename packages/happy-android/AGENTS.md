@@ -148,7 +148,7 @@ Where happy-app writes English inline instead (most of HomeDock, the machine
 screen, info.tsx's activity rows, the agents and push-diagnostics settings,
 useStartSessionFromDraft's errors), the port stays English too: on screens, in
 `strings_<area>.xml` (`strings_home.xml`, `strings_tablet.xml`,
-`strings_push.xml`, `strings_android.xml`) or inline with a note naming the
+`strings_push.xml`, `strings_voice.xml`, `strings_android.xml`) or inline with a note naming the
 happy-app file. Text built outside composition stays a Kotlin literal, word for
 word as happy-app has it: tool titles (`chat/tools`), slash-command
 descriptions (`autocomplete`), reducer events, spawn, worktree and changes
@@ -688,6 +688,13 @@ events and focused-session context. Histories load lazily with a 50-row cap;
 events arriving during SDK connection are buffered. Client tools validate
 their parameters and use the existing sender/permission RPCs for the bound
 account. Logout, failed start and stop invalidate callbacks and close the call.
+
+The UI is happy-ios's: `ui/voice/VoiceCoordinator` starts a call from the
+composer's microphone (with `ActivityMicrophonePermission`, registered by
+`MainActivity`) and shows `VoiceStatusScreen`; `VoiceCallState` is what both
+it and the composer's status row draw. The call outlives the screen and the
+chat; an open call ends when Happy goes to the background (one still
+starting does not, as the paywall is an activity of its own).
 
 `vendor/elevenlabs/UPSTREAM.md` records the pinned MIT source archive and the
 audio lifecycle patch. LiveKit owns audio focus and device routing; call mute

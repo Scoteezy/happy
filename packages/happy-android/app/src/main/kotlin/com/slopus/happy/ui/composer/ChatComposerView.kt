@@ -69,6 +69,22 @@ class ChatComposerView(
     var onHeightChanged: (() -> Unit)? = null
     /** A message was queued. */
     var onSent: (() -> Unit)? = null
+    /** The microphone (the primary with nothing typed), or the status row during a call: open the voice screen. */
+    var onVoice: (() -> Unit)? = null
+
+    /**
+     * The call's state while one runs ("Connecting…", "Listening", …): the
+     * status row says "Voice Assistant · …" in blue over the session's own
+     * status, and a tap on it opens the voice screen.
+     */
+    var voiceStatus: String? = null
+        set(value) {
+            if (field == value) return
+            field = value
+            applyStatus()
+            requestLayout()
+            onHeightChanged?.invoke()
+        }
 
     private var state: ChatState? = null
     private var mirror = ComposerMirror()
@@ -109,6 +125,8 @@ class ChatComposerView(
         // The picked files live as long as the screen's composer.
         scope.coroutineContext[Job]?.invokeOnCompletion { images.close() }
         card.onSelect = ::select
+        statusLabel.setOnClickListener { if (voiceStatus != null) onVoice?.invoke() }
+        statusLabel.isClickable = false
         card.configuration = card.configuration.copy(placeholder = context.getString(R.string.session_input_placeholder))
     }
 
@@ -220,19 +238,30 @@ class ChatComposerView(
 
     private fun applyStatus() {
         val status = status
-        statusDot.visibility = if (status == null) GONE else VISIBLE
+        val voice = voiceStatus
+        statusDot.visibility = if (status == null && voice == null) GONE else VISIBLE
         statusLabel.visibility = statusDot.visibility
-        status ?: return
-        val color: ColorToken = when (status.tone) {
-            ComposerStatus.Tone.Disconnected -> Palette.sessionStatusDisconnected
-            ComposerStatus.Tone.Attention -> Palette.sessionStatusAttention
-            ComposerStatus.Tone.Thinking -> Palette.sessionStatusThinking
-            ComposerStatus.Tone.Online -> Palette.sessionStatusOnline
+        statusLabel.isClickable = voice != null
+        statusLabel.contentDescription = null
+        if (voice != null) {
+            statusLabel.text = context.getString(R.string.voice_call_status, context.getString(R.string.settings_voice_assistant), voice)
+            statusLabel.color = Palette.iconBlue
+            statusDot.color = Theme.color(Palette.iconBlue)
+            statusDot.isPulsing = true
         }
-        statusLabel.text = text(status.text)
-        statusLabel.color = color
-        statusDot.color = Theme.color(color)
-        statusDot.isPulsing = status.isPulsing
+        if (voice == null && status != null) {
+            val color: ColorToken = when (status.tone) {
+                ComposerStatus.Tone.Disconnected -> Palette.sessionStatusDisconnected
+                ComposerStatus.Tone.Attention -> Palette.sessionStatusAttention
+                ComposerStatus.Tone.Thinking -> Palette.sessionStatusThinking
+                ComposerStatus.Tone.Online -> Palette.sessionStatusOnline
+            }
+            statusLabel.text = text(status.text)
+            statusLabel.color = color
+            statusDot.color = Theme.color(color)
+            statusDot.isPulsing = status.isPulsing
+        }
+        if (status == null && voice == null) return
         val alpha = if (detailsVisible) 1f else 0f
         statusDot.alpha = alpha
         statusLabel.alpha = alpha
@@ -311,7 +340,11 @@ class ChatComposerView(
         state ?: return
         val action = card.configuration.primaryAction
         if (!hasComposerContent && action == AgentInputPrimaryAction.Stop) return abort()
-        if (!hasComposerContent && action == AgentInputPrimaryAction.Voice) return
+        if (!hasComposerContent && action == AgentInputPrimaryAction.Voice) {
+            card.blur()
+            onVoice?.invoke()
+            return
+        }
         sendPressed()
     }
 
@@ -423,7 +456,7 @@ class ChatComposerView(
                 width = width,
                 paddingH = paddingH,
                 screenWidth = screenWidth,
-                statusText = if (status == null) null else statusLabel.measure(Double.MAX_VALUE),
+                statusText = if (status == null && voiceStatus == null) null else statusLabel.measure(Double.MAX_VALUE),
                 card = if (desktop == null) card.layoutInput(innerWidth) else null,
                 desktop = desktop,
             ),

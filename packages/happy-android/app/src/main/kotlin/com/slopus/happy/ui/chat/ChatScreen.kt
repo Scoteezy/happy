@@ -78,6 +78,7 @@ import com.slopus.happy.ui.components.AvatarStyle
 import com.slopus.happy.ui.components.AvatarView
 import com.slopus.happy.ui.components.IconView
 import com.slopus.happy.ui.composer.ChatComposerView
+import com.slopus.happy.ui.voice.VoiceCoordinator
 import com.slopus.happy.ui.nav.Screen
 import com.slopus.happy.ui.tablet.ContentWidth
 import com.slopus.happy.ui.tablet.TabletShell
@@ -207,6 +208,10 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         list.onAction = ::perform
         composer.onHeightChanged = { root.requestLayout() }
         composer.onSent = { list.scrollToNewest(animated = true) }
+        // The microphone, and the status row during a call: the voice screen over this chat.
+        val voice = VoiceCoordinator.of(graph)
+        composer.onVoice = { voice.start(sessionId, this) }
+        scope.launch { voice.state.collect { composer.voiceStatus = voice.statusText(context) } }
         scrollButton.setOnClickListener { list.scrollToNewest(animated = true) }
         scrollButton.alpha = 0f
         scrollButton.visibility = View.GONE
@@ -671,6 +676,12 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             composer.card.blur()
         }
         return false
+    }
+
+    override fun onAppear() {
+        super.onAppear()
+        // voiceHooks.onSessionFocus: a running call follows the chat on screen.
+        VoiceCoordinator.of(graph).focus(sessionId)
     }
 
     override fun onDisappear() {

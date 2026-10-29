@@ -12,6 +12,8 @@ import com.slopus.happy.push.ActivityNotificationPermission
 import com.slopus.happy.push.BackgroundSendNotifications
 import com.slopus.happy.push.startPushRegistration
 import com.slopus.happy.ui.AppCoordinator
+import com.slopus.happy.ui.voice.VoiceCoordinator
+import com.slopus.happy.voice.ActivityMicrophonePermission
 
 class MainActivity : ComponentActivity() {
     private val graph: AppGraph get() = (application as HappyApplication).graph
@@ -32,6 +34,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         notificationPermission = ActivityNotificationPermission(this)
+        VoiceCoordinator.of(graph).microphone = ActivityMicrophonePermission(this)
         if (savedInstanceState == null) DeepLinks.offer(intent)
         BackgroundSendNotifications.start(this, graph)
         coordinator = AppCoordinator(this, graph)
@@ -59,5 +62,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         graph.setForeground(false)
+        // happy-ios: voice stops when Happy enters the background.
+        if (!isChangingConfigurations) VoiceCoordinator.of(graph).backgrounded()
     }
 }
