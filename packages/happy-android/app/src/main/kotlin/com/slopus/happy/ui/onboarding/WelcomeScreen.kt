@@ -47,9 +47,21 @@ class WelcomePane(context: Context, private val graph: AppGraph, private val hos
     }
 }
 
-/** Signed out: create an account or restore one. app/(app)/index.tsx (happy-ios `WelcomeViewController`). */
-class WelcomeScreen(context: Context, private val graph: AppGraph, private val offersServer: Boolean = true) : BarScreen(context) {
+/**
+ * Signed out: create an account or restore one. app/(app)/index.tsx (happy-ios
+ * `WelcomeViewController`). [addingAccount]: Settings › Account › Add Account,
+ * over an account that stays signed in; it rises as a sheet with Cancel, and a
+ * sign-in through it adds the account and opens it.
+ */
+class WelcomeScreen(
+    context: Context,
+    private val graph: AppGraph,
+    private val offersServer: Boolean = true,
+    private val addingAccount: Boolean = false,
+) : BarScreen(context) {
     private val pane = WelcomePane(context, graph, this)
+
+    override val isModal: Boolean get() = addingAccount
 
     override fun createContent(): View {
         // Signed out, the gear leads straight to the server: self-hosters set it before creating an account.
@@ -62,6 +74,22 @@ class WelcomeScreen(context: Context, private val graph: AppGraph, private val o
     override fun onAppear() {
         super.onAppear()
         bar.subtitle = if (offersServer) graph.serverConfig.customHostLabel else null
+        if (addingAccount) {
+            bar.onBack = null
+            bar.leadingActions = listOf(NavigationBar.Action.text(context.getString(R.string.common_cancel)) { cancel() })
+        }
+    }
+
+    override fun onBackPressed(): Boolean {
+        if (!addingAccount) return false
+        cancel()
+        return true
+    }
+
+    /** Cancel leaves the current account as it was. */
+    private fun cancel() {
+        graph.cancelAddingAccount()
+        pop()
     }
 
     override fun onInsetsChanged() {

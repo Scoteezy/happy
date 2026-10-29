@@ -1,5 +1,8 @@
 package com.slopus.happy.model.settings
 
+import com.slopus.happy.auth.AccountDisplay
+import com.slopus.happy.auth.AccountRegistryEntry
+import com.slopus.happy.auth.CredentialLocation
 import com.slopus.happy.config.AppVariant
 import com.slopus.happy.model.GitHubProfile
 import com.slopus.happy.model.ImageRef
@@ -98,5 +101,24 @@ class AccountPageModelTest {
         assertNull(page.displayName)
         assertEquals("https://a/p.png", page.avatarUrl)
         assertEquals("HwgK", page.avatarThumbhash)
+    }
+}
+
+class AccountSwitcherEntryTest {
+    @Test fun titlesSubtitlesAndTheActiveProfile() {
+        val base = "https://api.cluster-fluster.com"
+        val accounts = listOf(
+            AccountRegistryEntry("aaaaaaaaaaaaaaaa", base, CredentialLocation.Shared, 0),
+            AccountRegistryEntry("bbbbbbbbbbbbbbbb", "http://10.0.0.2:3005", CredentialLocation.Own, 1, AccountDisplay(name = "Bea", username = "bea")),
+            AccountRegistryEntry("cccccccccccccccc", base, CredentialLocation.Own, 2, AccountDisplay(username = "cee")),
+            AccountRegistryEntry("0123abcdef012345", "https://happy.example.com", CredentialLocation.Own, 3),
+        )
+        val active = profile(firstName = "Ada", github = github("ada", avatarUrl = "https://a/ada.png"))
+        val entries = AccountSwitcherEntry.entries(accounts, "aaaaaaaaaaaaaaaa", active, base, "Account")
+        assertEquals(listOf("Ada", "Bea", "@cee", "Account 0123abcd"), entries.map { it.title })
+        assertEquals(listOf("@ada", "@bea • 10.0.0.2:3005", null, "happy.example.com"), entries.map { it.subtitle })
+        assertEquals("https://a/ada.png", entries[0].avatarUrl)
+        assertNull("another account's profile is not this one's", entries[1].avatarUrl)
+        assertEquals(listOf(true, false, false, false), entries.map { it.isActive })
     }
 }

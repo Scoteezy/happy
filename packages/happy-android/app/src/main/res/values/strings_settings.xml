@@ -71,4 +71,14 @@
     <string name="push_reregister_current">Current token %1$s</string>
     <!-- Strings.Modals.terminalNeedsUpdate: a v1 terminal is refused (PairingService). -->
     <string name="modals_terminal_needs_update">This terminal runs an old version of Happy. Update Happy on your computer, then scan again.</string>
+    <!-- Strings/SettingsPages.swift AccountSwitcher: Settings › Account's account switcher. -->
+    <string name="account_switcher_title">Accounts</string>
+    <string name="account_switcher_footer">Tap an account to switch to it. Touch and hold an account to sign it out.</string>
+    <string name="account_switcher_add_account">Add Account</string>
+    <!-- Precedes the start of the account id when nothing better is known. -->
+    <string name="account_switcher_fallback_title">Account</string>
+    <string name="account_switcher_sign_out">Sign Out</string>
+    <string name="account_switcher_sign_out_confirm">Sign out of %1$s? Its data is removed from this phone. Make sure you have backed up its secret key!</string>
+    <string name="account_switcher_switch_failed">Couldn’t switch accounts. Try again.</string>
+    <string name="account_switcher_sign_out_failed">Couldn’t sign out of that account. Try again.</string>
 </resources>

@@ -9,6 +9,7 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import android.provider.Settings as AndroidSettings
 import android.view.View
+import android.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
@@ -24,6 +25,7 @@ import com.slopus.happy.images.HappyImageLoader
 import com.slopus.happy.layout.Palette
 import com.slopus.happy.model.Profile
 import com.slopus.happy.model.settings.AccountPageModel
+import com.slopus.happy.model.settings.AccountSwitcherEntry
 import com.slopus.happy.model.settings.PushPermission
 import com.slopus.happy.model.settings.PushPermissionStatus
 import com.slopus.happy.model.settings.PushRegistration
@@ -32,11 +34,14 @@ import com.slopus.happy.model.settings.PushToken
 import com.slopus.happy.model.settings.PushTokensApi
 import com.slopus.happy.push.pushRegistration
 import com.slopus.happy.ui.components.Alerts
+import com.slopus.happy.ui.components.AvatarStyle
+import com.slopus.happy.ui.components.AvatarView
 import com.slopus.happy.ui.components.GroupedListView
 import com.slopus.happy.ui.components.ItemGroupView
 import com.slopus.happy.ui.components.ItemIcon
 import com.slopus.happy.ui.components.ItemRowView
 import com.slopus.happy.ui.nav.BarScreen
+import com.slopus.happy.ui.onboarding.WelcomeScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,8 +53,9 @@ import kotlinx.coroutines.withContext
  * Settings › Account (app/(app)/settings/account.tsx, happy-ios
  * `SettingsAccountViewController`): account information, linking another
  * device, the profile and connected services, the secret key backup,
- * analytics, push notifications and logout. The account switcher iOS puts
- * on top comes with several accounts per install.
+ * analytics, push notifications and logout, under the account switcher:
+ * every account signed in here, a tap switching to it, a long press
+ * signing it out, and Add Account.
  */
 class AccountScreen(context: Context, private val graph: AppGraph) : BarScreen(context) {
     private val list = GroupedListView(context)
@@ -72,6 +78,8 @@ class AccountScreen(context: Context, private val graph: AppGraph) : BarScreen(c
     private var requestingPermission = false
     private var refreshingToken = false
     private var deletingToken: String? = null
+    /** The account a switch is under way to. */
+    private var busyAccount: String? = null
     private val pushApi = PushTokensApi(graph.http) { signedIn?.credentials?.token }
     private val registration: PushRegistration? by lazy {
         activity()?.let { pushRegistration(context, graph, it.notificationPermission) }
@@ -93,6 +101,7 @@ class AccountScreen(context: Context, private val graph: AppGraph) : BarScreen(c
             }
         }
         scope.launch { graph.settings.settings.collect { rebuild() } }
+        scope.launch { graph.auth.registry.collect { rebuild() } }
     }
 
     override fun onAppear() {
@@ -113,7 +122,7 @@ class AccountScreen(context: Context, private val graph: AppGraph) : BarScreen(c
         val signedIn = signedIn ?: return
         val page = AccountPageModel(profile)
         val blue = Palette.iconBlue
-        val sections = mutableListOf<View>()
+        val sections = mutableListOf<View>(accountSwitcher(signedIn))
 
         val anonId = signedIn.encryption.anonId
         val publicId = signedIn.publicId
@@ -264,6 +273,96 @@ class AccountScreen(context: Context, private val graph: AppGraph) : BarScreen(c
             }
         }
         return null
+    }
+
+    // Account switcher
+
+    private fun accountSwitcher(signedIn: AuthState.SignedIn): View {
+        val settings = graph.settings.settings.value
+        val entries = AccountSwitcherEntry.entries(
+            graph.auth.registry.value.entries,
+            activeId = signedIn.encryption.anonId,
+            activeProfile = profile,
+            defaultServer = graph.serverConfig.defaultUrl,
+            fallbackTitle = string(R.string.account_switcher_fallback_title),
+        )
+        val rows = entries.map { entry ->
+            val face = AvatarView.Content(entry.id, AvatarStyle.normalize(settings.avatarStyle), settings.avatarMonochrome, image = entry.avatarUrl)
+            ItemRowView(context, entry.title, subtitle = entry.subtitle, icon = ItemIcon.Avatar(face)).apply {
+                if (!entry.isActive) onTap = { switchAccount(entry) }
+                onLongPress = { offerSignOut(this, entry) }
+                showsChevron = false
+                if (entry.isActive) trailingView = SettingsCheckmark.view(context, Palette.iconBlue)
+                isLoading = busyAccount == entry.id
+            }
+        }
+        val add = ItemRowView(
+            context,
+            string(R.string.account_switcher_add_account),
+            icon = ItemIcon.Glyph(Icon.ionicons("add-circle-outline"), Palette.iconBlue),
+        ) { addAccount() }
+        add.showsChevron = false
+        return ItemGroupView(
+            context,
+            title = string(R.string.account_switcher_title),
+            footer = string(R.string.account_switcher_footer),
+            rows = rows + add,
+        )
+    }
+
+    private fun switchAccount(entry: AccountSwitcherEntry) {
+        if (busyAccount != null) return
+        busyAccount = entry.id
+        rebuild()
+        scope.launch {
+            try {
+                // On success the coordinator replaces the whole stack with the other account's home.
+                graph.switchAccount(entry.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Alerts.show(context, string(R.string.common_error), string(R.string.account_switcher_switch_failed))
+            }
+            busyAccount = null
+            rebuild()
+        }
+    }
+
+    /** The sign-in screens over this account, which stays signed in; a sign-in there adds the account and opens it. */
+    private fun addAccount() {
+        graph.beginAddingAccount()
+        push(WelcomeScreen(context, graph, addingAccount = true))
+    }
+
+    /** iOS's context menu: Sign Out, then (for an account that is not the active one) a confirmation. */
+    private fun offerSignOut(anchor: View, entry: AccountSwitcherEntry) {
+        val menu = PopupMenu(context, anchor)
+        menu.menu.add(string(R.string.account_switcher_sign_out)).setOnMenuItemClickListener {
+            signOut(entry)
+            true
+        }
+        menu.show()
+    }
+
+    private fun signOut(entry: AccountSwitcherEntry) {
+        if (entry.isActive) return logout()
+        scope.launch {
+            val confirmed = Alerts.confirm(
+                context,
+                string(R.string.account_switcher_sign_out),
+                context.getString(R.string.account_switcher_sign_out_confirm, entry.title),
+                confirmTitle = string(R.string.account_switcher_sign_out),
+                destructive = true,
+            )
+            if (!confirmed) return@launch
+            try {
+                graph.signOut(entry.id).join()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Alerts.show(context, string(R.string.common_error), string(R.string.account_switcher_sign_out_failed))
+            }
+        }
     }
 
     // Account information and profile

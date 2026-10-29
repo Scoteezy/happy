@@ -1,8 +1,11 @@
 package com.slopus.happy.model.settings
 
 import com.slopus.happy.R
+import com.slopus.happy.auth.AccountRegistryEntry
 import com.slopus.happy.config.AppVariant
 import com.slopus.happy.model.Profile
+import java.net.URI
+import java.net.URISyntaxException
 
 /** What the Settings index shows (components/SettingsView.tsx), worked out from the stored profile (happy-ios `SettingsIndexModel`). */
 data class SettingsIndexModel(
@@ -100,6 +103,62 @@ data class AccountPageModel(
                 showsProfile = displayName != null || githubLogin != null || profile?.avatar != null,
                 services = profile?.connectedServices.orEmpty().mapNotNull { wire -> Service.entries.firstOrNull { it.wire == wire } },
             )
+        }
+    }
+}
+
+/** One row of Settings › Account's account switcher (happy-ios `AccountSwitcherEntry`). */
+data class AccountSwitcherEntry(
+    val id: String,
+    val title: String,
+    val subtitle: String?,
+    val avatarUrl: String?,
+    val avatarThumbhash: String?,
+    val isActive: Boolean,
+) {
+    companion object {
+        /**
+         * Entries in added order. The active account's own profile fills in
+         * what the registry has not stored yet. The title is the name, else
+         * the GitHub login, else [fallbackTitle] with the start of the id; the
+         * subtitle adds the login under a name and the server when it is not
+         * the default one.
+         */
+        fun entries(
+            accounts: List<AccountRegistryEntry>,
+            activeId: String?,
+            activeProfile: Profile?,
+            defaultServer: String,
+            fallbackTitle: String,
+        ): List<AccountSwitcherEntry> = accounts.sortedBy { it.addedOrder }.map { account ->
+            val isActive = account.id == activeId
+            var name = account.display?.name
+            var username = account.display?.username
+            var avatar = account.display?.avatarUrl
+            var thumbhash = account.display?.avatarThumbhash
+            if (isActive && activeProfile != null) {
+                name = name ?: activeProfile.displayName
+                username = username ?: activeProfile.github?.login
+                if (avatar == null) {
+                    avatar = activeProfile.avatarUrl
+                    thumbhash = activeProfile.avatar?.thumbhash
+                }
+            }
+            val title = name ?: username?.let { "@$it" } ?: "$fallbackTitle ${account.id.take(8)}"
+            val details = buildList {
+                if (name != null && username != null) add("@$username")
+                if (account.serverUrl.trimEnd('/') != defaultServer.trimEnd('/')) add(displayHost(account.serverUrl))
+            }
+            AccountSwitcherEntry(account.id, title, details.joinToString(" • ").ifEmpty { null }, avatar, thumbhash, isActive)
+        }
+
+        /** Host and port, as `ServerConfig.displayHost` shows them. */
+        fun displayHost(url: String): String = try {
+            val uri = URI(url)
+            val host = uri.host ?: return url
+            if (uri.port >= 0) "$host:${uri.port}" else host
+        } catch (_: URISyntaxException) {
+            url
         }
     }
 }

@@ -30,6 +30,9 @@ sealed interface ItemIcon {
 
     /** A picture; [round] clips it to a circle (a GitHub avatar). */
     data class Picture(val drawable: Drawable, val round: Boolean = false, val tint: ColorToken? = null) : ItemIcon
+
+    /** An account's face: its picture once loaded, else its generated avatar (the account switcher). */
+    data class Avatar(val content: AvatarView.Content) : ItemIcon
 }
 
 /**
@@ -99,6 +102,7 @@ class ItemRowView(
     private val chevronView = IconView(context, Icon.ionicons("chevron-forward"), 17.0, Palette.groupedChevron)
     private val spinner = ProgressBar(context, null, android.R.attr.progressBarStyleSmall)
     private val dividerView = View(context)
+    private val avatarView = AvatarView(context)
     private var round = false
 
     init {
@@ -109,7 +113,7 @@ class ItemRowView(
                 if (round) outline.setOval(0, 0, view.width, view.height) else outline.setRect(0, 0, view.width, view.height)
             }
         }
-        listOf(pictureView, glyphView, titleLabel, subtitleLabel, detailLabel, chevronView, spinner, dividerView).forEach {
+        listOf(pictureView, glyphView, avatarView, titleLabel, subtitleLabel, detailLabel, chevronView, spinner, dividerView).forEach {
             it.isClickable = false
             it.isFocusable = false
             it.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -159,6 +163,7 @@ class ItemRowView(
         layout.icon?.let {
             pictureView.setFrame(it)
             glyphView.setFrame(it)
+            avatarView.setFrame(it)
         }
         titleLabel.setFrame(layout.title)
         layout.subtitle?.let { subtitleLabel.setFrame(it) }
@@ -194,8 +199,10 @@ class ItemRowView(
                 pictureView.imageTintList = icon.tint?.let { ColorStateList.valueOf(Theme.color(it)) }
                 pictureView.invalidateOutline()
             }
+            is ItemIcon.Avatar -> avatarView.content = icon.content
             null -> {}
         }
+        avatarView.visibility = if (icon is ItemIcon.Avatar) VISIBLE else GONE
         pictureView.visibility = if (icon is ItemIcon.Picture) VISIBLE else GONE
         glyphView.visibility = if (icon is ItemIcon.Glyph) VISIBLE else GONE
         if (icon !is ItemIcon.Glyph) glyphView.icon = null
