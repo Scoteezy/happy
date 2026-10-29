@@ -778,6 +778,15 @@ home, so for now they run in the debug harness below.
 - Animated stickers are Lottie (`com.airbnb.android:lottie`), the one
   dependency the stories add: the daemon serves a `tgs` as Lottie JSON
   (`?as=lottie`) and `StoryStickerLottie` draws it with `LottieDrawable`.
+- The editor (`StoryEditorView`, `StoryTextEntryView`,
+  `StickerPickerSheet`) is a view too, over the root by
+  `StoriesEditorPresenter`, rising from the foot as iOS's full-screen
+  modal does. iOS's page sheet for the picker is a sheet view of its own
+  (half and full, as the medium and large detents); its grid places and
+  recycles cells by hand from `StickerPickerLayout` in a
+  `BounceScrollView`. Glass is a dark fill; UIColorPicker, which Android
+  lacks, is a spectrum dialog; the font menu is a PopupMenu. Media comes
+  from the system photo picker (`StoriesMediaChooser`).
 - Inside a `TextPaint(...).apply { }` block, `density` is the paint's own
   field (1.0), not `ui/view`'s: write `Theme.density` there.
 
@@ -793,8 +802,11 @@ adb shell am start -n com.slopus.happy.dev/com.slopus.happy.harness.StoriesHarne
 ```
 
 Extras as iOS's launch arguments: `fresh`, `kept`, `tooltip`, `epoch`,
-`showScale`, `newer`, `slowFrames`. The view tagged `stories-probe`
-reports the screen in its content description, as iOS's probe does.
+`showScale`, `newer`, `slowFrames`, `compose` (`-storiesCompose`: the
+editor on a picture of the harness's own). `harness-edit-draft` (bottom
+left) opens the editor on the newest draft. The view tagged
+`stories-probe` reports the screen in its content description, as iOS's
+probe does (`editor=1 frames=1 overlays=sticker,text …` over the editor).
 
 ## Autocomplete
 

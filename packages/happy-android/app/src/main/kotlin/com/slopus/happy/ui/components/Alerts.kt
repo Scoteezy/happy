@@ -25,8 +25,17 @@ import kotlin.coroutines.resume
 object Alerts {
     private fun themed(context: Context): Context = ContextThemeWrapper(
         context,
-        if (Theme.isDark) android.R.style.Theme_DeviceDefault_Dialog_Alert else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert,
+        if (Theme.isDark || context is DarkAlerts) android.R.style.Theme_DeviceDefault_Dialog_Alert else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert,
     )
+
+    /**
+     * [context] for alerts that are dark whatever the app's appearance:
+     * over the story viewer and editor, which iOS keeps dark
+     * (`overrideUserInterfaceStyle = .dark`).
+     */
+    fun dark(context: Context): Context = context as? DarkAlerts ?: DarkAlerts(context)
+
+    private class DarkAlerts(base: Context) : android.content.ContextWrapper(base)
 
     /** An alert with OK; [then] runs once it is gone. */
     fun show(context: Context, title: String, message: String? = null, then: (() -> Unit)? = null) {
@@ -103,6 +112,7 @@ object Alerts {
         message: String? = null,
         options: List<String>,
         destructive: Set<Int> = emptySet(),
+        cancelTitle: String? = null,
     ): Int? = suspendCancellableCoroutine { cont ->
         var answered = false
         val builder = AlertDialog.Builder(themed(context)).setTitle(title)
@@ -113,7 +123,7 @@ object Alerts {
             else SpannableString(option).apply { setSpan(ForegroundColorSpan(red), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
         }
         builder.setItems(items.toTypedArray<CharSequence>()) { _, which -> answered = true; if (cont.isActive) cont.resume(which) }
-            .setNegativeButton(context.getString(R.string.common_cancel)) { _, _ -> answered = true; if (cont.isActive) cont.resume(null) }
+            .setNegativeButton(cancelTitle ?: context.getString(R.string.common_cancel)) { _, _ -> answered = true; if (cont.isActive) cont.resume(null) }
             .setOnDismissListener { if (!answered && cont.isActive) cont.resume(null) }
         val dialog = builder.create()
         dialog.show()

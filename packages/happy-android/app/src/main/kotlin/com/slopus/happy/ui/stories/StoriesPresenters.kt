@@ -5,6 +5,7 @@ import android.graphics.RectF
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.PathInterpolator
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.view.ViewCompat
@@ -21,6 +22,7 @@ import com.slopus.happy.layout.Palette
 import com.slopus.happy.layout.storiesViewerGround
 import com.slopus.happy.stories.Story
 import com.slopus.happy.stories.StoryFeed
+import com.slopus.happy.stories.StoryDraft
 import com.slopus.happy.stories.StoryFeedAuthor
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.view.dp
@@ -253,5 +255,82 @@ object StoriesViewerTransition {
             page.alpha = 1 - t
             ground(viewer, from * (1 - t))
         }) { done() }
+    }
+}
+
+/**
+ * Opens the editor on a draft (happy-ios `StoriesEditorPresenter`): the
+ * story a conversation drafted, from its card's Edit, or a new story on what
+ * was picked, not yet on the computer. Stories are only ever started in a
+ * conversation. The editor lies over the activity's whole window, rising
+ * from the foot as a full-screen modal does, the status bar's icons light
+ * over its black; back closes what is over it first, then it.
+ */
+object StoriesEditorPresenter {
+    private val shown = HashSet<StoryEditorView>()
+
+    /** The editor up over [root], if any. */
+    fun presented(root: View): StoryEditorView? = shown.firstOrNull { it.rootView === root.rootView }
+
+    fun present(session: StoriesSession, draft: Story, host: View, done: ((Story?) -> Unit)? = null): StoryEditorView? =
+        open(StoryEditorView(host.context, session, StoryDraft(editing = draft)), host, done)
+
+    /** A new story on what was picked. */
+    fun present(session: StoriesSession, picked: List<StoriesMediaChooser.Picked>, host: View, done: ((Story?) -> Unit)? = null): StoryEditorView? {
+        if (picked.isEmpty()) return null
+        val draft = StoryDraft()
+        val local = HashMap<String, StoryLocalMedia>()
+        for (one in picked) {
+            draft.add(one.frame)
+            one.local?.let { local[one.frame.id] = it }
+        }
+        draft.select(0)
+        return open(StoryEditorView(host.context, session, draft, local), host, done)
+    }
+
+    private fun open(editor: StoryEditorView, host: View, done: ((Story?) -> Unit)?): StoryEditorView? {
+        val root = host.rootView as? ViewGroup ?: return null
+        if (shown.any { it.rootView === root }) return null
+        val activity = host.context as? ComponentActivity
+        val back = activity?.let {
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() = editor.back()
+            }.also { callback -> it.onBackPressedDispatcher.addCallback(callback) }
+        }
+        val bars = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        val wasLight = bars?.isAppearanceLightStatusBars
+        bars?.isAppearanceLightStatusBars = false
+        shown += editor
+        root.addView(editor, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        val insets = ViewCompat.getRootWindowInsets(root)
+        val top = insets?.getInsets(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout())?.top ?: 0
+        val bottom = insets?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+        editor.statusBar = px(top)
+        editor.homeIndicator = px(bottom)
+        editor.measure(View.MeasureSpec.makeMeasureSpec(root.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(root.height, View.MeasureSpec.EXACTLY))
+        editor.layout(0, 0, root.width, root.height)
+        editor.onFinish = done
+        editor.onDismiss = {
+            back?.isEnabled = false
+            slide(editor, root, up = false) {
+                back?.remove()
+                if (wasLight != null) bars.isAppearanceLightStatusBars = wasLight
+                root.removeView(editor)
+                shown.remove(editor)
+                editor.done()
+            }
+        }
+        slide(editor, root, up = true) {}
+        return editor
+    }
+
+    /** UIKit's cover-vertical: up from the foot, and back down. */
+    private fun slide(editor: View, root: View, up: Boolean, end: () -> Unit) {
+        val height = root.height.toFloat()
+        editor.translationY = if (up) height else 0f
+        editor.animate().translationY(if (up) 0f else height).setDuration(if (up) 400L else 300L)
+            .setInterpolator(PathInterpolator(0.2f, 0.9f, 0.3f, 1f))
+            .withEndAction(end)
+            .start()
     }
 }

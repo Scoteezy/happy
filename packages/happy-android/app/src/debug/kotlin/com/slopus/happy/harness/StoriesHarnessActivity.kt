@@ -32,7 +32,11 @@ import com.slopus.happy.layout.stemcells.StemCellsHomeLayout
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.stories.StoriesSnapshot
 import com.slopus.happy.ui.home.HomeHeaderView
+import com.slopus.happy.stories.StoryOverlay
+import com.slopus.happy.stories.StoryStatus
+import com.slopus.happy.ui.stories.StoriesEditorPresenter
 import com.slopus.happy.ui.stories.StoriesHaptics
+import com.slopus.happy.ui.stories.StoriesMediaChooser
 import com.slopus.happy.ui.stories.StoriesHomeController
 import com.slopus.happy.ui.stories.StoriesSession
 import com.slopus.happy.ui.stories.StoriesViewerPresenter
@@ -42,7 +46,9 @@ import com.slopus.happy.ui.view.BounceScrollView
 import com.slopus.happy.ui.view.ManualLayout
 import com.slopus.happy.ui.view.setFrame
 import com.slopus.happy.ui.view.toLayoutInsets
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
@@ -68,13 +74,17 @@ import kotlin.math.sin
  * (as the last run left it; else put away long ago), `tooltip` (the
  * one-time tooltip shows), `epoch` (the stories' clock, ms), `showScale`
  * (each frame shows N times as long), `newer` (a story posted since the
- * row was put away), `slowFrames`.
+ * row was put away), `slowFrames`, `compose` (the editor opens on a
+ * picture of the harness's own, as a conversation's draft would).
  *
  * The view tagged `stories-probe` reports the screen in its content
  * description: `viewer=1 author=1 position=0 paused=0 chrome=1 reaction=🔥
  * haptics=open,react`, or `viewer=0 header=open stories=4 …` on home. The
  * view tagged `harness-new-story` (bottom right) posts another of Ana's,
- * unseen, as a `story.posted` event brings it.
+ * unseen, as a `story.posted` event brings it; `harness-edit-draft`
+ * (bottom left) opens the editor on the newest draft. Over the editor the
+ * probe reads `editor=1 frames=1 selected=0 overlays=sticker,text top=…
+ * trail=… saved=draft:2`.
  */
 class StoriesHarnessActivity : ComponentActivity() {
     private lateinit var transport: StoriesHarnessTransport
@@ -127,6 +137,10 @@ class StoriesHarnessActivity : ComponentActivity() {
                 events.emit(DirectEvent.Event(event))
             }
         }
+        home.onEditDraft = {
+            val newest = snapshot.stories.values.filter { it.status == StoryStatus.Draft }.maxByOrNull { it.updatedAt }
+            if (newest != null) StoriesEditorPresenter.present(session, newest, home)
+        }
         probe = TextView(this).apply {
             tag = "stories-probe"
             alpha = 0.02f
@@ -140,6 +154,14 @@ class StoriesHarnessActivity : ComponentActivity() {
         }
         watch = session.watch { snapshot = it }
         handler.post(report)
+        if (extras.getBoolean("compose")) handler.postDelayed({ compose() }, 600)
+    }
+
+    private fun compose() {
+        lifecycleScope.launch {
+            val picked = withContext(Dispatchers.Default) { picture(this@StoriesHarnessActivity) } ?: return@launch
+            StoriesEditorPresenter.present(session, listOf(picked), home)
+        }
     }
 
     override fun onDestroy() {
@@ -174,7 +196,22 @@ class StoriesHarnessActivity : ComponentActivity() {
             .joinToString(",") { "${it.status.wire}:${it.artifactVersion}:${it.frames.firstOrNull()?.overlays?.size ?: 0}" }
         val haptics = played.joinToString(",")
         val viewer = StoriesViewerPresenter.presented(home)
-        val value = if (viewer == null) {
+        val editor = StoriesEditorPresenter.presented(home)
+        val value = if (editor != null) {
+            val overlays = editor.draft.current?.overlays ?: emptyList()
+            val kinds = overlays.joinToString(",") { overlay ->
+                when (overlay) {
+                    is StoryOverlay.Text -> "text"
+                    is StoryOverlay.Link -> "link"
+                    is StoryOverlay.Sticker -> "sticker"
+                    is StoryOverlay.Emoji -> "emoji"
+                    is StoryOverlay.Reaction -> "reaction"
+                    is StoryOverlay.Unknown -> "unknown"
+                }
+            }
+            val top = overlays.lastOrNull()?.transform?.let { "%.3f,%.3f,%.2f,%.3f".format(it.x, it.y, it.scale, it.rotation) } ?: "nil"
+            "editor=1 frames=${editor.draft.frames.size} selected=${editor.draft.selected} overlays=$kinds top=$top trail=${editor.trail.joinToString(";")} saved=$made haptics=$haptics"
+        } else if (viewer == null) {
             val count = snapshot.feed?.authors?.sumOf { it.storyIds.size } ?: 0
             "viewer=0 editor=0 header=${if (home.stories.unlocked) "open" else "closed"} putAway=$putAway stories=$count title=${"%.0f".format(home.header.titleLeft)} saved=$made haptics=$haptics"
         } else {
@@ -204,7 +241,9 @@ class StoriesHarnessActivity : ComponentActivity() {
             }
         }
         private val newStory = View(context)
+        private val editDraft = View(context)
         var onNewStory: (() -> Unit)? = null
+        var onEditDraft: (() -> Unit)? = null
         private var change: StoriesHomeController.Change? = null
 
         var safeArea = LayoutInsets.Zero
@@ -231,6 +270,11 @@ class StoriesHarnessActivity : ComponentActivity() {
             newStory.setBackgroundColor(0x05000000)
             newStory.setOnClickListener { onNewStory?.invoke() }
             addView(newStory)
+            editDraft.tag = "harness-edit-draft"
+            editDraft.contentDescription = "harness-edit-draft"
+            editDraft.setBackgroundColor(0x05000000)
+            editDraft.setOnClickListener { onEditDraft?.invoke() }
+            addView(editDraft)
         }
 
         override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean =
@@ -253,6 +297,7 @@ class StoriesHarnessActivity : ComponentActivity() {
             list.contentHeight = rows.size * 52.0
             list.setFrame(Rect(0.0, 0.0, width, height))
             newStory.setFrame(Rect(width - 44, height - 60, 44.0, 44.0))
+            editDraft.setFrame(Rect(0.0, height - 60, 44.0, 44.0))
             val home = StemCellsHomeLayout(Size(width, height), layout.insets.contentTop, layout.insets.chromeTop, layout.insets.listBottom, 0.0, stories.inset)
             val insets = home.listInsets
             if (list.insetTop == insets.top && list.insetBottom == insets.bottom) return
@@ -288,6 +333,28 @@ class StoriesHarnessActivity : ComponentActivity() {
         private const val RED = 0xFFFF383C.toInt()
         private const val YELLOW = 0xFFFFCC00.toInt()
         private const val BROWN = 0xFFAC7F5E.toInt()
+
+        /** The story's first picture: tall, with a grid to read placement by. */
+        fun picture(context: Context): StoriesMediaChooser.Picked? {
+            val width = 1080
+            val height = 1440
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            paint.shader = LinearGradient(0f, 0f, 0f, height.toFloat(), TEAL, INDIGO, Shader.TileMode.CLAMP)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            paint.shader = null
+            paint.color = 0x26FFFFFF
+            for (x in 0 until width step 120) canvas.drawRect(x.toFloat(), 0f, x + 2f, height.toFloat(), paint)
+            for (y in 0 until height step 120) canvas.drawRect(0f, y.toFloat(), width.toFloat(), y + 2f, paint)
+            paint.color = 0xD9FFFFFF.toInt()
+            paint.typeface = Typeface.create(Typeface.SANS_SERIF, 800, false)
+            paint.textSize = 150f
+            val measured = paint.measureText("Picked")
+            canvas.drawText("Picked", (width - measured) / 2, height * 0.6f - paint.fontMetrics.ascent, paint)
+            val data = png(bitmap).also { bitmap.recycle() }
+            return StoriesMediaChooser.image(context, data, "image/png")
+        }
 
         private fun png(bitmap: Bitmap): ByteArray = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
 
