@@ -86,7 +86,7 @@ class StemCellChatScreen(
     attaching: Boolean = false,
     /** A held-row preview may read history, but never reads, edits drafts or discards work. */
     private val previewing: Boolean = false,
-) : Screen(context), BackInterceptor {
+) : Screen(context), BackInterceptor, com.slopus.happy.ui.nav.NavigationTransitionProviding {
     /** The conversation's own line of work, one coroutine at a time, as the store's. */
     private val conversationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val conversation = StemCellConversation(
@@ -187,6 +187,7 @@ class StemCellChatScreen(
     private var followsNewest = true
     private var jumping = false
     private var jumpShown = false
+    private var newWorkAlpha = 1f
     private var draftArrivals = -1
     private var showingDraft = false
     private var lastDraftEdit = 0.0
@@ -248,11 +249,13 @@ class StemCellChatScreen(
     }
 
     private inner class Root(context: Context) : ManualLayout(context), ThemeAware {
+        // Clearing the only focusable editor otherwise immediately focuses it again.
+        init { isFocusableInTouchMode = true }
         override fun layoutSubviews(width: Double, height: Double) = layoutScreen(width, height)
         override fun onInterceptTouchEvent(event: android.view.MotionEvent): Boolean = previewing || super.onInterceptTouchEvent(event)
 
         override fun applyTheme() {
-            setBackgroundColor(Theme.color(Palette.surface))
+            setBackgroundColor(androidx.core.graphics.ColorUtils.setAlphaComponent(Theme.color(Palette.surface), (newWorkAlpha * 255).toInt()))
             for (row in rowViews.values) row.applyTheme()
             introView.applyTheme()
             working.applyTheme()
@@ -375,6 +378,33 @@ class StemCellChatScreen(
         conversation.setVisible(false)
         conversation.flushDraft()
     }
+
+    override fun navigationTransition(other: Screen, pushing: Boolean): com.slopus.happy.ui.nav.ScreenTransition? {
+        val home = other as? StemCellsDirectHomeScreen ?: return null
+        if (!opensFocused || previewing || home.session !== session) return null
+        return StemCellsNewWorkTransition(home.stemCells.dock, this, pushing)
+    }
+
+    internal val composerIsEmpty: Boolean get() = card.text.isEmpty() && pictures.images.isEmpty()
+
+    internal fun newWorkFade(alpha: Float) {
+        newWorkAlpha = alpha.coerceIn(0f, 1f)
+        root.setBackgroundColor(androidx.core.graphics.ColorUtils.setAlphaComponent(Theme.color(Palette.surface), (newWorkAlpha * 255).toInt()))
+        scroll.alpha = newWorkAlpha
+        header.alpha = newWorkAlpha
+        jump.animate().cancel()
+        jump.alpha = if (jumpShown) newWorkAlpha else 0f
+        card.alpha = if (composerIsEmpty) 1f else newWorkAlpha
+    }
+
+    internal fun blurForNewWorkPop(): Boolean {
+        val focused = card.textView.hasFocus() && keyboard > 0
+        root.requestFocus()
+        card.blur()
+        return focused
+    }
+
+    internal fun restoreNewWorkFocus() { card.focus() }
 
     override val interceptsBack: Boolean get() = picker != null || attachSheet != null || viewer != null
 
@@ -917,7 +947,7 @@ class StemCellChatScreen(
         jumpShown = away
         if (away) jump.visibility = View.VISIBLE
         jump.animate().cancel()
-        jump.animate().alpha(if (away) 1f else 0f).setDuration(160).withEndAction {
+        jump.animate().alpha(if (away) newWorkAlpha else 0f).setDuration(160).withEndAction {
             // Shown again meanwhile, it stays.
             if (!jumpShown) jump.visibility = View.GONE
         }.start()
