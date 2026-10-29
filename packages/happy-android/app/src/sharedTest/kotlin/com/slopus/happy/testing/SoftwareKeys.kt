@@ -7,7 +7,7 @@ import java.security.PrivateKey
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
-/** [SecureStoreKeys] with software keys: Robolectric has no AndroidKeyStore. */
+/** Disposable software keys for tests and the isolated shell harness only. */
 class SoftwareKeys : SecureStoreKeys {
     val secretKeys = mutableMapOf<String, SecretKey>()
     val keyPairs = mutableMapOf<String, KeyPair>()

@@ -84,7 +84,18 @@ class HomeServices private constructor(private val graph: AppGraph) {
     init {
         scope.launch {
             var account: AccountSync? = null
-            graph.account.collect { next -> if (next !== account) { account = next; reads.reset(); archiver.accountChanged() } }
+            graph.account.collect { next ->
+                if (next !== account) {
+                    account = next
+                    reads.reset()
+                    archiver.accountChanged()
+                    newSessionServices?.let { services ->
+                        services.starter.cancel()
+                        services.setCreatesBot(false)
+                        services.setCreatesTask(false)
+                    }
+                }
+            }
         }
         scope.launch { snapshots.collect { snapshot -> if (snapshot != null) reads.observe(snapshot.sessions) } }
     }
@@ -132,6 +143,18 @@ class HomeServices private constructor(private val graph: AppGraph) {
         sender = LiveFirstMessageSender({ graph.account.value }),
         awaitSession = { id -> graph.account.value?.sender?.ensureSessionReady(id) ?: false },
         scope = scope,
+        bindOperation = {
+            val owner = graph.account.value
+            fun current() = owner != null && graph.account.value === owner
+            SessionStartOperation(
+                machines = LiveMachineActions { owner?.machineOps?.takeIf { current() } },
+                sessions = LiveSessionActions { owner?.sessionOps?.takeIf { current() } },
+                sender = LiveFirstMessageSender({ owner?.takeIf { current() } }),
+                awaitSession = { id -> if (current()) owner!!.sender.ensureSessionReady(id) else false },
+                owner = owner,
+                isCurrent = ::current,
+            )
+        },
     )
 
     private var pendingChatStarts: Pair<AccountSync, ChatPendingStarts>? = null

@@ -16,8 +16,50 @@ import kotlinx.coroutines.flow.first
 
 /** Only the dedicated .shellharness APK gets fixtures; normal debug/preview/release never do. */
 class ShellHarnessApplication : HappyApplication() {
+    private var relayNamespace: String? = null
+    private var relay: TaskRelayRuntime? = null
+    private var graphCreated = false
+
+    fun enableTaskRelay() {
+        check(packageName == "com.slopus.happy.dev.shellharness")
+        check(!graphCreated) { "Force-stop the isolated harness before changing fixture modes" }
+        super.getSharedPreferences("task-relay-mode", MODE_PRIVATE).edit().putBoolean("enabled", true).commit()
+    }
+
+    fun useOfflineShellFixture() {
+        check(packageName == "com.slopus.happy.dev.shellharness")
+        if (!super.getSharedPreferences("task-relay-mode", MODE_PRIVATE).getBoolean("enabled", false)) return
+        check(!graphCreated) { "Force-stop the isolated harness before changing fixture modes" }
+        super.getSharedPreferences("task-relay-mode", MODE_PRIVATE).edit().putBoolean("enabled", false).commit()
+    }
+
+    override fun getSharedPreferences(name: String, mode: Int): android.content.SharedPreferences =
+        super.getSharedPreferences(relayNamespace?.let { "$it-$name" } ?: name, mode)
+
+    override fun getFilesDir(): java.io.File = relayNamespace?.let {
+        java.io.File(super.getFilesDir(), "task-relay/$it").apply { mkdirs() }
+    } ?: super.getFilesDir()
+
+    override fun getCacheDir(): java.io.File = relayNamespace?.let {
+        java.io.File(super.getCacheDir(), "task-relay/$it").apply { mkdirs() }
+    } ?: super.getCacheDir()
+
+    suspend fun closeTaskRelay() { relay?.close(); relay = null }
+
+    override fun onTerminate() {
+        runBlocking { closeTaskRelay() }
+        super.onTerminate()
+    }
+
     override fun createGraph(): AppGraph {
         if (!packageName.endsWith(".shellharness")) return super.createGraph()
+        graphCreated = true
+        if (super.getSharedPreferences("task-relay-mode", MODE_PRIVATE).getBoolean("enabled", false)) {
+            // Never read an old registry, credential, custom URL, draft or direct
+            // account. This process owns a new disposable namespace and keys.
+            relayNamespace = "task-relay-${java.util.UUID.randomUUID()}"
+            return TaskRelayRuntime(this).also { relay = it }.graph
+        }
         val fixtureScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
         val fixture = assets.open("harness/stem-cells-computer.json").bufferedReader().use { it.readText() }
         val computers = HashMap<String, DirectTransport>()
@@ -86,6 +128,7 @@ class ShellHarnessActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!packageName.endsWith(".shellharness")) { finish(); return }
+        (application as ShellHarnessApplication).useOfflineShellFixture()
         val graph = (application as HappyApplication).graph
         lifecycleScope.launch {
             graph.shellAccount.filterNotNull().first()

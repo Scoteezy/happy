@@ -37,7 +37,8 @@ class SegmentedControl(context: Context, items: List<String>) : ManualLayout(con
     /** A segment chosen by touch, after [selectedIndex] changed. */
     var onChange: ((Int) -> Unit)? = null
 
-    private val labels = items.map { Label(context, LABEL, Palette.text, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER).apply { text = it } }
+    private var titles = items.toList()
+    private val labels = items.map(::makeLabel).toMutableList()
     private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
@@ -45,10 +46,39 @@ class SegmentedControl(context: Context, items: List<String>) : ManualLayout(con
     private var animator: ValueAnimator? = null
 
     init {
+        require(items.isNotEmpty())
         labels.forEach(::addView)
         setWillNotDraw(false)
         isFocusable = true
         applyTheme()
+    }
+
+    private fun makeLabel(title: String) = Label(context, LABEL, Palette.text, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER).apply { text = title }
+
+    /** The computer's capabilities can change while the dock is open. */
+    fun setItems(items: List<String>) {
+        require(items.isNotEmpty())
+        if (items == titles) return
+        val selected = titles.getOrNull(selectedIndex)
+        titles = items.toList()
+        labels.forEach(::removeView)
+        labels.clear()
+        labels.addAll(items.map(::makeLabel))
+        labels.forEach(::addView)
+        selectedIndex = items.indexOf(selected).coerceAtLeast(0)
+        animator?.cancel()
+        animator = null
+        position = selectedIndex.toFloat()
+        labels.forEachIndexed { index, label -> label.isSelected = index == selectedIndex }
+        requestLayout()
+        invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        animator?.cancel()
+        animator = null
+        position = selectedIndex.toFloat()
+        super.onDetachedFromWindow()
     }
 
     private fun slide(to: Float) {

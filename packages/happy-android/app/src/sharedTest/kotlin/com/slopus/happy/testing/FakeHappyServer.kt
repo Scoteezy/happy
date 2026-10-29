@@ -57,7 +57,11 @@ import java.util.concurrent.atomic.AtomicLong
  * `rpc-call` routed to [rpc] handlers, `update-metadata` with version
  * checks, and the `new-message` echo of every POSTed message.
  */
-class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() }) {
+class FakeHappyServer(
+    secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() },
+    accountId: String = "account-1",
+    initialTime: Long = 10_000L,
+) {
     var secret: ByteArray = secret
         private set
     var encryption: AccountEncryption = AccountEncryption.create(secret)
@@ -79,7 +83,7 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
     val machines = mutableListOf<ApiMachine>()
     var settings: String? = null
     var settingsVersion = 0L
-    var profile: JsonObject = buildJsonObject { put("id", "account-1") }
+    var profile: JsonObject = buildJsonObject { put("id", accountId) }
     var failProfile = false
 
     /** Next settings POSTs that lose a race: before checking, the server's settings move on to this. */
@@ -94,7 +98,9 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
                 return synchronized(this@FakeHappyServer) { route(request) }
             }
         }
-        server.start()
+        // Also used inside the isolated Android harness: never expose fixtures
+        // on a wildcard interface, even when a caller forgets to configure one.
+        server.start(java.net.InetAddress.getByName("127.0.0.1"), 0)
         return this
     }
 
@@ -103,7 +109,10 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
         server.close()
     }
 
-    val url: String get() = server.url("/").toString().trimEnd('/')
+    // MockWebServer.url() asks InetAddress for a hostname (reverse DNS). The
+    // numeric address must remain usable from Android's UI-thread graph setup
+    // without doing network work or weakening StrictMode.
+    val url: String get() = "http://127.0.0.1:${server.port}"
 
     fun requestsTo(path: String): List<RecordedRequest> = requests.filter { it.url.encodedPath == path }
 
@@ -177,7 +186,7 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
     /** A JWT-shaped token whose `sub` is the account id. */
     val token: String = listOf(
         """{"alg":"none"}""",
-        """{"sub":"account-1"}""",
+        buildJsonObject { put("sub", accountId) }.toString(),
         "sig",
     ).joinToString(".") { Base64.getUrlEncoder().withoutPadding().encodeToString(it.toByteArray()) }
 
@@ -362,7 +371,7 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
     /** Whether a stored message's `new-message` echo goes out on the socket (the server always sends it). */
     var echoSentMessages = true
 
-    private var clock = 10_000L
+    private var clock = initialTime
 
     /** v3SessionRoutes.ts: dedupe on localId, assign seqs, echo each new message to every socket. */
     private fun storeSent(sessionId: String, body: ApiOutgoingMessages): List<ApiStoredMessage> {

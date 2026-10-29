@@ -52,10 +52,12 @@ class NewSessionServices(
     private val scope: CoroutineScope,
     compute: CoroutineDispatcher = Dispatchers.Default,
 ) {
-    private class Resolved(val draft: NewSessionDraft, val options: NewSessionOptions)
+    private class Resolved(val draft: NewSessionDraft, val snapshot: HomeSnapshot, val options: NewSessionOptions)
 
     private val listing = MutableStateFlow<WorktreeListing?>(null)
     private val worktreeRequests = MutableStateFlow(0)
+    private val botState = MutableStateFlow(BotDraft(seeds = rollBotFaceSeeds()))
+    private val taskState = MutableStateFlow(false)
 
     val draft: StateFlow<NewSessionDraft> = drafts.draft
 
@@ -63,6 +65,7 @@ class NewSessionServices(
         snapshot?.let {
             Resolved(
                 draft,
+                it,
                 resolveNewSessionOptions(
                     draft,
                     it.machines,
@@ -86,7 +89,12 @@ class NewSessionServices(
         // a resolution of the draft as it still is may rewrite it.
         scope.launch {
             resolved.filterNotNull().collect { current ->
-                val machines = snapshots.value?.machines ?: return@collect
+                if (snapshots.value !== current.snapshot) return@collect
+                val machines = current.snapshot.machines
+                if (drafts.draft.value == current.draft && (snapshots.value?.ready == true || machines.isNotEmpty())) {
+                    if (!current.options.supportsBots) setCreatesBot(false)
+                    if (!current.options.supportsTasks) setCreatesTask(false)
+                }
                 drafts.change { draft -> if (draft == current.draft) current.options.reconcile(draft, machines, settings.value.agentDefaultOverrides) else draft }
             }
         }
@@ -159,17 +167,27 @@ class NewSessionServices(
     fun resetDraft() {
         drafts.reset()
         botState.value = BotDraft(seeds = rollBotFaceSeeds())
+        taskState.value = false
     }
 
     /** The dock's text becomes the draft's at Send (MainView handleHomePromptSubmit). */
     fun setInput(text: String) = drafts.change { it.copy(input = text) }
 
-    private val botState = MutableStateFlow(BotDraft(seeds = rollBotFaceSeeds()))
-
     /** useNewSessionDraft's bot fields, in memory: a restarted app offers a session. */
     val bot: StateFlow<BotDraft> = botState.asStateFlow()
 
-    fun setCreatesBot(creating: Boolean) = botState.update { it.copy(creating = creating) }
+    /** Native createsTask is memory-only, shared across dock openings, never written to the draft. */
+    val createsTask: StateFlow<Boolean> = taskState.asStateFlow()
+
+    fun setCreatesBot(creating: Boolean) {
+        if (creating) taskState.value = false
+        botState.update { it.copy(creating = creating) }
+    }
+
+    fun setCreatesTask(creating: Boolean) {
+        if (creating) botState.update { it.copy(creating = false) }
+        taskState.value = creating
+    }
 
     fun setBotName(name: String) = botState.update { it.copy(name = name) }
 

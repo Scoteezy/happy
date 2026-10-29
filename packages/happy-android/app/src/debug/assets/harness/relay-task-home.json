@@ -1,5 +1,11 @@
 {
-  "machine": {"host":"fixture.local","displayName":"Fixture workstation","platform":"darwin","happyCliVersion":"1.0.0","happyHomeDir":"/fixture/.happy","homeDir":"/fixture","machineKind":"rig"},
+  "machine": {
+    "host":"fixture.local","displayName":"Fixture workstation","platform":"darwin","happyCliVersion":"1.0.0","happyHomeDir":"/fixture/.happy","homeDir":"/fixture","machineKind":"rig","rigOnly":true,
+    "capabilities":{"newSession":true,"bots":true,"tasks":true,"worktrees":false},
+    "models":[{"code":"fixture-model","value":"Fixture model","id":"fixture-model","providerId":"codex","providerName":"Fixture provider","thinkingLevels":["medium"],"defaultThinkingLevel":"medium"}],
+    "operatingModes":[{"code":"ask","value":"Ask","kind":"default"}],
+    "defaults":{"providerId":"codex","modelId":"fixture-model","permissionMode":"ask","effort":"medium"}
+  },
   "sessions": [
     {"id":"fixture-bot","created":1,"metadata":{"path":"/fixture/Bots/assistant","host":"fixture.local","machineId":"fixture-machine","client":{"id":"rig","name":"Happy Agent","version":"1"},"bot":{"id":"assistant","name":"Research Assistant","username":"assistant","workspaceId":"bot-workspace","orderKey":"1"}}},
     {"id":"fixture-task-five","created":4,"metadata":{"path":"/fixture/Tasks/review","host":"fixture.local","machineId":"fixture-machine","client":{"id":"rig","name":"Happy Agent","version":"1"},"task":{"id":"review","name":"Review Android parity","folderName":"review","orderKey":"5","canArchive":false},"capabilities":{"abort":false,"attachments":{"enabled":false,"maxBytes":0,"mediaTypes":[]},"files":{"browse":false,"read":false,"search":false,"write":false},"modelSelection":false,"reasoningSelection":false,"permissionModeSelection":false,"resume":false,"rpcMethods":["leaveTask"],"shell":false,"steering":false}}},

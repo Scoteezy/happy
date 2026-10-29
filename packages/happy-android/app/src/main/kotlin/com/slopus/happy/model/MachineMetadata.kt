@@ -17,7 +17,7 @@ data class CliAvailability(
     val detectedAt: Long,
 )
 
-data class MachineCapabilities(val bots: Boolean?, val newSession: Boolean?, val resume: Boolean?, val worktrees: Boolean?)
+data class MachineCapabilities(val bots: Boolean?, val newSession: Boolean?, val resume: Boolean?, val worktrees: Boolean?, val tasks: Boolean? = null)
 
 data class RigDefaults(val effort: String?, val modelId: String?, val permissionMode: String?, val providerId: String?)
 
@@ -113,6 +113,8 @@ data class MachineMetadata(
                         newSession = o.optional("newSession", Read.boolean),
                         resume = o.optional("resume", Read.boolean),
                         worktrees = o.optional("worktrees", Read.boolean),
+                        // Native reads this optional extension independently; malformed is unsupported.
+                        tasks = o.caught("tasks", Read.boolean),
                     )
                 },
             ),

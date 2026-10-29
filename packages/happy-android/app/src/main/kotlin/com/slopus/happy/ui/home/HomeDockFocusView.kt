@@ -36,6 +36,7 @@ import com.slopus.happy.layout.homeDockLede
 import com.slopus.happy.layout.homeDockProgress
 import com.slopus.happy.layout.homeDockRowValue
 import com.slopus.happy.model.CUSTOM_PROJECT_PATH_KEY
+import com.slopus.happy.model.HomeDockKind
 import com.slopus.happy.model.NewSessionPage
 import com.slopus.happy.model.PickerOption
 import com.slopus.happy.model.StartButton
@@ -65,8 +66,8 @@ import kotlin.math.min
  * The open composer (HomeDock.tsx's focus mode; happy-ios
  * `HomeDockFocusViewController`): laid over home, it dims the list, stacks
  * the machine, project, worktree and harness pickers over the composer
- * card, and rides on the keyboard. Where bots can be made, Session | Bot
- * heads the screen; a bot keeps the machine row only.
+ * card, and rides on the keyboard. Advertised kinds head the screen in
+ * Session | Bot | Task order; bots and tasks keep the machine row only.
  *
  * Every frame comes from [HomeDockFocusLayout], every opening and closing
  * value from [HomeDockFocusMotion], driven frame by frame. The pickers and
@@ -136,7 +137,14 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
         }
 
         kindControl.contentDescription = context.getString(R.string.home_dock_bot_kind)
-        kindControl.onChange = { index -> controller.setCreatesBot(index == 1) }
+        kindControl.onChange = { index ->
+            if (controller.isStarting) {
+                render()
+                refuse()
+            } else {
+                controller.offeredKinds.getOrNull(index)?.let(controller::setKind)
+            }
+        }
         lede.text = context.getString(R.string.home_dock_bot_lede)
         header.addView(kindControl)
         header.addView(lede)
@@ -229,10 +237,17 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
     fun render() {
         val options = controller.options
         val createsBot = controller.createsBot
+        val createsTask = controller.createsTask
         val starting = controller.isStarting
 
-        header.visibility = if (options?.supportsBots == true) VISIBLE else GONE
-        kindControl.selectedIndex = if (createsBot) 1 else 0
+        val kinds = controller.offeredKinds
+        header.visibility = if (kinds.size > 1) VISIBLE else GONE
+        kindControl.setItems(kinds.map { kind -> context.getString(when (kind) {
+            HomeDockKind.Session -> R.string.home_dock_kind_session
+            HomeDockKind.Bot -> R.string.home_dock_kind_bot
+            HomeDockKind.Task -> R.string.home_dock_kind_task
+        }) })
+        kindControl.selectedIndex = kinds.indexOf(controller.kind).coerceAtLeast(0)
         lede.visibility = if (createsBot) VISIBLE else GONE
 
         // One field for both: switching keeps the keyboard up.
@@ -263,7 +278,7 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
         for (row in Row.entries) {
             val view = rows[row.ordinal]
             // A bot lives on a computer and nowhere else; Happy Agent runs it.
-            view.visibility = if (createsBot && row != Row.Machine) GONE else VISIBLE
+            view.visibility = if ((createsBot || createsTask) && row != Row.Machine) GONE else VISIBLE
             view.value = values.getValue(row)
             view.icon = Icon.ionicons(icons.getValue(row))
             view.refusing = starting

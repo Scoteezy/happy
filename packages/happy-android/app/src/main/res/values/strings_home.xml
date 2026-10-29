@@ -97,6 +97,12 @@
     <string name="home_create_directory_message">The directory \'%1$s\' does not exist. Would you like to create it?</string>
     <string name="home_dock_kind_session">Session</string>
     <string name="home_dock_kind_bot">Bot</string>
+    <!-- happy-ios Strings.Tasks: no happy-app catalog keys exist. -->
+    <string name="home_dock_kind_task">Task</string>
+    <string name="home_dock_task_placeholder">What should this task do?</string>
+    <string name="home_dock_create_task">Create task</string>
+    <string name="home_dock_creating_task">Creating task…</string>
+    <string name="home_dock_opening_task">Opening task…</string>
     <string name="home_dock_bot_kind">What to create</string>
     <string name="home_dock_bot_lede">Bots are virtual colleagues great for recurring work like releases, competitor analysis, or to own a large feature across several projects and worktrees</string>
     <string name="home_dock_bot_name_placeholder">Name your bot</string>

@@ -16,6 +16,10 @@ import java.io.File
 class TaskHomeRowsTest {
     @Test fun sharedDeviceFixtureContainsValidLatestProtocolMetadata() {
         val root = Json.parseToJsonElement(File("src/debug/assets/harness/relay-task-home.json").readText()).jsonObject
+        val creation = MachineMetadata.parse(root.getValue("machine").jsonObject).rigSessionCreation()
+        assertNotNull(creation)
+        assertTrue(creation!!.supportsTasks)
+        assertEquals("fixture-model", creation.spawnConfiguration(null, null, null).modelId)
         val sessions = root.getValue("sessions").jsonArray.map { value ->
             val item = value.jsonObject
             val id = item.getValue("id").jsonPrimitive.content

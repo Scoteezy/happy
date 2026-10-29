@@ -22,7 +22,7 @@ object RelayTasksShellFixture {
             val root = Json.parseToJsonElement(context.assets.open("harness/relay-task-home.json").bufferedReader().use { it.readText() }).jsonObject
             val now = System.currentTimeMillis()
             graph.store.upsertMachines(listOf(MachineRecord("fixture-machine", 0, now, now, true, now,
-                root.getValue("machine").toString(), 1, null, 0, "")))
+                root.getValue("machine").toString(), 2, null, 0, "")))
             graph.store.upsertSessions(root.getValue("sessions").jsonArray.map { value ->
                 val item = value.jsonObject
                 val created = now - (10 - item.getValue("created").jsonPrimitive.long) * 60_000

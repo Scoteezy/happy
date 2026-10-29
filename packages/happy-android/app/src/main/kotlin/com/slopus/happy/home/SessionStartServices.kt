@@ -63,6 +63,16 @@ interface FirstMessageSender {
     suspend fun send(sessionId: String, text: String, attachments: List<AttachmentPreview>, isCurrent: () -> Boolean): FirstSend
 }
 
+/** A start and its late cleanup stay with the account that began it. */
+data class SessionStartOperation(
+    val machines: MachineActions,
+    val sessions: SessionActions,
+    val sender: FirstMessageSender,
+    val awaitSession: suspend (String) -> Boolean,
+    val owner: Any? = Unit,
+    val isCurrent: () -> Boolean = { true },
+)
+
 /**
  * [FirstMessageSender] over the signed-in account's composer and sender;
  * attachments go through [planAttachmentSend] against the new session's

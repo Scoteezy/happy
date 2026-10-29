@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Development builds talk to a local server over plain HTTP
-  (`happy-server standalone:dev` on http://10.0.2.2:3005 from the emulator),
-  as happy-app's Expo development client and happy-ios's dev build allow.
-  Preview and release builds keep the platform's default: HTTPS only.
+  Selected only with happy.shellHarness=true. The synthetic relay binds
+  inside this APK on 127.0.0.1; its network policy permits cleartext only
+  there. Ordinary debug, preview and release do not package this manifest.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application
         android:name="com.slopus.happy.harness.ShellHarnessApplication"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/shell_harness_network"
         tools:replace="android:name,android:usesCleartextTraffic">
+        <activity android:name="com.slopus.happy.harness.TaskRelayHarnessActivity"
+            android:exported="true" android:theme="@style/Theme.Happy" />
         <activity android:name="com.slopus.happy.harness.ShellHarnessActivity"
             android:exported="true" android:theme="@style/Theme.Happy" />
         <!-- Stories over a computer of its own (happy-ios's `-screen stories`); see StoriesHarnessActivity. -->

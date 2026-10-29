@@ -193,18 +193,19 @@ sealed interface StartProgress {
     data class CreatingWorkspace(val workspace: Boolean) : StartProgress
     data class Starting(val agentName: String) : StartProgress
     data object CreatingBot : StartProgress
+    data object CreatingTask : StartProgress
     /** "Putting on a face…": the bot's picture is painted, uploaded and worn. */
     data object Avatar : StartProgress
-    data class Opening(val bot: Boolean = false) : StartProgress
+    data class Opening(val bot: Boolean = false, val task: Boolean = false) : StartProgress
 }
 
 /** resolveNewSessionProgressLabel: the step, named for a bot while one is being made. */
-fun resolveStartProgress(phase: StartPhase?, agentName: String, picksWorkspaces: Boolean, createsBot: Boolean = false): StartProgress? = when (phase) {
+fun resolveStartProgress(phase: StartPhase?, agentName: String, picksWorkspaces: Boolean, createsBot: Boolean = false, createsTask: Boolean = false): StartProgress? = when (phase) {
     null -> null
     StartPhase.Worktree -> StartProgress.CreatingWorkspace(picksWorkspaces)
-    StartPhase.Spawning -> if (createsBot) StartProgress.CreatingBot else StartProgress.Starting(agentName)
+    StartPhase.Spawning -> if (createsBot) StartProgress.CreatingBot else if (createsTask) StartProgress.CreatingTask else StartProgress.Starting(agentName)
     StartPhase.Avatar -> StartProgress.Avatar
-    StartPhase.Opening -> StartProgress.Opening(createsBot)
+    StartPhase.Opening -> StartProgress.Opening(createsBot, createsTask && !createsBot)
 }
 
 /** newSessionProgress.ts `NewSessionPrimaryAction`: the one button at the end of the composer. */

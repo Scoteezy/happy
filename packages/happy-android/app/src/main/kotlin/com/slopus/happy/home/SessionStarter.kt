@@ -35,9 +35,11 @@ import com.slopus.happy.sync.HappyAgentSpawnTarget
 import com.slopus.happy.sync.SpawnSessionOptions
 import com.slopus.happy.sync.SpawnSessionResult
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -60,6 +62,7 @@ enum class StartRefusal(val message: String) {
     ProjectNeedsHappyAgent("Only Happy Agent knows where this project is, so no other harness can open it. Switch the harness back to Happy Agent, or pick the project’s folder."),
     WorkspaceUnavailable("The selected Happy Agent workspace is no longer available."),
     BotsUnsupported("Happy Agent on this computer cannot create bots yet. Update it and try again."),
+    TasksUnsupported("Happy Agent on this computer cannot create tasks yet. Update it and try again."),
 }
 
 sealed interface StartResult {
@@ -108,18 +111,26 @@ class SessionStarter(
     private val scope: CoroutineScope,
     private val faces: BotFaceWearer = BotFaceWearer { _, _ -> BotFaceFailure(BotFaceLeg.Painting, "No faces here") },
     private val requestId: () -> String = { UUID.randomUUID().toString() },
+    private val bindOperation: (() -> SessionStartOperation)? = null,
 ) {
     private val phaseState = MutableStateFlow<StartPhase?>(null)
     val phase: StateFlow<StartPhase?> = phaseState.asStateFlow()
 
-    private var run: Job? = null
-    private val requestIds = HashMap<String, String>()
+    @Volatile private var run: Job? = null
+    private val requestIds = ConcurrentHashMap<String, String>()
 
     /** Sessions made for a start whose message did not go out: pressing Send again reuses them. */
-    private val createdSessions = HashMap<String, String>()
+    private val createdSessions = ConcurrentHashMap<String, String>()
+    @Volatile private var currentOwner: Any? = Unit
+    @Volatile private var pendingTask: Pair<Prepared.Ready, String>? = null
+    @Volatile private var activePrepared: Prepared.Ready? = null
 
     fun cancel() {
         val current = run ?: return
+        // Retire the key on the press, before cancellation can unwind. A
+        // second press may begin synchronously while the old spawn finishes.
+        activePrepared?.let { forget(it) }
+        activePrepared = null
         run = null
         phaseState.value = null
         current.cancel()
@@ -139,20 +150,37 @@ class SessionStarter(
         attachments: List<AttachmentPreview> = emptyList(),
         target: SpawnTargetOverride? = null,
         bot: BotRequest? = null,
+        createsTask: Boolean = false,
+        isCurrentTarget: () -> Boolean = { true },
         confirmDirectory: suspend (String) -> Boolean,
     ): StartResult {
         if (run != null) return StartResult.Abandoned
+        val operation = bindOperation?.invoke()
+            ?: SessionStartOperation(machineActions, sessionActions.forOperation(), sender, awaitSession)
+        if (!operation.isCurrent() || !isCurrentTarget()) return StartResult.Abandoned
+        if (currentOwner !== operation.owner) {
+            currentOwner = operation.owner
+            requestIds.clear()
+            createdSessions.clear()
+            pendingTask = null
+        }
         bot?.let { request -> describeBotNameProblem(request.name)?.let { return StartResult.Failed(it) } }
-        val prepared = when (val result = prepare(draft, target, bot)) {
+        val prepared = when (val result = prepare(draft, target, bot, createsTask && bot == null, operation)) {
             is Prepared.Refused -> return StartResult.Refused(result.refusal)
             is Prepared.Unavailable -> return StartResult.Failed(result.message)
             is Prepared.Ready -> result
         }
         val outcome = CompletableDeferred<StartResult>()
-        val job = scope.launch {
+        activePrepared = prepared
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             outcome.complete(
                 try {
-                    execute(prepared, draft, if (bot != null) emptyList() else attachments, confirmDirectory)
+                    pendingTask?.takeIf { it.first.signature != prepared.signature }?.let { (old, id) ->
+                        pendingTask = null
+                        forget(old, id)
+                        stopAbandoned(old, id)
+                    }
+                    execute(prepared, draft, if (bot != null) emptyList() else attachments, isCurrentTarget, confirmDirectory)
                 } catch (e: CancellationException) {
                     StartResult.Abandoned
                 } catch (e: Exception) {
@@ -165,10 +193,19 @@ class SessionStarter(
             if (!outcome.isCompleted) outcome.complete(StartResult.Abandoned)
             if (run === job) {
                 run = null
+                activePrepared = null
                 phaseState.value = null
             }
         }
+        job.start()
         return outcome.await()
+    }
+
+    /** Late cleanup cannot retire a newer request, even on the same account/target. */
+    private fun forget(prepared: Prepared.Ready, sessionId: String? = null) {
+        if (currentOwner !== prepared.operation.owner || !requestIds.remove(prepared.signature, prepared.options.clientRequestId)) return
+        if (sessionId == null) createdSessions.remove(prepared.signature) else createdSessions.remove(prepared.signature, sessionId)
+        if (pendingTask?.first?.options?.clientRequestId == prepared.options.clientRequestId) pendingTask = null
     }
 
     private sealed interface Prepared {
@@ -185,6 +222,8 @@ class SessionStarter(
             /** The code agent's picks, pinned on the session before the send; Happy Agent's ride the spawn. */
             val modes: Map<AgentModeField, String?>?,
             val bot: BotRequest? = null,
+            val createsTask: Boolean,
+            val operation: SessionStartOperation,
         ) : Prepared
     }
 
@@ -192,12 +231,12 @@ class SessionStarter(
     private fun <T> resolveOption(options: List<T>, key: (T) -> String, preferred: List<String?>): T? =
         preferred.firstNotNullOfOrNull { wanted -> wanted?.let { options.find { option -> key(option) == wanted } } } ?: options.firstOrNull()
 
-    private fun prepare(draft: NewSessionDraft, targetOverride: SpawnTargetOverride?, bot: BotRequest? = null): Prepared {
+    private fun prepare(draft: NewSessionDraft, targetOverride: SpawnTargetOverride?, bot: BotRequest?, createsTask: Boolean, operation: SessionStartOperation): Prepared {
         val machines = machines()
         val choice = findMachineChoice(collectMachineChoices(machines), draft.selectedMachineId)
             ?: return Prepared.Refused(if (draft.selectedMachineId != null) StartRefusal.UnknownMachine else StartRefusal.NoMachine)
         // A bot is Happy Agent's to make, whatever harness the draft last chose.
-        val agent = if (bot != null) AgentType.Rig else resolveNewSessionAgent(choice, draft.agentType, draft.pickedAgentType)
+        val agent = if (bot != null || createsTask) AgentType.Rig else resolveNewSessionAgent(choice, draft.agentType, draft.pickedAgentType)
         val agentChanged = agent != draft.agentType
         val rig = agent == AgentType.Rig
         val machine = resolveAgentMachine(choice, agent)
@@ -205,6 +244,7 @@ class SessionStarter(
         if (!machine.isOnline) return Prepared.Refused(if (rig) StartRefusal.HappyAgentOffline else StartRefusal.HappyCliOffline)
         val rigCreation = if (rig) machine.metadata.rigSessionCreation() ?: return Prepared.Refused(StartRefusal.CannotStartHappyAgent) else null
         if (bot != null && rigCreation?.supportsBots != true) return Prepared.Refused(StartRefusal.BotsUnsupported)
+        if (createsTask && rigCreation?.supportsTasks != true) return Prepared.Refused(StartRefusal.TasksUnsupported)
 
         val draftProjectId = draft.selectedProjectId?.trim()?.takeIf { it.isNotEmpty() }
         if (bot == null && draftProjectId != null && !rig) return Prepared.Refused(StartRefusal.ProjectNeedsHappyAgent)
@@ -218,6 +258,8 @@ class SessionStarter(
         // A bot is its own destination, settled before the workspace routes are consulted.
         val target = if (bot != null) {
             HappyAgentSpawnTarget.Bot(bot.name)
+        } else if (createsTask) {
+            HappyAgentSpawnTarget.Task()
         } else if (rig && targetOverride != null) {
             targetOverride.target
         } else if (rig) {
@@ -284,7 +326,7 @@ class SessionStarter(
             )
         }
         val signature = listOf(
-            machine.id, agent.wire, draftProjectId?.let { "project:$it" } ?: selectedPath, worktree,
+            machine.id, agent.wire, if (createsTask) "\u0000task" else draftProjectId?.let { "project:$it" } ?: selectedPath, worktree,
             options.modelMode ?: options.modelId, options.permissionMode, options.effortLevel ?: options.effort,
             bot?.let { "bot:${it.name}:${it.faceSeed}" },
         ).joinToString("\u0000")
@@ -298,6 +340,8 @@ class SessionStarter(
             signature = signature,
             modes = modes,
             bot = bot,
+            createsTask = createsTask,
+            operation = operation,
         )
     }
 
@@ -305,25 +349,30 @@ class SessionStarter(
         prepared: Prepared.Ready,
         draft: NewSessionDraft,
         attachments: List<AttachmentPreview>,
+        isCurrentTarget: () -> Boolean,
         confirmDirectory: suspend (String) -> Boolean,
     ): StartResult {
+        val job = currentCoroutineContext()[Job]
+        fun current() = job?.isActive != false && prepared.operation.isCurrent() && isCurrentTarget()
+        if (!current()) return StartResult.Abandoned
         val sessionId = createdSessions[prepared.signature] ?: when (val spawned = create(prepared, confirmDirectory)) {
             is SpawnSessionResult.Success -> spawned.sessionId
             is SpawnSessionResult.Error -> return StartResult.Failed(spawned.errorMessage)
             is SpawnSessionResult.Pending -> return StartResult.Failed("The session was created, but it is still syncing. It should appear shortly.")
             is SpawnSessionResult.RequestToApproveDirectoryCreation -> return StartResult.Abandoned
         }
-        phaseState.value = StartPhase.Opening
-        val job = currentCoroutineContext()[Job]
         var notices = emptyList<AttachmentNotice>()
         var faceFailure: BotFaceFailure? = null
         try {
-            if (!awaitSession(sessionId)) {
-                createdSessions.remove(prepared.signature)
-                requestIds.remove(prepared.signature)
+            if (!current()) throw CancellationException("Start target changed")
+            phaseState.value = StartPhase.Opening
+            if (!prepared.operation.awaitSession(sessionId)) {
+                if (!current()) throw CancellationException("Start target changed")
+                forget(prepared, sessionId)
                 return StartResult.Failed("Failed to start session")
             }
-            prepared.modes?.let { sender.pinModes(sessionId, it) }
+            if (!current()) throw CancellationException("Start target changed")
+            prepared.modes?.let { prepared.operation.sender.pinModes(sessionId, it) }
             // A face that cannot be painted or delivered is no reason to lose the bot: it opens without one.
             prepared.bot?.let { bot ->
                 phaseState.value = StartPhase.Avatar
@@ -333,26 +382,31 @@ class SessionStarter(
             // A bot takes no first message: the prompt typed for a session stays in the draft.
             val prompt = if (prepared.bot != null) "" else draft.input.trim()
             val sent = try {
-                if (prompt.isEmpty() && attachments.isEmpty()) FirstSend(true) else sender.send(sessionId, prompt, attachments) { job?.isActive != false }
+                if (!current()) throw CancellationException("Start target changed")
+                if (prompt.isEmpty() && attachments.isEmpty()) FirstSend(true) else prepared.operation.sender.send(sessionId, prompt, attachments) { job?.isActive != false && current() }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (!current()) throw CancellationException("Start target changed")
                 // The session is kept for the next Send rather than spawned again.
                 createdSessions[prepared.signature] = sessionId
+                if (prepared.createsTask) pendingTask = prepared to sessionId
                 throw e
             }
             if (!sent.sent) {
+                if (!current()) throw CancellationException("Start target changed")
                 createdSessions[prepared.signature] = sessionId
+                if (prepared.createsTask) pendingTask = prepared to sessionId
                 return if (sent.notices.isEmpty()) StartResult.Abandoned else StartResult.NotSent(sent.notices)
             }
             notices = sent.notices
+            if (!current()) throw CancellationException("Start target changed")
         } catch (e: CancellationException) {
-            createdSessions.remove(prepared.signature)
+            forget(prepared, sessionId)
             scope.launch { stopAbandoned(prepared, sessionId) }
             throw e
         }
-        createdSessions.remove(prepared.signature)
-        requestIds.remove(prepared.signature)
+        forget(prepared, sessionId)
         // Only what was consumed is cleared: text typed meanwhile stays.
         if (prepared.bot == null) drafts.change { current -> if (current.input == draft.input) current.copy(input = "") else current }
         return StartResult.Started(sessionId, notices, faceFailure)
@@ -364,18 +418,18 @@ class SessionStarter(
         var options = prepared.options
         if (prepared.worktreeNew) {
             phaseState.value = StartPhase.Worktree
-            when (val created = machineActions.createWorktree(prepared.worktreeMachine!!.id, options.directory)) {
+            when (val created = prepared.operation.machines.createWorktree(prepared.worktreeMachine!!.id, options.directory)) {
                 is WorktreeOutcome.Failed -> throw WorktreeException(created.message)
                 is WorktreeOutcome.Created -> options = options.copy(directory = created.path)
             }
         }
         phaseState.value = StartPhase.Spawning
         // The spawn outlives a Stop: whatever it hands back afterwards is put down.
-        val spawning = scope.async { spawn(options, prepared.publishedRetryAfterMs, confirmDirectory) }
+        val spawning = scope.async { spawn(options, prepared.publishedRetryAfterMs, prepared.operation, confirmDirectory) }
         val spawned = try {
             spawning.await()
         } catch (e: CancellationException) {
-            requestIds.remove(prepared.signature)
+            forget(prepared)
             spawning.invokeOnCompletion { error ->
                 if (error == null) {
                     (spawning.getCompleted() as? SpawnSessionResult.Success)?.let { scope.launch { stopAbandoned(prepared, it.sessionId) } }
@@ -386,17 +440,19 @@ class SessionStarter(
         return spawned
     }
 
-    private suspend fun spawn(options: SpawnSessionOptions, publishedRetryAfterMs: Long?, confirmDirectory: suspend (String) -> Boolean): SpawnSessionResult {
-        var result = machineActions.spawnSession(options)
+    private suspend fun spawn(options: SpawnSessionOptions, publishedRetryAfterMs: Long?, operation: SessionStartOperation, confirmDirectory: suspend (String) -> Boolean): SpawnSessionResult {
+        if (!operation.isCurrent()) throw CancellationException("Start account changed")
+        var result = operation.machines.spawnSession(options)
         var pending = 0
         while (result is SpawnSessionResult.Pending && pending < MAX_PENDING_RESULTS) {
             pending++
             delay(resolveRigPendingRetryDelayMs(result.retryAfterMs, publishedRetryAfterMs))
-            result = machineActions.spawnSession(options)
+            if (!operation.isCurrent()) throw CancellationException("Start account changed")
+            result = operation.machines.spawnSession(options)
         }
         if (result is SpawnSessionResult.RequestToApproveDirectoryCreation) {
             return if (confirmDirectory(result.directory)) {
-                spawn(options.copy(approvedNewDirectoryCreation = true), publishedRetryAfterMs, confirmDirectory)
+                spawn(options.copy(approvedNewDirectoryCreation = true), publishedRetryAfterMs, operation, confirmDirectory)
             } else {
                 result
             }
@@ -409,6 +465,8 @@ class SessionStarter(
      * daemon is asked first, then the session, then the server retires it.
      */
     private suspend fun stopAbandoned(prepared: Prepared.Ready, sessionId: String) {
+        val machineActions = prepared.operation.machines
+        val sessionActions = prepared.operation.sessions
         if (prepared.agent == AgentType.Rig) {
             sessionActions.kill(sessionId)
             return

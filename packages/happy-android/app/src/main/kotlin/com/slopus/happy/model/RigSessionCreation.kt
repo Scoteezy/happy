@@ -31,6 +31,7 @@ data class RigSessionCreation(
     val supportsWorktrees: Boolean,
     val supportsBots: Boolean,
     val pendingRetryAfterMs: Long?,
+    val supportsTasks: Boolean = false,
 ) {
     private fun modelFor(modelKey: String?): RigModelOption? =
         models.find { it.key == modelKey } ?: models.find { it.key == defaultModelKey }
@@ -82,6 +83,7 @@ fun MachineMetadata?.rigSessionCreation(): RigSessionCreation? {
         defaultPermissionMode = publishedPermission?.takeIf { key -> published.any { it.key == key } } ?: published.firstOrNull()?.key,
         supportsWorktrees = capabilities.worktrees == true,
         supportsBots = capabilities.bots == true,
+        supportsTasks = capabilities.tasks == true,
         pendingRetryAfterMs = sessionCreation?.pendingRetryAfterMs?.takeIf { it.isFinite() }?.toLong(),
     )
 }

@@ -9,6 +9,7 @@ import com.slopus.happy.home.NewSessionServices
 import com.slopus.happy.home.StartResult
 import com.slopus.happy.layout.HomeDockFade
 import com.slopus.happy.model.BotRequest
+import com.slopus.happy.model.HomeDockKind
 import com.slopus.happy.model.NewSessionOptions
 import com.slopus.happy.model.StartButton
 import com.slopus.happy.model.StartProgress
@@ -74,7 +75,7 @@ class HomeDockController(
         restingView.entryButton.setOnClickListener { openFocus() }
         restingView.sendButton.setOnClickListener { scope.launch { submit() } }
         scope.launch {
-            combine(services.options, services.draft, services.bot, starter.phase) { _, _, _, _ -> }.collect { render() }
+            combine(services.options, services.draft, services.bot, services.createsTask, starter.phase) { _, _, _, _, _ -> }.collect { render() }
         }
         render()
     }
@@ -90,7 +91,12 @@ class HomeDockController(
 
     val isOpen: Boolean get() = focus != null
 
-    val createsBot: Boolean get() = services.bot.value.creating && options?.supportsBots == true
+    // A capability refresh must not silently reinterpret a Task/Bot press as
+    // a session. Reconciliation changes the selection; start validates it again.
+    val createsBot: Boolean get() = services.bot.value.creating
+    val createsTask: Boolean get() = !createsBot && services.createsTask.value
+    val offeredKinds: List<HomeDockKind> get() = HomeDockKind.offered(options?.supportsBots == true, options?.supportsTasks == true)
+    val kind: HomeDockKind get() = HomeDockKind.current(createsBot, createsTask)
 
     val isStarting: Boolean get() = launching || starter.phase.value != null
 
@@ -133,6 +139,15 @@ class HomeDockController(
     fun setCreatesBot(creating: Boolean) {
         if (isStarting) return
         services.setCreatesBot(creating)
+    }
+
+    fun setKind(kind: HomeDockKind) {
+        if (isStarting || kind !in offeredKinds) return
+        when (kind) {
+            HomeDockKind.Session -> { services.setCreatesBot(false); services.setCreatesTask(false) }
+            HomeDockKind.Bot -> services.setCreatesBot(true)
+            HomeDockKind.Task -> services.setCreatesTask(true)
+        }
     }
 
     fun render() {
@@ -195,23 +210,31 @@ class HomeDockController(
         val text = prompt.trim()
         if (text.isEmpty()) return false
         services.setInput(text)
-        val sessionId = start(null) ?: return false
+        val task = createsTask
+        val sessionId = start(null, createsTask = task) ?: return false
+        if (task) services.setCreatesTask(false)
         prompt = ""
         open(sessionId)
         return true
     }
 
     /** Runs a start; the session's id once it is open. One at a time: Send is busy meanwhile. */
-    private suspend fun start(bot: BotRequest?): String? {
+    private suspend fun start(bot: BotRequest?, createsTask: Boolean = false): String? {
         if (launching) return null
         launching = true
+        val startedDraft = services.draft.value.copy(input = "", updatedAt = 0)
+        val startedBot = services.bot.value
+        val startedTask = services.createsTask.value
+        fun current() = services.draft.value.copy(input = "", updatedAt = 0) == startedDraft &&
+            services.bot.value == startedBot && services.createsTask.value == startedTask
         render()
         val result = try {
-            starter.start(bot = bot, confirmDirectory = ::confirmDirectoryCreation)
+            starter.start(bot = bot, createsTask = createsTask, isCurrentTarget = ::current, confirmDirectory = ::confirmDirectoryCreation)
         } finally {
             launching = false
         }
         render()
+        if (!current()) return null
         return when (result) {
             is StartResult.Started -> result.sessionId
             is StartResult.Refused -> {
@@ -255,13 +278,18 @@ class HomeDockController(
     /** The status line while a start runs ("Starting Claude Code…"), or null. */
     fun progressLabel(): String? {
         val options = options ?: return null
-        return when (val progress = resolveStartProgress(starter.phase.value, options.agent.name, options.picksWorkspaces, createsBot)) {
+        return when (val progress = resolveStartProgress(starter.phase.value, options.agent.name, options.picksWorkspaces, createsBot, createsTask)) {
             null -> null
             is StartProgress.CreatingWorkspace -> context.getString(if (progress.workspace) R.string.home_dock_creating_workspace else R.string.home_dock_creating_worktree)
             is StartProgress.Starting -> context.getString(R.string.home_dock_starting, progress.agentName)
             StartProgress.CreatingBot -> context.getString(R.string.home_dock_creating_bot)
+            StartProgress.CreatingTask -> context.getString(R.string.home_dock_creating_task)
             StartProgress.Avatar -> context.getString(R.string.home_dock_bot_avatar_progress)
-            is StartProgress.Opening -> context.getString(if (progress.bot) R.string.home_dock_opening_bot else R.string.home_dock_opening)
+            is StartProgress.Opening -> context.getString(when {
+                progress.bot -> R.string.home_dock_opening_bot
+                progress.task -> R.string.home_dock_opening_task
+                else -> R.string.home_dock_opening
+            })
         }
     }
 
@@ -293,6 +321,17 @@ class HomeDockController(
                 primaryStyle = AgentInputPrimaryStyle.NewSession,
                 refusesControls = starting,
                 capitalizesWords = true,
+            )
+        }
+        if (createsTask) {
+            return AgentInputCardView.Configuration(
+                placeholder = context.getString(R.string.home_dock_task_placeholder),
+                showsAdd = true,
+                primaryAction = action,
+                isPrimaryBusy = primary == StartButton.Busy,
+                primaryAccessibilityLabel = if (primary == StartButton.Stop) stopLabel else context.getString(R.string.home_dock_create_task),
+                primaryStyle = AgentInputPrimaryStyle.NewSession,
+                refusesControls = starting,
             )
         }
         val hasHarness = options?.hasHarness == true

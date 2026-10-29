@@ -144,6 +144,8 @@ data class NewSessionOptions(
     val effort: PickerOption?,
     /** The computer's Happy Agent can make bots (`capabilities.bots`): the composer offers Session | Bot. */
     val supportsBots: Boolean = false,
+    /** Native HomeDockKind: only a Happy Agent advertising tasks offers this mode. */
+    val supportsTasks: Boolean = false,
     // What the new-session screen reads besides (NewSessionChoices on iOS).
     val homeDir: String? = null,
     /** The computers behind [machines], in their order. */
@@ -331,6 +333,7 @@ fun resolveNewSessionOptions(
         efforts = efforts,
         effort = effort,
         supportsBots = rigSelection?.supportsBots == true,
+        supportsTasks = rigSelection?.supportsTasks == true,
         homeDir = homeDir,
         machineChoices = sortedChoices,
         sessionPlaces = if (draft.selectedPath == null) collectSessionPlaces(placeMachineIds, sessions) else places,

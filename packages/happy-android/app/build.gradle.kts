@@ -77,6 +77,7 @@ fun signingKey(variant: String): SigningKey? {
 }
 val releaseKey = signingKey("release")
 val previewKey = signingKey("preview")
+val shellHarnessEnabled = providers.gradleProperty("happy.shellHarness").orNull == "true"
 
 android {
     namespace = "com.slopus.happy"
@@ -176,6 +177,22 @@ android {
                 )
             }
         }
+    }
+}
+
+// Harness code and its local relay are never part of ordinary debug or release.
+android.sourceSets.getByName("debug").apply {
+    if (shellHarnessEnabled) {
+        kotlin.srcDir("src/sharedTest/kotlin")
+    } else {
+        kotlin.setSrcDirs(emptyList<String>())
+        java.setSrcDirs(emptyList<String>())
+        assets.setSrcDirs(emptyList<String>())
+        res.setSrcDirs(emptyList<String>())
+        manifest.srcFile("src/plainDebug/AndroidManifest.xml")
+        // Unit tests may exercise fixtures without packaging them in the APK.
+        android.sourceSets.getByName("test").kotlin.srcDir("src/sharedTest/kotlin")
+        android.sourceSets.getByName("test").kotlin.srcDir("src/debug/kotlin")
     }
 }
 
@@ -393,5 +410,6 @@ dependencies {
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    if (shellHarnessEnabled) add("debugImplementation", libs.okhttp.mockwebserver)
     testImplementation(libs.coil.test)
 }
