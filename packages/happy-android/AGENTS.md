@@ -874,6 +874,18 @@ the overlay, because the parent may already be iterating its children.
 Android uses native haptic taps at the cleavage/formation times, without a
 new vibration permission, not iOS's continuous Core Haptics waveform.
 
+New work opens over the dock with `StemCellsNewWorkTransition` (350 ms,
+ease-in-out), through `NavigationTransitionProviding` on `ScreenStack`.
+Only new-work chat over its own Direct home opts in: ordinary screens keep
+their slide. The conversation's composer stands in for home's dock and
+follows native IME insets; the background/header/transcript fade. Typed
+content fades too on return. Android's system predictive back drives the
+same transition; its first Back dismisses an open IME as usual. Only an
+actually cancelled gesture restores editor focus. Stack replacement or
+window detach must finish without restoring focus into a departing screen,
+even while a cancelled gesture is still settling. Keep the chat root
+focusable so clearing its only editor cannot immediately focus it again.
+
 For fake-backed verification of the **real MainActivity shell**, build debug
 with `-Phappy.shellHarness=true`. This changes only debug's application ID to
 `com.slopus.happy.dev.shellharness`, so fixtures cannot share normal app data.
