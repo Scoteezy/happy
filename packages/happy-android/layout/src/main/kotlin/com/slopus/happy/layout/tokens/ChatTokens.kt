@@ -67,6 +67,11 @@ val Palette.sessionStatusAttention get() = ColorToken("#FF9500")
 val Palette.sessionStatusThinking get() = ColorToken("#007AFF")
 val Palette.sessionStatusOnline get() = ColorToken("#34C759")
 
+// SessionView's CLI-outdated pill under the header.
+val Palette.cliWarningFill get() = ColorToken("#FFF3CD")
+val Palette.cliWarningText get() = ColorToken("#856404")
+val Palette.cliWarningIcon get() = ColorToken("#FF9500")
+
 /**
  * WorktreeTabStrip's open tab: a translucent chip, so it doesn't punch a
  * hole in the glass, rgba(0,0,0,0.07) in light and rgba(255,255,255,0.14)
@@ -209,6 +214,9 @@ object ChatTextStyles {
     // PendingChatPlaceholder.tsx; its folder line is emptyPath's 14
     val pendingQueued = TextStyle(FontFace.Regular, 15, 21)
     val pendingChatTitle = TextStyle(FontFace.SemiBold, 18)
+
+    // SessionView's CLI-outdated pill: the system face, semibold 12.
+    val cliWarning = TextStyle(FontFace.SystemSemiBold, 12)
 
     // WorktreeTabStrip.tsx: the open tab's name is semibold.
     val worktreeTab = TextStyle(FontFace.Regular, 14, 18)

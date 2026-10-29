@@ -16,6 +16,33 @@ const val MINIMUM_CLI_VERSION = "0.10.0"
 /** info.tsx `isCliOutdated`: a CLI version below [MINIMUM_CLI_VERSION]. */
 fun isCliOutdated(version: String?): Boolean = !version.isNullOrEmpty() && Versions.compare(version, MINIMUM_CLI_VERSION) < 0
 
+/**
+ * SessionView's CLI-outdated pill (happy-ios `CliVersionWarning`): a CLI
+ * below [MINIMUM_CLI_VERSION] warns until that version is dismissed on its
+ * machine (localSettings' `acknowledgedCliVersions`).
+ */
+data class CliVersionWarning(
+    /** Where a dismissal is kept; without one a tap does nothing. */
+    val machineId: String?,
+    val version: String,
+) {
+    /** [acknowledged] with this warning dismissed, or null if it can't be. */
+    fun dismissed(acknowledged: Map<String, String>): Map<String, String>? {
+        val machineId = machineId ?: return null
+        return acknowledged + (machineId to version)
+    }
+
+    companion object {
+        fun of(metadata: SessionMetadata?, acknowledged: Map<String, String>): CliVersionWarning? {
+            val version = metadata?.version?.takeIf { it.isNotEmpty() } ?: return null
+            if (!isCliOutdated(version)) return null
+            val machineId = metadata.machineId?.takeIf { it.isNotEmpty() }
+            if (machineId != null && acknowledged[machineId] == version) return null
+            return CliVersionWarning(machineId, version)
+        }
+    }
+}
+
 /** resumeCommand.ts `ResumeCommandBlock` */
 data class ResumeCommandBlock(val lines: List<String>, val copyText: String)
 

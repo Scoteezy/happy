@@ -26,7 +26,9 @@ import com.slopus.happy.chat.ChatEmptyState
 import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatOlderPaging
 import com.slopus.happy.chat.ChatSnapshot
+import com.slopus.happy.layout.chat.CliWarningPillLayout
 import com.slopus.happy.layout.chat.WorktreeTabStripLayout
+import com.slopus.happy.model.CliVersionWarning
 import com.slopus.happy.model.ProjectWorktree
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.PendingChat
@@ -146,6 +148,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     private val scrollButton = ScrollButton(context)
     private val placeholder = ChatPlaceholderView(context)
     private val tabStrip = ChatWorktreeTabStrip(context)
+    private val cliWarning = ChatCliWarningPill(context)
     /** The Session alert a tab's long press opens. */
     private val sessionActions = HomeSessionActions(this, graph, scope).also { actions ->
         actions.onBeforeArchive = ::tabArchiving
@@ -288,6 +291,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         scrollButton.setOnClickListener { list.scrollToNewest(animated = true) }
         scrollButton.alpha = 0f
         scrollButton.visibility = View.GONE
+        cliWarning.setOnClickListener { dismissCliWarning() }
         tabStrip.onSelect = ::selectTab
         tabStrip.onAdd = ::newTab
         tabStrip.showsAdd = true
@@ -368,6 +372,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         val machineId = state.session?.metadata?.machineId
         if (machine?.id != machineId) machine = HomeServices.of(graph).machine(machineId)
         updateHeader()
+        updateCliWarning()
         composer.update(state, mirror, settings.agentDefaultOverrides)
         receivePaging(state.snapshot)
         requestPlans()
@@ -649,6 +654,22 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             )
         }
         header.update(headerTitle, subtitle, git.changes, avatar)
+    }
+
+    /** SessionView's CLI-outdated pill, until it is dismissed for this version on this machine. */
+    private fun updateCliWarning() {
+        val warning = CliVersionWarning.of(state.session?.metadata, graph.localSettings.values.value.acknowledgedCliVersions)
+        cliWarning.warning = warning
+        val visibility = if (warning == null) View.GONE else View.VISIBLE
+        if (cliWarning.visibility == visibility) return
+        cliWarning.visibility = visibility
+        root.requestLayout()
+    }
+
+    private fun dismissCliWarning() {
+        val acknowledged = cliWarning.warning?.dismissed(graph.localSettings.values.value.acknowledgedCliVersions) ?: return
+        graph.localSettings.change { it.copy(acknowledgedCliVersions = acknowledged) }
+        updateCliWarning()
     }
 
     // Worktree tabs
@@ -1084,6 +1105,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             addView(scrim)
             addView(header)
             addView(tabStrip)
+            addView(cliWarning)
             for (bar in dockBarViews) addView(bar)
             addView(composer)
             addView(scrollButton)
@@ -1115,6 +1137,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
                     headerAccessory = if (tabStrip.visibility == View.VISIBLE) WorktreeTabStripLayout.Metrics.height else 0.0,
                 ),
             )
+            if (cliWarning.visibility == View.VISIBLE) cliWarning.place(CliWarningPillLayout(width, layout.headerBottom, cliWarning.measurable))
             layout.headerAccessory?.takeIf { tabStrip.visibility == View.VISIBLE }?.let { frame ->
                 tabStrip.maxWidth = ContentWidth.headerMaxWidth(context)
                 tabStrip.setFrame(frame)

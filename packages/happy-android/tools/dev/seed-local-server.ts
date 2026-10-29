@@ -228,6 +228,12 @@ const sessions: SessionSeed[] = machineOnly ? [] : [
             },
         },
     },
+    // Started by a CLI older than the app supports: the chat's CLI Update Required pill.
+    {
+        tag: 'old-cli', summary: 'Bump the CLI', path: `${home}/code/happy-cli`, flavor: 'claude', minutesAgo: 14,
+        chat: ['Which CLI is this?', 'This session was started by Happy CLI 0.9.4.'],
+        metadata: { version: '0.9.4' },
+    },
     // Inactive with the agent's id: Resume on the seeded computer, which answers it.
     {
         tag: 'resume-demo', summary: 'Tidy the release notes', path: `${home}/code/happy`, flavor: 'claude', archived: true, minutesAgo: 60 * 3,
