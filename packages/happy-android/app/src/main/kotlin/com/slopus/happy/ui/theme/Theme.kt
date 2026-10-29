@@ -37,9 +37,13 @@ object Theme {
     private var systemDark = false
     private val listeners = LinkedHashSet<() -> Unit>()
 
-    fun install(context: Context) {
-        val config = context.resources.configuration
-        density = context.resources.displayMetrics.density
+    /**
+     * [config] is the system's: the activity's own resources keep the one
+     * it was created with, since it runs in a configuration context for its
+     * language (MainActivity.attachBaseContext).
+     */
+    fun install(context: Context, config: Configuration = context.resources.configuration) {
+        density = if (config.densityDpi != Configuration.DENSITY_DPI_UNDEFINED) config.densityDpi / 160f else context.resources.displayMetrics.density
         systemDark = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         textScale = TextScale(config.fontScale.toDouble())
         isDark = resolve()
@@ -47,9 +51,9 @@ object Theme {
     }
 
     /** The system configuration changed (dark mode, font size, density). True if anything drawn changed. */
-    fun configurationChanged(context: Context): Boolean {
+    fun configurationChanged(context: Context, config: Configuration): Boolean {
         val before = Triple(isDark, textScale, density)
-        install(context)
+        install(context, config)
         val changed = before != Triple(isDark, textScale, density)
         if (changed) notifyChanged()
         return changed

@@ -145,8 +145,8 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
     }
 
     /** The system's configuration changed (dark mode, font scale, density) without the activity restarting. */
-    fun configurationChanged(@Suppress("UNUSED_PARAMETER") config: Configuration) {
-        if (Theme.configurationChanged(activity)) {
+    fun configurationChanged(config: Configuration) {
+        if (Theme.configurationChanged(activity, config)) {
             Theme.applyTree(root)
             root.requestLayout()
             applySystemBars()
