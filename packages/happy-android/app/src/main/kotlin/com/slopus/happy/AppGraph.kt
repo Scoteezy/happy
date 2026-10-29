@@ -3,7 +3,10 @@ package com.slopus.happy
 import android.content.Context
 import com.slopus.happy.auth.AndroidKeyStoreKeys
 import com.slopus.happy.auth.AuthApi
+import com.slopus.happy.auth.AccountDisplay
+import com.slopus.happy.auth.AccountRegistryFile
 import com.slopus.happy.auth.AuthRepository
+import com.slopus.happy.auth.CredentialLocation
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.auth.SecureStoreCredentialStore
@@ -13,6 +16,7 @@ import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.LocalCaches
+import com.slopus.happy.model.Profile
 import com.slopus.happy.model.settings.ConnectApi
 import com.slopus.happy.model.settings.HttpConnectApi
 import com.slopus.happy.model.settings.LanguageController
@@ -50,6 +54,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
@@ -74,7 +80,8 @@ class AppGraph(
     private val clientId: String,
     defaultServerUrl: String,
     secureStoreKeys: SecureStoreKeys = AndroidKeyStoreKeys(),
-    databaseName: String? = HappyDatabase.NAME,
+    /** Null keeps every account's database in memory (tests). */
+    private val databaseName: String? = HappyDatabase.NAME,
 ) {
     private val appContext: Context = context.applicationContext ?: context
 
@@ -82,7 +89,6 @@ class AppGraph(
         context.getSharedPreferences(ServerConfig.PREFS_NAME, Context.MODE_PRIVATE),
         defaultServerUrl,
     )
-    val localSettings = LocalSettings(context.getSharedPreferences(LocalSettings.PREFS_NAME, Context.MODE_PRIVATE))
     val stemCells = com.slopus.happy.stemcells.StemCellsPreference(
         com.slopus.happy.config.AppVariant.current,
         context.getSharedPreferences(com.slopus.happy.stemcells.StemCellsPreference.PREFS_NAME, Context.MODE_PRIVATE),
@@ -92,8 +98,10 @@ class AppGraph(
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
-    val http = HappyHttp(okHttp, serverUrl = { serverConfig.url.value }, clientId = clientId)
-    val authApi = AuthApi(http)
+    /** The active account's server while signed in; [serverConfig] is the one onboarding signs in to. */
+    @Volatile private var activeServerUrl: String? = null
+    val http = HappyHttp(okHttp, serverUrl = { activeServerUrl ?: serverConfig.url.value }, clientId = clientId)
+    val authApi = AuthApi(HappyHttp(okHttp, serverUrl = { serverConfig.url.value }, clientId = clientId))
     val auth = AuthRepository(
         SecureStoreCredentialStore(
             ExpoSecureStore(
@@ -103,8 +111,40 @@ class AppGraph(
             ),
         ),
         authApi,
+        registryStore = AccountRegistryFile(LocalCaches.registryFile(appContext)),
+        serverUrl = { serverConfig.url.value },
     )
-    val store = HappyStore(HappyDatabase(context, databaseName))
+
+    private val databases = HashMap<String?, HappyDatabase>()
+
+    /**
+     * [accountId]'s own database, kept open once opened (happy-ios
+     * `accounts/<id>/store.sqlite`); signed out, an empty one in memory.
+     */
+    private fun database(accountId: String?): HappyDatabase = synchronized(databases) {
+        databases.getOrPut(accountId) {
+            if (databaseName == null || accountId == null) HappyDatabase(appContext, null)
+            else HappyDatabase(appContext, LocalCaches.accountDatabase(appContext, accountId, databaseName).path)
+        }
+    }
+
+    /** [accountId]'s device-only preferences; signed out, the device's. */
+    private fun localPreferences(accountId: String?) = appContext.getSharedPreferences(
+        accountId?.let { "${LocalSettings.PREFS_NAME}-$it" } ?: LocalSettings.PREFS_NAME,
+        Context.MODE_PRIVATE,
+    )
+
+    private val activeAccountId: String? get() = (auth.state.value as? AuthState.SignedIn)?.encryption?.anonId
+
+    init {
+        // The account this device had before several could be signed in keeps its data.
+        auth.registry.value.entries.firstOrNull { it.location == CredentialLocation.Shared }?.let { shared ->
+            LocalCaches.adoptLegacyAccount(appContext, shared.id, databaseName, localPreferences(shared.id))
+        }
+    }
+
+    val store = HappyStore(database(activeAccountId))
+    val localSettings = LocalSettings(localPreferences(activeAccountId))
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -133,6 +173,15 @@ class AppGraph(
 
     /** The signed-in account's sync, or null when signed out. */
     val account: StateFlow<AccountSync?> = accountState.asStateFlow()
+
+    private val storeAccountState = MutableStateFlow(auth.state.value)
+
+    /**
+     * [AuthRepository.state] once [store] and [localSettings] are that
+     * account's: the screens are built for this, so none shows the previous
+     * account's data (happy-ios publishes a session only with its store open).
+     */
+    val storeAccount: StateFlow<AuthState> = storeAccountState.asStateFlow()
 
     val voicePreferences = VoicePreferences(context.getSharedPreferences(VoicePreferences.PREFS_NAME, Context.MODE_PRIVATE))
 
@@ -226,14 +275,17 @@ class AppGraph(
     }
 
     /**
-     * Settings > Account > Logout: credentials, local data and device
-     * preferences go; the server choice stays. Runs in the app scope, since
-     * the screen that asked is gone as soon as the account is.
+     * Settings > Account > Logout: the active account's credentials, local
+     * data and device preferences go; the server choice stays, and the next
+     * signed-in account takes over. Runs in the app scope, since the screen
+     * that asked is gone as soon as the account is.
      */
     fun logout(): Job = scope.launch {
         accountLock.withLock {
+            val signedIn = auth.state.value as? AuthState.SignedIn ?: return@withLock
+            val id = signedIn.encryption.anonId
             voice.stop()
-            (auth.state.value as? AuthState.SignedIn)?.let { signedIn -> logoutHooks.forEach { it(signedIn.credentials.token) } }
+            logoutHooks.forEach { it(signedIn.credentials.token) }
             purchases.setAccount(null)
             stopAccount()
             withContext(Dispatchers.IO) {
@@ -242,12 +294,55 @@ class AppGraph(
                 localSettings.clear()
                 changelog.clear()
                 for (name in WIPED_PREFS) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
-                LocalCaches.wipe(appContext)
+                LocalCaches.wipeShared(appContext)
+                // Off its database and preferences before they go; the next account, if any, replaces these.
+                localSettings.switchTo(localPreferences(null))
+                store.switchTo(database(null))
+                removeAccountStorage(id)
             }
             wipeHooks.forEach { it() }
-            auth.logout()
+            auth.signOut(id)
         }
     }
+
+    /**
+     * The account switcher's sign-out (happy-ios `signOut(accountID:)`): the
+     * active account as [logout]; another one leaves without touching the
+     * active account, its push token dropped and its data removed.
+     */
+    fun signOut(accountId: String): Job {
+        if (accountId == activeAccountId) return logout()
+        return scope.launch {
+            accountLock.withLock {
+                auth.credentials(accountId)?.let { credentials -> logoutHooks.forEach { it(credentials.token) } }
+                withContext(Dispatchers.IO) {
+                    HappyStore(database(accountId)).clearAll()
+                    localPreferences(accountId).edit().clear().commit()
+                    removeAccountStorage(accountId)
+                }
+                auth.signOut(accountId)
+            }
+        }
+    }
+
+    /** A signed-out, emptied account's database closed and its files and preferences deleted. */
+    private fun removeAccountStorage(accountId: String) {
+        synchronized(databases) { databases.remove(accountId) }?.close()
+        appContext.deleteSharedPreferences("${LocalSettings.PREFS_NAME}-$accountId")
+        LocalCaches.removeAccount(appContext, accountId)
+    }
+
+    /** Settings › Account › Add Account: the sign-in screens go up over the active account. */
+    fun beginAddingAccount() = auth.beginAddingAccount()
+
+    /** They were closed without a sign-in: the active account's server is the one to sign in to again. */
+    fun cancelAddingAccount() {
+        auth.cancelAddingAccount()
+        activeServerUrl?.let { if (it != serverConfig.url.value) serverConfig.set(it) }
+    }
+
+    /** Makes another signed-in account the active one; the screens are rebuilt for it. Throws when it can't be. */
+    suspend fun switchAccount(accountId: String) = auth.switchTo(accountId)
 
     private val wipeHooks = CopyOnWriteArrayList<() -> Unit>()
 
@@ -261,11 +356,21 @@ class AppGraph(
 
     private suspend fun switchAccount(state: AuthState) {
         stopAccount()
-        if (state !is AuthState.SignedIn) return
+        val id = (state as? AuthState.SignedIn)?.encryption?.anonId
+        // The account's own database and preferences, its server for every request.
+        val server = id?.let { auth.registry.value.entry(it)?.serverUrl }
+        activeServerUrl = server
+        if (server != null && server != serverConfig.url.value) serverConfig.set(server)
+        withContext(Dispatchers.IO) { database(id).writableDatabase }
+        localSettings.switchTo(localPreferences(id))
+        store.switchTo(database(id))
+        storeAccountState.value = state
+        if (state !is AuthState.SignedIn || id == null) return
+        val accountServer = server ?: serverConfig.url.value
         val account = AccountSync(
             http = http,
             okHttp = okHttp,
-            serverUrl = { serverConfig.url.value },
+            serverUrl = { accountServer },
             clientId = clientId,
             token = state.credentials.token,
             encryption = state.encryption,
@@ -277,9 +382,21 @@ class AppGraph(
         )
         accountState.value = account
         account.start()
+        // What the switcher shows of this account, from its profile as it syncs.
+        displayJob = scope.launch(Dispatchers.IO) {
+            store.changes.map { store.profile()?.let(Profile::parse) }.distinctUntilChanged().collect { profile ->
+                if (profile != null) {
+                    auth.updateDisplay(id, AccountDisplay(profile.displayName, profile.github?.login, profile.avatarUrl, profile.avatar?.thumbhash))
+                }
+            }
+        }
     }
 
+    private var displayJob: Job? = null
+
     private suspend fun stopAccount() {
+        displayJob?.cancel()
+        displayJob = null
         voice.stop()
         val account = accountState.value ?: return
         accountState.value = null

@@ -12,10 +12,13 @@ import kotlinx.serialization.SerializationException
 
 /**
  * Device-only preferences (happy-app sync/localSettings.ts). They are not
- * synced, and logout clears them, as `mmkv.clearAll()` does. The document is
+ * synced, each signed-in account has its own, and signing out clears its
+ * own, as `mmkv.clearAll()` does. The document is
  * kept as JSON under `local-settings`, the key happy-app uses in MMKV.
  */
-class LocalSettings(private val prefs: SharedPreferences) {
+class LocalSettings(prefs: SharedPreferences) {
+    @Volatile private var prefs: SharedPreferences = prefs
+
     private val state = MutableStateFlow(read())
     private val theme = MutableStateFlow(state.value.themePreference)
 
@@ -32,6 +35,15 @@ class LocalSettings(private val prefs: SharedPreferences) {
     }
 
     fun setThemePreference(preference: ThemePreference) = change { it.copy(themePreference = preference) }
+
+    /** Another account's preferences in place of these (happy-ios replaces `localSettings` on a switch). */
+    @Synchronized
+    fun switchTo(next: SharedPreferences) {
+        if (next === prefs) return
+        prefs = next
+        state.value = read()
+        theme.value = state.value.themePreference
+    }
 
     @Synchronized
     fun clear() {

@@ -17,11 +17,19 @@ data class AuthCredentials(val token: String, val secret: String) {
     fun secretBytes(): ByteArray = decodeBase64(secret, Base64Variant.Url)
 }
 
-/** Where the signed-in account is kept. */
+/**
+ * Where signed-in accounts are kept: happy-app's one entry ([read], [write],
+ * [clear]), and an entry of its own for each account added after the first
+ * (happy-ios `AccountCredentialStore`).
+ */
 interface CredentialStore {
     fun read(): AuthCredentials?
     fun write(credentials: AuthCredentials)
     fun clear()
+
+    fun read(accountId: String): AuthCredentials?
+    fun write(accountId: String, credentials: AuthCredentials)
+    fun clear(accountId: String)
 }
 
 /**
@@ -30,8 +38,22 @@ interface CredentialStore {
  * or parsed reads as signed out and is left alone, as tokenStorage.ts does.
  */
 class SecureStoreCredentialStore(private val secureStore: ExpoSecureStore) : CredentialStore {
-    override fun read(): AuthCredentials? = try {
-        secureStore.getItem(KEY)?.let { HappyJson.decodeFromString(AuthCredentials.serializer(), it) }
+    override fun read(): AuthCredentials? = readItem(KEY)
+
+    override fun write(credentials: AuthCredentials) = writeItem(KEY, credentials)
+
+    override fun clear() = secureStore.deleteItem(KEY)
+
+    override fun read(accountId: String): AuthCredentials? = readItem(ownKey(accountId))
+
+    override fun write(accountId: String, credentials: AuthCredentials) = writeItem(ownKey(accountId), credentials)
+
+    override fun clear(accountId: String) = secureStore.deleteItem(ownKey(accountId))
+
+    private fun ownKey(accountId: String) = "${KEY}_$accountId"
+
+    private fun readItem(key: String): AuthCredentials? = try {
+        secureStore.getItem(key)?.let { HappyJson.decodeFromString(AuthCredentials.serializer(), it) }
     } catch (e: GeneralSecurityException) {
         Log.w(TAG, "Could not read credentials", e)
         null
@@ -40,11 +62,9 @@ class SecureStoreCredentialStore(private val secureStore: ExpoSecureStore) : Cre
         null
     }
 
-    override fun write(credentials: AuthCredentials) {
-        secureStore.setItem(KEY, HappyJson.encodeToString(AuthCredentials.serializer(), credentials))
+    private fun writeItem(key: String, credentials: AuthCredentials) {
+        secureStore.setItem(key, HappyJson.encodeToString(AuthCredentials.serializer(), credentials))
     }
-
-    override fun clear() = secureStore.deleteItem(KEY)
 
     companion object {
         /** tokenStorage.ts AUTH_KEY */

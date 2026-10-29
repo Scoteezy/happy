@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
@@ -164,7 +163,8 @@ fun reuseUnchanged(previous: HomeListState?, next: HomeListState): HomeListState
 /**
  * The home list, derived on [dispatcher] whenever an input changes and
  * diffed against the last one ([reuseUnchanged]). [state] is null until
- * a snapshot that is [HomeSnapshot.ready] is in.
+ * a snapshot that is [HomeSnapshot.ready] is in, and again from a null
+ * snapshot (another account) until that account's is.
  */
 class HomeListModel(
     snapshots: Flow<HomeSnapshot?>,
@@ -177,21 +177,20 @@ class HomeListModel(
     zone: () -> ZoneId = ZoneId::systemDefault,
 ) {
     val state: StateFlow<HomeListState?> = combine(
-        snapshots.filterNotNull().filter { it.ready },
+        snapshots.filter { it == null || it.ready },
         settings.map { it.sessionListGrouping to it.hideInactiveSessions }.distinctUntilChanged(),
         localSettings.map { values -> values.expandedProjects.filterValues { it }.keys }.distinctUntilChanged(),
         unreadSessionIds,
         archivingSessionIds,
     ) { snapshot, (grouping, archiveHidden), expanded, unread, archiving ->
-        HomeListInputs(snapshot, grouping, archiveHidden, expanded, unread, archiving)
+        snapshot?.let { HomeListInputs(it, grouping, archiveHidden, expanded, unread, archiving) }
     }
         .distinctUntilChanged()
         .map { inputs ->
             val zoneId = zone()
-            deriveHomeList(inputs, zoneId, LocalDate.now(zoneId))
+            inputs?.let { deriveHomeList(it, zoneId, LocalDate.now(zoneId)) }
         }
-        .scan(null as HomeListState?) { previous, next -> reuseUnchanged(previous, next) }
-        .filterNotNull()
+        .scan(null as HomeListState?) { previous, next -> next?.let { reuseUnchanged(previous, it) } }
         .distinctUntilChanged { a, b -> a === b }
         .flowOn(dispatcher)
         .stateIn(scope, SharingStarted.Eagerly, null)

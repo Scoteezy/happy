@@ -10,8 +10,6 @@ import com.slopus.happy.projects.GitStatusServices
 import com.slopus.happy.projects.ProjectServices
 import com.slopus.happy.projects.SessionAvatarServices
 import com.slopus.happy.sync.AccountSync
-import com.slopus.happy.sync.MachinePresence
-import com.slopus.happy.sync.SessionPresence
 import com.slopus.happy.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +21,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.WeakHashMap
@@ -39,25 +38,31 @@ class HomeServices private constructor(private val graph: AppGraph) {
     val sessionActions: SessionActions = LiveSessionActions { graph.account.value?.sessionOps }
     val archiver = SessionArchiver(sessionActions)
 
+    /**
+     * Null without an account and from each account change until that
+     * account's first snapshot, so no home shows the previous account's.
+     * Mid-switch the store may still be the old account's: nothing is read
+     * until the next account's sync is up, its store in place.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
     val snapshots: StateFlow<HomeSnapshot?> = graph.account
         .flatMapLatest { account ->
+            if (account == null) return@flatMapLatest flowOf(null)
             homeSnapshots(
                 graph.store,
-                account?.presence?.sessions ?: flowOf(emptyMap<String, SessionPresence>()),
-                account?.presence?.machines ?: flowOf(emptyMap<String, MachinePresence>()),
+                account.presence.sessions,
+                account.presence.machines,
                 // A full session listing has been stored once: every sync after the first.
-                synced = (account?.isSyncing ?: flowOf(false))
+                synced = account.isSyncing
                     .map { graph.store.cursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT) != null }
                     .flowOn(Dispatchers.IO),
                 projects = ProjectServices.of(graph).projects,
                 sessionAvatars = SessionAvatarServices.of(graph).avatars,
                 gitStatuses = GitStatusServices.of(graph).statuses,
                 // storage.ts updateSessionDraft: a blank draft is no draft.
-                drafts = account?.composer?.mirrors
-                    ?.map { mirrors -> mirrors.mapNotNull { (id, mirror) -> mirror.draft?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap() }
-                    ?: flowOf(emptyMap()),
-            )
+                drafts = account.composer.mirrors
+                    .map { mirrors -> mirrors.mapNotNull { (id, mirror) -> mirror.draft?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap() },
+            ).onStart<HomeSnapshot?> { emit(null) }
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
 

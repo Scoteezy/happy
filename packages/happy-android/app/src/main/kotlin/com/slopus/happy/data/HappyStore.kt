@@ -63,7 +63,8 @@ enum class LiveMessageResult {
  * says what changed; [changes] ticks once per transaction that changed
  * anything.
  */
-class HappyStore(private val helper: SQLiteOpenHelper) {
+class HappyStore(helper: SQLiteOpenHelper) {
+    @Volatile private var helper: SQLiteOpenHelper = helper
     private val db: SQLiteDatabase get() = helper.writableDatabase
 
     private val versionState = MutableStateFlow(StoreVersions())
@@ -115,6 +116,25 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
                 if (committed && !changed.isEmpty) publish(changed)
             }
         }
+    }
+
+    /**
+     * Puts [next], another account's database, in place of this one
+     * (happy-ios opens each account's own store); every observer re-reads.
+     * The old database stays open for reads still running on it.
+     */
+    fun switchTo(next: SQLiteOpenHelper) {
+        if (next === helper) return
+        helper = next
+        publish(Dirty().apply {
+            sessions = true
+            sessionActivity = true
+            machines = true
+            machineActivity = true
+            account = true
+            messages += versionState.value.messages.keys
+            outbox += versionState.value.outbox.keys
+        })
     }
 
     private fun publish(changed: Dirty) {

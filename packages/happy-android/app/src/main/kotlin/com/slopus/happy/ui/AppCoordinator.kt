@@ -50,7 +50,7 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
         }
         activity.lifecycleScope.launch {
             activity.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                graph.auth.state
+                graph.storeAccount
                     .map { (it as? AuthState.SignedIn)?.credentials?.token }
                     .distinctUntilChanged()
                     .collect { token -> show(token) }
