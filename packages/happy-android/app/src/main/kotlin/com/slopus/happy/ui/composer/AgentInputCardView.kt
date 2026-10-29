@@ -134,6 +134,8 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     /** Pictures pasted or inserted by the keyboard into the text, while [Configuration.showsAdd]. */
     var onReceiveImages: ((List<android.net.Uri>) -> Unit)? = null
     var onSelect: ((AgentInputChip, String) -> Unit)? = null
+    /** A chip that `opensPicker` was pressed. */
+    var onPressChip: ((AgentInputChip) -> Unit)? = null
     var onFocusChanged: ((Boolean) -> Unit)? = null
     /** A control was pressed while [Configuration.refusesControls] is on; it has shaken. */
     var onRefuse: ((AgentInputControl) -> Unit)? = null
@@ -235,6 +237,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         separator.text = "·"
         for (chip in listOf(permissionChip, modelChip, effortChip)) {
             chip.onSelect = { which, key -> onSelect?.invoke(which, key) }
+            chip.onPress = { onPressChip?.invoke(it) }
             chip.refuses = {
                 if (configuration.refusesControls) {
                     refuse(chip, AgentInputControl.valueOf(chip.chip.name))
@@ -346,6 +349,22 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
 
     /** The flat panel's stop failed: only it shakes (`shakerRef`). */
     fun shakeStop() = installedDesktopControls?.shakeStop()
+
+    /** Where a chip stands, in [view]'s space (dp): what its owner's picker opens over. Null while the chip is hidden. */
+    fun chipFrame(chip: AgentInputChip, view: View): Rect? {
+        val button = when (chip) {
+            AgentInputChip.Permission -> permissionChip
+            AgentInputChip.Model -> modelChip
+            AgentInputChip.Effort -> effortChip
+        }
+        if (button.visibility != VISIBLE || !button.isAttachedToWindow || button.width == 0) return null
+        val at = IntArray(2)
+        val origin = IntArray(2)
+        button.getLocationInWindow(at)
+        view.getLocationInWindow(origin)
+        val d = Theme.density
+        return Rect((at[0] - origin[0]) / d, (at[1] - origin[1]) / d, button.width / d, button.height / d)
+    }
 
     fun setText(text: String) {
         if (text == this.text) return
@@ -546,6 +565,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     /** A chip: its label (or the shield) where the layout says, opening its menu on tap. */
     private class ChipButton(context: Context, val chip: AgentInputChip) : ManualLayout(context) {
         var onSelect: ((AgentInputChip, String) -> Unit)? = null
+        var onPress: ((AgentInputChip) -> Unit)? = null
         /** Asked first on a tap: true when the press was refused instead. */
         var refuses: () -> Boolean = { false }
         private val label = Label(context, TextStyles.composerChip, Palette.text, maxLines = 1)
@@ -558,7 +578,10 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             addView(iconView)
             isClickable = true
             isFocusable = true
-            setOnClickListener { if (!refuses()) openMenu() }
+            setOnClickListener {
+                if (refuses()) return@setOnClickListener
+                if (config?.opensPicker == true) onPress?.invoke(chip) else openMenu()
+            }
         }
 
         val contentSize: Size
@@ -583,8 +606,9 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
                 label.visibility = GONE
             }
             contentDescription = config.accessibilityLabel
-            alpha = if (config.sections != null) 1f else AgentInputCardLayout.Metrics.disabledChipOpacity.toFloat()
-            isEnabled = config.sections != null
+            val opens = config.sections != null || config.opensPicker
+            alpha = if (opens) 1f else AgentInputCardLayout.Metrics.disabledChipOpacity.toFloat()
+            isEnabled = opens
         }
 
         fun place(frame: AgentInputCardLayout.ChipFrame?) {

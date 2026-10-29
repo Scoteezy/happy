@@ -226,6 +226,8 @@ data class ComposerChipSet(
         /** Null: the chip shows but can't be opened. */
         val sections: List<Section>?,
         val selectedKey: String?,
+        /** A press goes to the card's owner, which opens its own list, rather than a menu of [sections]. */
+        val opensPicker: Boolean = false,
     )
 
     /** The copy the chips fall back to (en.ts `agentInput.*.title`). */

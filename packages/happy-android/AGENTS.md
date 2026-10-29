@@ -760,7 +760,11 @@ and its frames in `:layout` `stemcells/` with iOS's layout tests; the
 views are in `ui/stemcells/`: home (`StemCellsDirectHomeScreen`) and a
 conversation (`StemCellChatScreen`), whose rows `StemCellChatPlanner`
 plans into the chat's own `ChatRowPlan`s, its pictures in `ChatMediaView`
-tiles that find `StemCellMediaLoader` under `R.id.chat_media`.
+tiles that find `StemCellMediaLoader` under `R.id.chat_media`. The
+composer's model and effort chips (`opensPicker`) hand their press to
+the screen, which opens `StemCellPickerPresenter`'s panels over its root;
+`StemCellModelState` (on the session) holds the catalog, the usage and
+the dock's pick for new work.
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one
@@ -786,12 +790,15 @@ tiles that find `StemCellMediaLoader` under `R.id.chat_media`.
   views over that computer: `adb shell am start -n
   com.slopus.happy.dev/com.slopus.happy.harness.StemCellsHarnessActivity
   --el epoch 1767000000000`; the view tagged `stem-probe` reports
-  `live= rows= selected= opened= created= haptics=`, and with a
-  conversation on top `chat= msgs= working= follows= jump= lift=`. The iOS reference
+  `live= rows= selected= opened= created= haptics= dockModel= dockEffort=
+  dockPicker=`, and with a conversation on top `chat= msgs= working=
+  follows= jump= lift= model= effort= picker=` (a picker is the open
+  panels, `models+accounts`). The iOS reference
   host for it (`.context/ios-ref-host`, never committed) is the real
   `StemCellsDirectHomeViewController` over a Swift port of the same
   transport and fixture, run on the HappyRef simulators; `-open SPACE_ID`
-  opens that row's conversation.
+  opens that row's conversation, `-picker model|effort|accounts` presses
+  the top screen's chip once the models are read.
 - Regexes the core shares with iOS spell Unicode's white space out
   (`UNICODE_SPACE`) instead of `(?U)\s`: the JVM's `\s` is ASCII and
   Android's ICU refuses `(?U)`, which JVM tests never notice.

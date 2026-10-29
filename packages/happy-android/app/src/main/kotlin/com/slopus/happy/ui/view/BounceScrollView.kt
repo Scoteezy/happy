@@ -129,7 +129,11 @@ class BounceScrollView(context: Context) : ManualLayout(context) {
 
     // Touches
 
+    /** False: touches pass through to the content and it never moves (UIScrollView's `isScrollEnabled`). */
+    var isScrollEnabled = true
+
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        if (!isScrollEnabled) return false
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 begin(ev)
@@ -154,6 +158,7 @@ class BounceScrollView(context: Context) : ManualLayout(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!isScrollEnabled) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 begin(event)

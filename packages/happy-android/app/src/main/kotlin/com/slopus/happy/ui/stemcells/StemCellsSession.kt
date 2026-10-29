@@ -28,10 +28,13 @@ class StemCellsSession private constructor(val accountId: String, val engine: Di
     /** The row whose conversation was opened last; it stays selected. */
     var selectedRowId: String? = null
     private val scope: CoroutineScope = MainScope()
+    /** The models the composer's pickers offer, and the dock's pick. */
+    val models = StemCellModelState(engine.client, engine.offline, scope)
     private val watchers = LinkedHashMap<Any, (StemCellsSnapshot) -> Unit>()
     private val following: Job
 
     init {
+        models.load()
         following = scope.launch {
             store.updates.collect { snapshot ->
                 this@StemCellsSession.snapshot = snapshot

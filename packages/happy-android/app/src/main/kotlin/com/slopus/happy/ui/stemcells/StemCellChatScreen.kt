@@ -36,6 +36,7 @@ import com.slopus.happy.ui.composer.AgentInputAttachmentPreview
 import com.slopus.happy.ui.composer.AgentInputCardView
 import com.slopus.happy.ui.composer.ComposerImagePicker
 import com.slopus.happy.ui.home.HeaderScrimView
+import com.slopus.happy.ui.nav.BackInterceptor
 import com.slopus.happy.ui.nav.Screen
 import com.slopus.happy.ui.tablet.ContentWidth
 import com.slopus.happy.ui.text.TextLayouts
@@ -44,6 +45,9 @@ import com.slopus.happy.ui.theme.ThemeAware
 import com.slopus.happy.ui.view.BounceScrollView
 import com.slopus.happy.ui.view.ManualLayout
 import com.slopus.happy.ui.view.px
+import com.slopus.happy.stemcells.AgentMode
+import com.slopus.happy.stemcells.StemCellModelMenus
+import com.slopus.happy.ui.composer.AgentInputChip
 import com.slopus.happy.ui.view.setFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -76,11 +80,14 @@ class StemCellChatScreen(
     private val spaceId: String?,
     private var intro: StemCellIntroView.Mark?,
     creation: StemCellCreation? = null,
-) : Screen(context) {
+) : Screen(context), BackInterceptor {
     /** The conversation's own line of work, one coroutine at a time, as the store's. */
     private val conversationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val conversation = StemCellConversation(
-        session.client, session.store, agentId, creation?.created, persistence = session.engine, scope = conversationScope,
+        session.client, session.store, agentId, creation?.created,
+        // New work goes with the dock's pick; work already going, with its own.
+        mode = if (creation != null) session.models.newWorkMode else null,
+        persistence = session.engine, scope = conversationScope,
     )
     private val planner = StemCellChatPlanner(context.resources)
     private val media = StemCellMediaLoader(session.client, agentId)
@@ -145,10 +152,30 @@ class StemCellChatScreen(
     private var planShown = false
     private var putAway = false
 
+    // Model
+
+    /** A pick made here, until the conversation's own mode says it back. */
+    private var picked: AgentMode? = null
+    /** The model or effort list while it is open. */
+    private var picker: StemCellPickerPresenter? = null
+    private var unwatchModels: (() -> Unit)? = null
+
+    /** What the next message goes with: the conversation's, else what new work starts on, else the computer's default. */
+    private val mode: AgentMode?
+        get() = picked ?: chat.mode ?: (if (opensFocused) session.models.newWorkMode else null) ?: session.models.catalog?.defaultMode()
+
+    private val menus: StemCellModelMenus?
+        get() {
+            val catalog = session.models.catalog ?: return null
+            return mode?.let { StemCellModelMenus(catalog, it) }
+        }
+
     /** What the harness reads: the rows drawn, whether the agent works, and how far from the end the reader is. */
     val probe: String
         get() = "chat=${spaceId ?: media.agentId} msgs=${plans.size} working=${chat.activity?.phase?.let { it::class.simpleName } ?: "none"} " +
-            "follows=${if (followsNewest) 1 else 0} jump=${if (jumpShown) 1 else 0} lift=${if (lift != null) 1 else 0}"
+            "follows=${if (followsNewest) 1 else 0} jump=${if (jumpShown) 1 else 0} lift=${if (lift != null) 1 else 0} " +
+            "model=${card.configuration.model?.label?.replace(' ', '_') ?: "none"} effort=${card.configuration.effort?.label ?: "none"} " +
+            "picker=${picker?.probe?.ifEmpty { null } ?: "none"}"
 
     private data class Planned(
         val items: List<com.slopus.happy.stemcells.StemCellChatItem>,
@@ -242,6 +269,10 @@ class StemCellChatScreen(
         card.onAdd = { pictures.attach() }
         card.onRemoveAttachment = { pictures.remove(it) }
         card.onReceiveImages = { pictures.receive(it) }
+        card.onPressChip = { openPicker(it) }
+        unwatchModels = session.models.watch { updateChips() }
+        session.models.load()
+        updateChips()
         pictures.onChange = {
             card.configuration = card.configuration.copy(attachments = pictures.images.map { AgentInputAttachmentPreview(it.id, it.image.file) })
             updatePrimary()
@@ -275,9 +306,19 @@ class StemCellChatScreen(
         conversation.flushDraft()
     }
 
+    override val interceptsBack: Boolean get() = picker != null
+
+    override fun onBackPressed(): Boolean {
+        val picker = picker ?: return false
+        picker.outside()
+        return true
+    }
+
     override fun onDestroy() {
         putAwayIfEmpty()
         unwatch?.invoke()
+        unwatchModels?.invoke()
+        picker?.close(animated = false)
         planning?.cancel()
         pictures.close()
         val scope = conversationScope
@@ -357,6 +398,7 @@ class StemCellChatScreen(
     private fun apply(snapshot: StemCellChatSnapshot) {
         val wasSettled = settled(chat)
         chat = snapshot
+        if (picked == snapshot.mode) picked = null
         media.register(snapshot.items)
         if (snapshot.draftArrivals != draftArrivals) {
             draftArrivals = snapshot.draftArrivals
@@ -368,8 +410,47 @@ class StemCellChatScreen(
         if (wasSettled != settled(snapshot)) intro?.let { introView.configure(it, settled(snapshot)) }
         showIntro()
         updatePrimary()
+        updateChips()
         replan()
         root.requestLayout()
+    }
+
+    private fun updateChips() {
+        if (reading(chat) && picked == null) {
+            card.configuration = card.configuration.copy(model = null, effort = null)
+        } else {
+            StemCellModelPickers.configure(card, menus)
+            picker?.update(menus, session.models.usage)
+        }
+    }
+
+    /** A chip opens its list; with no models yet, they are asked for again. */
+    private fun openPicker(chip: AgentInputChip) {
+        val menus = menus
+        if (menus == null || (reading(chat) && picked == null)) return session.models.load()
+        picker?.close(animated = false)
+        val list = if (chip == AgentInputChip.Effort) StemCellPickerPresenter.List.Effort else StemCellPickerPresenter.List.Model
+        val picker = StemCellPickerPresenter(list, card, menus, session.models.usage) { choose(it) }
+        picker.onClose = {
+            if (this.picker === picker) this.picker = null
+            stack?.backStateChanged()
+        }
+        // Under the header's row, which the safe area doesn't know of.
+        picker.top = { header.layout(px(root.width)).listTop }
+        this.picker = picker
+        picker.show(root)
+        stack?.backStateChanged()
+        StemCellModelPickers.opened(session.models, mode)
+    }
+
+    /** A pick from the model control. */
+    private fun choose(key: String) {
+        StemCellModelPickers.choose(context, key, session.models, mode) { next ->
+            // Held here at once, so the chips read it before the conversation says so.
+            picked = next
+            updateChips()
+            conversation.setMode(next)
+        }
     }
 
     /** The header's grey line: what the agent is at, in a word, while it is. */
@@ -462,6 +543,7 @@ class StemCellChatScreen(
         scroll.setInsets(headerLayout.listTop, screen.listBottom)
         scroll.setFrame(Rect(0.0, 0.0, width, height))
         layoutTranscript()
+        picker?.follow()
     }
 
     private fun layoutTranscript() {

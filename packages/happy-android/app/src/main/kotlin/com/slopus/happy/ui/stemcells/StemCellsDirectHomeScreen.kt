@@ -12,6 +12,7 @@ import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.stemcells.StemCellCreation
 import com.slopus.happy.stemcells.StemCellsRow
 import com.slopus.happy.ui.home.HomeHeaderView
+import com.slopus.happy.ui.nav.BackInterceptor
 import com.slopus.happy.ui.nav.Screen
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.view.ManualLayout
@@ -29,7 +30,7 @@ class StemCellsDirectHomeScreen(
     context: Context,
     val session: StemCellsSession,
     private val computerName: String,
-) : Screen(context) {
+) : Screen(context), BackInterceptor {
     val header = HomeHeaderView(context)
     val stemCells = StemCellsHomeView(context)
     var open: ((StemCellsRow) -> Unit)? = null
@@ -56,6 +57,7 @@ class StemCellsDirectHomeScreen(
             newWork?.invoke(creation, library)
             push(StemCellChatScreen.forNewWork(context, session, creation))
         }
+        stemCells.onBackStateChanged = { stack?.backStateChanged() }
         stemCells.attach(session)
     }
 
@@ -66,6 +68,10 @@ class StemCellsDirectHomeScreen(
     override fun onDisappear() {
         stemCells.disappear()
     }
+
+    override fun onBackPressed(): Boolean = stemCells.back()
+
+    override val interceptsBack: Boolean get() = stemCells.pickerOpen
 
     override fun onDestroy() {
         stemCells.close()

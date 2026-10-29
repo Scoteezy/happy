@@ -23,6 +23,8 @@ import com.slopus.happy.stemcells.StemCellsSnapshot
 import com.slopus.happy.ui.components.Label
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.composer.AgentInputCardView
+import com.slopus.happy.ui.composer.AgentInputChip
+import com.slopus.happy.stemcells.StemCellModelMenus
 import com.slopus.happy.ui.home.HeaderScrimView
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
@@ -73,6 +75,9 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
     private var directHome = DirectHomeSnapshot()
     private var watch: (() -> Unit)? = null
     private var directWatch: Job? = null
+    private var modelsWatch: (() -> Unit)? = null
+    /** The dock's model or effort list while it is open. */
+    private var picker: StemCellPickerPresenter? = null
     private val scope = MainScope()
     private var creating = false
     private val usesSpaces get() = directHome.usesSpaces && session?.snapshot?.availability != StemCellsSnapshot.Availability.Unsupported
@@ -104,6 +109,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         dock.onSend = { makeNewWork() }
         dock.onAdd = { makeNewWork(library = true) }
         dock.onHeightChanged = { requestLayout() }
+        dock.onPressChip = { openPicker(it) }
         addView(dock)
         sidebar.onSelect = { open(it) }
         sidebar.onFold = { fold(it) }
@@ -119,6 +125,9 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         watch = null
         directWatch?.cancel()
         directWatch = null
+        modelsWatch?.invoke()
+        modelsWatch = null
+        picker?.close(animated = false)
         this.session = session
         sidebar.images = session?.images
         sidebar.apply(emptyList())
@@ -133,7 +142,10 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
                     if (usesSpaces) apply(session.snapshot) else applyClassic()
                 }
             }
+            modelsWatch = session.models.watch { updateModelBar() }
+            session.models.load()
         }
+        updateModelBar()
         applyChrome()
     }
 
@@ -144,6 +156,61 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
 
     fun disappear() {
         session?.store?.attentionVisibleUpdate(false)
+        picker?.close(animated = false)
+    }
+
+    /** The dock's list opened or closed: whether back is home's own changed. */
+    var onBackStateChanged: (() -> Unit)? = null
+    val pickerOpen: Boolean get() = picker != null
+
+    /** Back closes the dock's list first; true when it did. */
+    fun back(): Boolean {
+        val picker = picker ?: return false
+        picker.outside()
+        return true
+    }
+
+    /** What the harness reads of the dock: its model and effort, and the list open over it. */
+    val probe: String
+        get() = "dockModel=${dock.configuration.model?.label?.replace(' ', '_') ?: "none"} dockEffort=${dock.configuration.effort?.label ?: "none"} " +
+            "dockPicker=${picker?.probe?.ifEmpty { null } ?: "none"}"
+
+    // Model
+
+    private fun updateModelBar() {
+        val models = session?.models
+        val catalog = models?.catalog
+        val mode = models?.newWorkMode
+        val menus = if (catalog != null && mode != null) StemCellModelMenus(catalog, mode) else null
+        StemCellModelPickers.configure(dock, menus)
+        picker?.update(menus, models?.usage ?: emptyMap())
+        requestLayout()
+    }
+
+    /** A pick here is what the next new work is sent with. */
+    private fun choose(key: String) {
+        val models = session?.models ?: return
+        StemCellModelPickers.choose(context, key, models, models.newWorkMode) { models.dockMode = it }
+    }
+
+    /** A chip opens its list; with no models yet, they are asked for again. */
+    private fun openPicker(chip: AgentInputChip) {
+        val models = session?.models ?: return
+        val catalog = models.catalog
+        val mode = models.newWorkMode
+        if (catalog == null || mode == null) return models.load()
+        picker?.close(animated = false)
+        val list = if (chip == AgentInputChip.Effort) StemCellPickerPresenter.List.Effort else StemCellPickerPresenter.List.Model
+        val picker = StemCellPickerPresenter(list, dock, StemCellModelMenus(catalog, mode), models.usage) { choose(it) }
+        picker.onClose = {
+            if (this.picker === picker) this.picker = null
+            onBackStateChanged?.invoke()
+        }
+        picker.top = { safeArea.top }
+        this.picker = picker
+        picker.show(this)
+        onBackStateChanged?.invoke()
+        StemCellModelPickers.opened(models, mode)
     }
 
     fun close() {
@@ -209,6 +276,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
             if (atTop || (!list.isDragging && list.contentOffset < -insets.top)) list.setContentOffset(-insets.top)
         }
         empty.setFrame(layout.empty)
+        picker?.follow()
     }
 
     // Acts

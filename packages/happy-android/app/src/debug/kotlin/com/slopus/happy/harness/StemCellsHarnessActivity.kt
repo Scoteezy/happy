@@ -105,7 +105,7 @@ class StemCellsHarnessActivity : ComponentActivity() {
     private fun report() {
         val snapshot = session.snapshot
         val value = "live=${if (snapshot.live) 1 else 0} rows=${home.stemCells.sidebar.rows.size} selected=${session.selectedRowId ?: "none"} " +
-            "opened=$opened created=$created haptics=${played.joinToString(",")}" +
+            "opened=$opened created=$created haptics=${played.joinToString(",")} ${home.stemCells.probe}" +
             ((stack.top as? StemCellChatScreen)?.let { " " + it.probe } ?: "")
         if (probe.contentDescription != value) probe.contentDescription = value
     }
