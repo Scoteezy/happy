@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.view.MotionEvent
 import android.view.View
 import android.view.animation.PathInterpolator
+import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
@@ -146,6 +147,11 @@ class ScreenStack(context: Context) : FrameLayout(context) {
             s.view.translationX = 0f
         }
         val removed = old.filter { it !in next }
+        // UIKit resigns the first responder of a screen leaving the window: the keyboard goes with it, not after its fade.
+        removed.firstNotNullOfOrNull { it.view.findFocus() }?.let { focused ->
+            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(windowToken, 0)
+            focused.clearFocus()
+        }
         if (animated && removed.isNotEmpty()) {
             val incoming = next.last().view
             incoming.alpha = 0f

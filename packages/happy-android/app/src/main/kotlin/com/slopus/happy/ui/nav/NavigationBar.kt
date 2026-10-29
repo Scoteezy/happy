@@ -109,7 +109,7 @@ class NavigationBar(context: Context) : ManualLayout(context), ThemeAware {
         if (text != null) {
             val label = Label(context, TEXT_ACTION, tint, maxLines = 1, alignment = Layout.Alignment.ALIGN_CENTER)
             label.text = text
-            addView(label, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER_VERTICAL))
+            addView(label, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER))
             widths[this] = { NavigationBarLayout.textButtonWidth(label.measure(Double.MAX_VALUE).width) }
         } else {
             val icon = IconView(context, action.icon, action.size, tint)

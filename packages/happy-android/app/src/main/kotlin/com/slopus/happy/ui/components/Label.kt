@@ -83,7 +83,8 @@ class Label(
             return
         }
         val size = measure(px(w))
-        setMeasuredDimension((size.width * Theme.density).toInt(), (size.height * Theme.density).toInt())
+        // Rounded up: a pixel short and the one line ellipsizes.
+        setMeasuredDimension(kotlin.math.ceil(size.width * Theme.density).toInt(), kotlin.math.ceil(size.height * Theme.density).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
