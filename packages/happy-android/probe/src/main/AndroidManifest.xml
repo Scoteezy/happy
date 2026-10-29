@@ -6,4 +6,7 @@
     <instrumentation
         android:name=".FlingProbe"
         android:targetPackage="com.slopus.happy.probe" />
+    <instrumentation
+        android:name=".PinchProbe"
+        android:targetPackage="com.slopus.happy.probe" />
 </manifest>

@@ -29,6 +29,8 @@ class StoriesHarnessTransport(private val epoch: Long, newer: Boolean = false, p
     private val lock = Mutex()
     private val stories = LinkedHashMap<String, MutableMap<String, JsonElement>>()
     private var frames: Map<String, ByteArray> = emptyMap()
+    /** The media type of each frame sent by hand; the drawn ones are PNGs. */
+    private val frameTypes = HashMap<String, String>()
     private val order = linkedMapOf("self" to mutableListOf("m1"), "u2" to mutableListOf("s1", "s2"), "u3" to mutableListOf("a1"))
     private val uploads = HashMap<String, ByteArray>()
     private val recents = ArrayList<JsonObject>()
@@ -58,6 +60,26 @@ class StoriesHarnessTransport(private val epoch: Long, newer: Boolean = false, p
             DirectHttpResponse(status, mapOf("content-type" to "application/json"), json.toString().toByteArray())
 
         private fun status(code: Int) = DirectHttpResponse(code)
+
+        private val MEDIA_TYPES = mapOf(
+            "png" to "image/png", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "gif" to "image/gif", "webp" to "image/webp",
+            "mp4" to "video/mp4", "mov" to "video/quicktime", "webm" to "video/webm",
+        )
+
+        /** A file as the daemon serves media: whole, or one byte range of it (`206`), `416` outside it. */
+        private fun served(data: ByteArray, type: String, headers: Map<String, String>): DirectHttpResponse {
+            val base = mapOf("content-type" to type, "accept-ranges" to "bytes")
+            val asked = headers.entries.firstOrNull { it.key.equals("range", ignoreCase = true) }?.value
+            val spec = asked?.removePrefix("bytes=")?.takeIf { asked.startsWith("bytes=") && !it.contains(',') }
+                ?: return DirectHttpResponse(200, base, data)
+            val size = data.size
+            val (first, last) = when {
+                spec.startsWith("-") -> (size - (spec.drop(1).toIntOrNull() ?: 0)).coerceAtLeast(0) to size - 1
+                else -> (spec.substringBefore('-').toIntOrNull() ?: 0) to (spec.substringAfter('-').toIntOrNull()?.coerceAtMost(size - 1) ?: (size - 1))
+            }
+            if (first >= size || first > last) return DirectHttpResponse(416, base + ("content-range" to "bytes */$size"))
+            return DirectHttpResponse(206, base + ("content-range" to "bytes $first-$last/$size"), data.copyOfRange(first, last + 1))
+        }
 
         private fun obj(vararg pairs: Pair<String, Any?>): JsonObject = JsonObject(pairs.associate { (key, value) -> key to json(value) })
 
@@ -208,11 +230,26 @@ class StoriesHarnessTransport(private val epoch: Long, newer: Boolean = false, p
         when {
             data != null -> {
                 frames = frames + (id to data)
-                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
-                frame["width"] = if (bounds.outWidth > 0) JsonPrimitive(bounds.outWidth) else JsonNull
-                frame["height"] = if (bounds.outHeight > 0) JsonPrimitive(bounds.outHeight) else JsonNull
-                frame["asset"] = obj("type" to "artifact_file", "artifactId" to storyId, "version" to revision, "path" to "media/$id.png")
+                // As the daemon keeps an upload: its kind from its media type, under media/<frameId> with its extension.
+                val name = (upload["name"] as? JsonPrimitive)?.content ?: "$id.png"
+                val ext = name.substringAfterLast('.', "png").lowercase()
+                val type = MEDIA_TYPES[ext] ?: "application/octet-stream"
+                frameTypes[id] = type
+                if (type.startsWith("video/")) {
+                    // The daemon doesn't measure videos yet: the client takes their size and length from the player.
+                    frame["kind"] = JsonPrimitive("video")
+                    frame["width"] = JsonNull
+                    frame["height"] = JsonNull
+                    frame["durationMs"] = JsonNull
+                    frame["background"] = JsonArray(listOf(JsonPrimitive("#000000"), JsonPrimitive("#000000")))
+                } else {
+                    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+                    frame["kind"] = JsonPrimitive("image")
+                    frame["width"] = if (bounds.outWidth > 0) JsonPrimitive(bounds.outWidth) else JsonNull
+                    frame["height"] = if (bounds.outHeight > 0) JsonPrimitive(bounds.outHeight) else JsonNull
+                }
+                frame["asset"] = obj("type" to "artifact_file", "artifactId" to storyId, "version" to revision, "path" to "media/$id.$ext")
             }
             input["asset"] != null -> frame["asset"] = input.getValue("asset")
             kept == null -> return null
@@ -320,7 +357,7 @@ class StoriesHarnessTransport(private val epoch: Long, newer: Boolean = false, p
             method == "GET" && sub == "frames" -> {
                 val frameId = parts.getOrNull(5) ?: return status(404)
                 val data = frames[frameId] ?: return status(404)
-                return DirectHttpResponse(200, mapOf("content-type" to "image/png"), data)
+                return served(data, frameTypes[frameId] ?: "image/png", headers)
             }
             method == "GET" && sub == "viewers" -> {
                 // As the API orders them: reactors by latest reaction, then the rest by name.

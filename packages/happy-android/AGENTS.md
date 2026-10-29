@@ -807,6 +807,12 @@ editor on a picture of the harness's own). `harness-edit-draft` (bottom
 left) opens the editor on the newest draft. The view tagged
 `stories-probe` reports the screen in its content description, as iOS's
 probe does (`editor=1 frames=1 overlays=sticker,text …` over the editor).
+Two-finger gestures, which `adb shell input` can't make, come from the
+`:probe` module's `PinchProbe` (build with `-Pprobe`):
+`adb shell am instrument -w -e x 540 -e y 1104 -e span 250 -e scale 1.8 -e degrees 35 com.slopus.happy.probe/.PinchProbe`.
+For the photo picker, push files to `/sdcard/Pictures` and `/sdcard/Movies`
+and run `adb shell content call --uri content://media/external/file --method scan_volume --arg external_primary`;
+keep `screenrecord` output out of the scanned folders or it shows up first.
 
 ## Autocomplete
 
