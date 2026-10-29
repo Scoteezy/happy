@@ -224,7 +224,8 @@ tasks.configureEach {
 
 androidComponents {
     onVariants { variant ->
-        val applicationId = applicationIds.getValue(requireNotNull(variant.buildType))
+        val applicationId = applicationIds.getValue(requireNotNull(variant.buildType)) +
+            if (variant.buildType == "debug" && providers.gradleProperty("happy.shellHarness").orNull == "true") ".shellharness" else ""
         variant.applicationId.set(applicationId)
         firebaseResources(applicationId).forEach { (name, value) ->
             variant.resValues.put(variant.makeResValueKey("string", name), com.android.build.api.variant.ResValue(value))

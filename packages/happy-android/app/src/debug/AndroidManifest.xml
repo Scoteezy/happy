@@ -8,8 +8,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application
+        android:name="com.slopus.happy.harness.ShellHarnessApplication"
         android:usesCleartextTraffic="true"
-        tools:replace="android:usesCleartextTraffic">
+        tools:replace="android:name,android:usesCleartextTraffic">
+        <activity android:name="com.slopus.happy.harness.ShellHarnessActivity"
+            android:exported="true" android:theme="@style/Theme.Happy" />
         <!-- Stories over a computer of its own (happy-ios's `-screen stories`); see StoriesHarnessActivity. -->
         <activity
             android:name="com.slopus.happy.harness.StoriesHarnessActivity"
