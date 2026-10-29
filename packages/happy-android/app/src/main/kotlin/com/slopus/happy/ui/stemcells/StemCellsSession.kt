@@ -2,6 +2,7 @@ package com.slopus.happy.ui.stemcells
 
 import com.slopus.happy.direct.DirectAgentClient
 import com.slopus.happy.direct.DirectSyncEngine
+import com.slopus.happy.stemcells.StemCellDrafts
 import com.slopus.happy.stemcells.StemCellsSnapshot
 import com.slopus.happy.stemcells.StemCellsStore
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +21,8 @@ class StemCellsSession private constructor(val accountId: String, val engine: Di
     val client: DirectAgentClient get() = engine.client
     val store: StemCellsStore get() = engine.spaces
     val images = StemCellsImages(engine.client, engine.offline)
+    /** The drafts kept on this phone, by agent, beside the computer's offline copy. */
+    val drafts = StemCellDrafts(engine.offline?.file)
     var snapshot = StemCellsSnapshot()
         private set
     /** The row whose conversation was opened last; it stays selected. */

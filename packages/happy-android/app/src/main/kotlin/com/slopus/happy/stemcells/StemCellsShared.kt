@@ -8,6 +8,13 @@ import kotlinx.coroutines.sync.Mutex
 import java.util.Base64
 
 /**
+ * Unicode's White_Space, for inside a regex's brackets: Swift's `\s` and
+ * ICU's on Android. The JVM's `\s` is ASCII without `(?U)`, which Android's
+ * ICU refuses, so the characters are listed for both.
+ */
+internal const val UNICODE_SPACE = "\\t\\n\\u000B\\f\\r \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000"
+
+/**
  * What a conversation shared, as Telegram's shared media: the pictures,
  * recordings and files it showed, and the links written in it, newest
  * first. Derived from the transcript itself, nothing kept beside it.
@@ -153,9 +160,9 @@ data class StemCellsShared(val media: List<Media> = emptyList(), val links: List
         // Links
 
         /** `[text](url)`, not `![alt](url)`; a URL may hold balanced parentheses. */
-        private val markdownLink = Regex("""(?U)(?<!!)\[([^\]\n]{1,300})\]\((https?://(?:[^\s()]|\([^\s()]*\))+)\)""")
-        private val markdownImage = Regex("""(?U)!\[[^\]\n]{0,300}\]\([^\s)]*\)""")
-        private val bareLink = Regex("""(?U)https?://(?:[^\s<>"'`()\[\]{}]|\([^\s<>"'`()\[\]{}]*\))+""", RegexOption.IGNORE_CASE)
+        private val markdownLink = Regex("""(?<!!)\[([^\]\n]{1,300})\]\((https?://(?:[^$UNICODE_SPACE()]|\([^$UNICODE_SPACE()]*\))+)\)""")
+        private val markdownImage = Regex("""!\[[^\]\n]{0,300}\]\([^$UNICODE_SPACE)]*\)""")
+        private val bareLink = Regex("""https?://(?:[^$UNICODE_SPACE<>"'`()\[\]{}]|\([^$UNICODE_SPACE<>"'`()\[\]{}]*\))+""", RegexOption.IGNORE_CASE)
         /** What ends a sentence rather than a link. */
         private const val TRAILING = ".,;:!?*_~'\""
 

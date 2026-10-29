@@ -183,6 +183,8 @@ enum class FontFace(val resourceName: String) {
     FigtreeMedium("fonts/figtree.ttf"),
     FigtreeSemiBold("fonts/figtree.ttf"),
     FigtreeBold("fonts/figtree.ttf"),
+    /** Figtree at 400, slanted where it is drawn: the variable font has no italic. */
+    FigtreeOblique("fonts/figtree.ttf"),
     JetBrainsMono("fonts/jetbrains_mono.ttf"),
     JetBrainsMonoBold("fonts/jetbrains_mono.ttf"),
     ;

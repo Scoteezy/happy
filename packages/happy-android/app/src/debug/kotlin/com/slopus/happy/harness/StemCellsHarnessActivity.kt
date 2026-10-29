@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import com.slopus.happy.direct.DirectAgentClient
 import com.slopus.happy.direct.DirectSyncEngine
 import com.slopus.happy.ui.nav.ScreenStack
+import com.slopus.happy.ui.stemcells.StemCellChatScreen
 import com.slopus.happy.ui.stemcells.StemCellsDirectHomeScreen
 import com.slopus.happy.ui.stemcells.StemCellsHaptics
 import com.slopus.happy.ui.stemcells.StemCellsSession
@@ -49,6 +50,7 @@ class StemCellsHarnessActivity : ComponentActivity() {
     private lateinit var session: StemCellsSession
     private lateinit var home: StemCellsDirectHomeScreen
     private lateinit var probe: TextView
+    private lateinit var stack: ScreenStack
     private val played = ArrayList<String>()
     private var opened = "none"
     private var created = 0
@@ -74,6 +76,7 @@ class StemCellsHarnessActivity : ComponentActivity() {
         transport = StemCellsHarnessTransport(
             fixture, engineScope,
             now = { epoch + (System.currentTimeMillis() - started) },
+            drawMedia = ::drawMedia,
             latencyMs = extras.getLong("latency", 0),
         )
         engine = DirectSyncEngine(DirectAgentClient(transport, "harness"), directory, engineScope)
@@ -82,7 +85,7 @@ class StemCellsHarnessActivity : ComponentActivity() {
             played += moment.name.replaceFirstChar { it.lowercase() }
             if (played.size > 16) played.removeAt(0)
         }
-        val stack = ScreenStack(this)
+        stack = ScreenStack(this)
         onBackPressedDispatcher.addCallback(this, stack.backCallback)
         home = StemCellsDirectHomeScreen(this, session, COMPUTER)
         home.open = { row -> opened = row.id }
@@ -102,8 +105,28 @@ class StemCellsHarnessActivity : ComponentActivity() {
     private fun report() {
         val snapshot = session.snapshot
         val value = "live=${if (snapshot.live) 1 else 0} rows=${home.stemCells.sidebar.rows.size} selected=${session.selectedRowId ?: "none"} " +
-            "opened=$opened created=$created haptics=${played.joinToString(",")}"
+            "opened=$opened created=$created haptics=${played.joinToString(",")}" +
+            ((stack.top as? StemCellChatScreen)?.let { " " + it.probe } ?: "")
         if (probe.contentDescription != value) probe.contentDescription = value
+    }
+
+    /** A colour and a label, white and bold at an eighth of the shorter side (the iOS reference host draws the same). */
+    private fun drawMedia(color: Int, label: String, width: Int, height: Int): ByteArray {
+        val bitmap = android.graphics.Bitmap.createBitmap(maxOf(1, width), maxOf(1, height), android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(color)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = android.graphics.Color.WHITE
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            textSize = minOf(bitmap.width, bitmap.height) / 8f
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+        val metrics = paint.fontMetrics
+        canvas.drawText(label, bitmap.width / 2f, bitmap.height / 2f - (metrics.ascent + metrics.descent) / 2, paint)
+        val out = java.io.ByteArrayOutputStream()
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+        bitmap.recycle()
+        return out.toByteArray()
     }
 
     override fun onDestroy() {

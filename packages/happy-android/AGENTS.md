@@ -757,7 +757,10 @@ unless they provide `true`.
 Development and preview builds (happy-ios `Direct`, `StemCells`). The
 core is in `direct/` and `stemcells/`, plain Kotlin with iOS's tests,
 and its frames in `:layout` `stemcells/` with iOS's layout tests; the
-views are in `ui/stemcells/` (home so far: `StemCellsDirectHomeScreen`).
+views are in `ui/stemcells/`: home (`StemCellsDirectHomeScreen`) and a
+conversation (`StemCellChatScreen`), whose rows `StemCellChatPlanner`
+plans into the chat's own `ChatRowPlan`s, its pictures in `ChatMediaView`
+tiles that find `StemCellMediaLoader` under `R.id.chat_media`.
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one
@@ -783,10 +786,15 @@ views are in `ui/stemcells/` (home so far: `StemCellsDirectHomeScreen`).
   views over that computer: `adb shell am start -n
   com.slopus.happy.dev/com.slopus.happy.harness.StemCellsHarnessActivity
   --el epoch 1767000000000`; the view tagged `stem-probe` reports
-  `live= rows= selected= opened= created= haptics=`. The iOS reference
+  `live= rows= selected= opened= created= haptics=`, and with a
+  conversation on top `chat= msgs= working= follows= jump= lift=`. The iOS reference
   host for it (`.context/ios-ref-host`, never committed) is the real
   `StemCellsDirectHomeViewController` over a Swift port of the same
-  transport and fixture, run on the HappyRef simulators.
+  transport and fixture, run on the HappyRef simulators; `-open SPACE_ID`
+  opens that row's conversation.
+- Regexes the core shares with iOS spell Unicode's white space out
+  (`UNICODE_SPACE`) instead of `(?U)\s`: the JVM's `\s` is ASCII and
+  Android's ICU refuses `(?U)`, which JVM tests never notice.
 - The Stem Cells faces are desktop's: Figtree and JetBrains Mono, variable
   fonts in `assets/fonts` (converted from happy-ios's woff2), drawn at a
   weight through `FontFace.Figtree*` and `FontFace.JetBrainsMono*`. The

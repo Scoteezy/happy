@@ -45,7 +45,12 @@ sealed interface ChatDrawItem {
     class Mermaid(val diagram: ChatMermaid, val frame: Rect) : ChatDrawItem
     /** A picture the person attached, loaded once it is on screen, its thumbhash until then. */
     class Attachment(val attachment: ChatAttachment, val frame: Rect) : ChatDrawItem
+    /** A Stem Cells conversation's picture or recording, loaded once it is on screen ([ChatMediaView]). */
+    class Media(val media: ChatMedia, val frame: Rect) : ChatDrawItem
 }
+
+/** A picture or recording by [key] in the conversation's [ChatMediaSource]; [label] is what TalkBack reads. */
+data class ChatMedia(val key: String, val isVideo: Boolean, val thumbhash: String?, val label: String)
 
 /** A picture the person attached: [ref] under the session's attachments, and its thumbhash, shown until the picture arrives. */
 data class ChatAttachment(val ref: String, val thumbhash: String?)
@@ -78,6 +83,10 @@ sealed interface ChatRowAction {
     /** An `<option>` the agent offered: sent as the next message. */
     data class Option(val text: String) : ChatRowAction
     data class Retry(val localId: String) : ChatRowAction
+    /** A Stem Cells picture, recording or file, by its [ChatMedia.key]. */
+    data class OpenMedia(val key: String) : ChatRowAction
+    /** An artifact a Stem Cells agent made or changed. */
+    data class OpenArtifact(val artifact: com.slopus.happy.stemcells.StemCellArtifact) : ChatRowAction
     data class ToggleGroup(val id: String) : ChatRowAction
     /** An option of question [questionId] in tool [toolId]'s inline form. */
     data class QuestionOption(val toolId: String, val questionId: String, val option: Int) : ChatRowAction

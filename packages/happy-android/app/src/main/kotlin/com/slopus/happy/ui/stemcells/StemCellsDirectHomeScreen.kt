@@ -22,8 +22,8 @@ import com.slopus.happy.ui.view.setFrame
  * `StemCellsDirectHomeViewController`): home's floating header over that
  * computer's Stem Cells. The computer's mark at the left opens settings;
  * its name is plain in the middle; search alone is the pill at the right.
- * What a row opens is [open]'s, what new work opens [newWork]'s, so a host
- * pushes the screens it has.
+ * A row's conversation and new work open over it; [open] and [newWork]
+ * hear of them, and the host opens what else a row opens.
  */
 class StemCellsDirectHomeScreen(
     context: Context,
@@ -48,8 +48,14 @@ class StemCellsDirectHomeScreen(
         header.logoControl.tag = "stem-settings-mark"
         header.logoControl.setOnClickListener { openSettings?.invoke() }
         stemCells.onSnapshot = { snapshot -> header.status = if (snapshot.live) ConnectionStatus.CONNECTED else ConnectionStatus.CONNECTING }
-        stemCells.onOpen = { open?.invoke(it) }
-        stemCells.onNewWork = { creation, library -> newWork?.invoke(creation, library) }
+        stemCells.onOpen = { row ->
+            open?.invoke(row)
+            StemCellChatScreen.forRow(context, session, row)?.let { push(it) }
+        }
+        stemCells.onNewWork = { creation, library ->
+            newWork?.invoke(creation, library)
+            push(StemCellChatScreen.forNewWork(context, session, creation))
+        }
         stemCells.attach(session)
     }
 

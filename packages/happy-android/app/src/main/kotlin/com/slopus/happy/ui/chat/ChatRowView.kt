@@ -88,7 +88,7 @@ internal class ChatPlanPainter {
                     val eased = (1 - kotlin.math.cos(Math.PI * p)) / 2
                     drawBox(canvas, item.box.copy(alpha = 0.18 + (0.52 - 0.18) * eased), d)
                 }
-                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff, is ChatDrawItem.Mermaid, is ChatDrawItem.WebImage, is ChatDrawItem.Attachment -> Unit
+                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff, is ChatDrawItem.Mermaid, is ChatDrawItem.WebImage, is ChatDrawItem.Attachment, is ChatDrawItem.Media -> Unit
             }
         }
     }
@@ -165,6 +165,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     private val mermaids = ArrayList<Pair<ChatMermaidView, ChatDrawItem.Mermaid>>()
     private val images = ArrayList<Pair<ChatWebImageView, ChatDrawItem.WebImage>>()
     private val attachments = ArrayList<Pair<ChatAttachmentView, ChatDrawItem.Attachment>>()
+    private val media = ArrayList<Pair<ChatMediaView, ChatDrawItem.Media>>()
     private var ticking = false
     /** A pulse redraws every frame; a timer every 100ms. */
     private var pulsing = false
@@ -216,6 +217,8 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         images.clear()
         val spareAttachments = attachments.map { it.first }.toMutableList()
         attachments.clear()
+        val spareMedia = media.map { it.first }.toMutableList()
+        media.clear()
         for (item in plan.items) {
             when (item) {
                 is ChatDrawItem.Scroller -> {
@@ -268,6 +271,12 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
                     view.apply(item.attachment)
                     attachments += view to item
                 }
+                is ChatDrawItem.Media -> {
+                    val view = spareMedia.firstOrNull { it.media == item.media }?.also { spareMedia.remove(it) }
+                        ?: (if (spareMedia.isNotEmpty()) spareMedia.removeAt(0) else ChatMediaView(context).also { addView(it) })
+                    view.apply(item.media)
+                    media += view to item
+                }
                 else -> Unit
             }
         }
@@ -276,10 +285,16 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         for (view in spareMermaids) removeView(view)
         for (view in spareImages) removeView(view)
         for (view in spareAttachments) removeView(view)
+        for (view in spareMedia) removeView(view)
         ticking = pulsing || painter.hasElapsed(plan.items)
         requestLayout()
         invalidate()
         if (ticking) tick()
+    }
+
+    /** Pictures that failed are asked for again: the computer is back. */
+    fun retryMedia() {
+        for ((view, _) in media) view.retry()
     }
 
     private fun tick() {
@@ -305,6 +320,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         for ((view, item) in mermaids) view.setFrame(item.frame)
         for ((view, item) in images) view.setFrame(item.frame)
         for ((view, item) in attachments) view.setFrame(item.frame)
+        for ((view, item) in media) view.setFrame(item.frame)
         for ((view, item) in spinners) {
             // The platform's spinner at 0.8 of the glyph's box, as iOS scales its own.
             val f = item.frame
@@ -324,6 +340,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         for ((view, _) in diffs) view.applyTheme()
         for ((view, _) in mermaids) view.applyTheme()
         for ((view, _) in attachments) view.applyTheme()
+        for ((view, _) in media) view.applyTheme()
         invalidate()
         for ((view, _) in scrollers) view.getChildAt(0)?.invalidate()
     }

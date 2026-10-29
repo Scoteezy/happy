@@ -110,7 +110,7 @@ object HappyReferences {
         if (reference.kind in knownKinds) view(reference).label else placeholder(reference)
     }
 
-    private val lineBreaks = Regex("(?U)\\s*[\\r\\n]+\\s*")
+    private val lineBreaks = Regex("[$UNICODE_SPACE]*[\\r\\n]+[$UNICODE_SPACE]*")
 
     /**
      * A name as running words on one line. The chat's Markdown has no

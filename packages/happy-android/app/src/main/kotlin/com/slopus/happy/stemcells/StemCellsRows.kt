@@ -325,7 +325,7 @@ object StemCellsRows {
                 !inTag -> text.append(character)
             }
         }
-        val words = SpaceSidebar.decodeEntities(text.toString()).split(Regex("(?U)\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
+        val words = SpaceSidebar.decodeEntities(text.toString()).split(Regex("[$UNICODE_SPACE]+")).filter { it.isNotEmpty() }.joinToString(" ")
         return words.ifEmpty { null }
     }
 }

@@ -818,6 +818,9 @@ class MarkdownPiece(
     diagrams: ChatMermaidHeights = ChatMermaidHeights(),
     /** The markdown it was parsed from: what Markdown Copy v2's text selection screen shows. */
     source: String = "",
+    /** The paragraphs' style and the headings' by level: Stem Cells sets its own in Figtree. */
+    body: TextStyle = ChatTextStyles.markdownText,
+    header: (Int) -> TextStyle = ChatTextStyles::markdownHeader,
 ) {
     val blocks: List<MarkdownLayout.Block>
     private val drawers: List<(MarkdownLayout.Placed, Double, Double) -> Pair<List<ChatDrawItem>, List<ChatHit>>>
@@ -825,7 +828,6 @@ class MarkdownPiece(
     init {
         val blocks = ArrayList<MarkdownLayout.Block>()
         val drawers = ArrayList<(MarkdownLayout.Placed, Double, Double) -> Pair<List<ChatDrawItem>, List<ChatHit>>>()
-        val body = ChatTextStyles.markdownText
         var diagramIndex = 0
 
         fun hold(frame: Rect, paragraph: String): List<ChatHit> =
@@ -861,7 +863,7 @@ class MarkdownPiece(
                     drawers += text(measured)
                 }
                 is MarkdownBlock.Header -> {
-                    val style = ChatTextStyles.markdownHeader(block.level)
+                    val style = header(block.level)
                     val measured = MeasuredText(ChatStrings.spans(block.content, style, color, env), style, env)
                     blocks += MarkdownLayout.Block.Header(block.level, measured.measurable)
                     drawers += text(measured)

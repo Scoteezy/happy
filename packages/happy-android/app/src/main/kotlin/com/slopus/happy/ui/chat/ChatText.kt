@@ -18,6 +18,7 @@ import com.slopus.happy.layout.Measurable
 import com.slopus.happy.layout.Rect
 import com.slopus.happy.layout.Size
 import com.slopus.happy.layout.TextStyle
+import com.slopus.happy.stemcells.HappyReferences
 import com.slopus.happy.ui.text.TextLayouts
 import com.slopus.happy.ui.theme.Fonts
 import com.slopus.happy.ui.theme.Theme
@@ -44,6 +45,7 @@ class FaceSpan(private val face: FontFace, private val sizePx: Float) : MetricAf
     private fun apply(tp: TextPaint) {
         tp.typeface = Fonts.typeface(face)
         tp.textSize = sizePx
+        tp.textSkewX = if (face == FontFace.FigtreeOblique) -0.25f else 0f
     }
 }
 
@@ -89,7 +91,7 @@ object ChatStrings {
                 builder.setSpan(FaceSpan(face.face, size.toFloat()), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             val url = span.url
-            if (url != null && isHttpMarkdownLink(url)) {
+            if (url != null && (isHttpMarkdownLink(url) || HappyReferences.reference(url) != null)) {
                 builder.setSpan(ChatLinkSpan(url), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
@@ -98,12 +100,15 @@ object ChatStrings {
     }
 
     private fun strongFace(face: FontFace) = when (face) {
+        FontFace.Figtree, FontFace.FigtreeMedium, FontFace.FigtreeSemiBold, FontFace.FigtreeBold, FontFace.FigtreeOblique -> FontFace.FigtreeBold
         FontFace.Mono, FontFace.MonoItalic -> FontFace.MonoSemiBold
         FontFace.System, FontFace.SystemItalic, FontFace.SystemMedium -> FontFace.SystemSemiBold
         else -> FontFace.SemiBold
     }
 
     private fun emphasisFace(face: FontFace) = when (face) {
+        // Figtree has no italic: Stem Cells slants it (happy-ios `.figtreeOblique`).
+        FontFace.Figtree, FontFace.FigtreeMedium, FontFace.FigtreeSemiBold, FontFace.FigtreeBold -> FontFace.FigtreeOblique
         FontFace.Mono, FontFace.MonoSemiBold -> FontFace.MonoItalic
         FontFace.System, FontFace.SystemMedium, FontFace.SystemSemiBold -> FontFace.SystemItalic
         else -> FontFace.Italic

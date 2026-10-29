@@ -149,3 +149,22 @@ object StemCellsMetrics {
     const val contentTop = 6 * phone
     const val contentBottom = 6 * phone
 }
+
+/** Stem Cells' agent text, as desktop's Message sets it: Figtree 16/24. */
+val ChatTextStyles.stemCellsText get() = TextStyle(FontFace.Figtree, 16, 24)
+
+/** Desktop's heading ramp: all 600 on 24 but h1's 900 (Figtree Bold here, its heaviest bundled), h2 at 20, h3 on 28. */
+fun ChatTextStyles.stemCellsHeader(level: Int) = when (level) {
+    1 -> TextStyle(FontFace.FigtreeBold, 16, 24)
+    2 -> TextStyle(FontFace.FigtreeSemiBold, 20, 24)
+    3 -> TextStyle(FontFace.FigtreeSemiBold, 16, 28)
+    else -> TextStyle(FontFace.FigtreeSemiBold, 16, 24)
+}
+
+/** A message from another agent (`agent-activity-row.css`): its sender, what it said it is, and the message opened under them. */
+val ChatTextStyles.stemCellsActivityVerb get() = TextStyle(FontFace.FigtreeMedium, 14, 20)
+val ChatTextStyles.stemCellsActivityText get() = TextStyle(FontFace.Figtree, 14, 20)
+val ChatTextStyles.stemCellsActivityBody get() = TextStyle(FontFace.Figtree, 12, 18)
+
+@Suppress("UNUSED_PARAMETER")
+fun ChatTextStyles.stemCellsActivityHeader(level: Int) = TextStyle(FontFace.FigtreeSemiBold, 12, 18)

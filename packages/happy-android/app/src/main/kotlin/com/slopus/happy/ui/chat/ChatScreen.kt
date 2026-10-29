@@ -936,6 +936,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             }
             is ChatRowAction.OpenMessage -> push(MessageDetailScreen(context, graph, sessionId, action.id))
             is ChatRowAction.OpenFile -> push(com.slopus.happy.ui.details.SessionFileScreen(context, graph, sessionId, action.path))
+            // Stem Cells only.
+            is ChatRowAction.OpenMedia, is ChatRowAction.OpenArtifact -> Unit
         }
     }
 

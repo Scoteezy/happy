@@ -24,7 +24,7 @@ object StemCellMediaTreeStyle {
         return serialize(components)
     }
 
-    private val whitespace = Regex("(?U)\\s+")
+    private val whitespace = Regex("[$UNICODE_SPACE]+")
 
     // Components
 

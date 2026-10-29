@@ -144,7 +144,7 @@ object Fonts {
     /** Figtree and JetBrains Mono, variable, at the weight each face names. */
     private fun variable(context: Context, face: FontFace): Typeface? {
         val weight = when (face) {
-            FontFace.Figtree, FontFace.JetBrainsMono -> 400
+            FontFace.Figtree, FontFace.FigtreeOblique, FontFace.JetBrainsMono -> 400
             FontFace.FigtreeMedium -> 500
             FontFace.FigtreeSemiBold -> 600
             FontFace.FigtreeBold, FontFace.JetBrainsMonoBold -> 700
