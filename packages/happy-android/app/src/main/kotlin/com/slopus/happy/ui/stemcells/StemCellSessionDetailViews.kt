@@ -223,6 +223,8 @@ class StemCellDetailActivityCardView(context: Context, private val id: String) :
     }
 
     class RowView(context: Context) : ManualLayout(context), ThemeAware {
+        /** First: `applyTheme` in the initialiser below reads it. */
+        private val press = StemCellsPressFill(this)
         private val tileFill = android.graphics.drawable.GradientDrawable().apply { cornerRadius = dp(StemCellsSettingsLayout.Metrics.tileRadius) }
         private val tile = View(context).apply { background = tileFill }
         private val glyph = IconView(context, null, StemCellsSettingsLayout.Metrics.glyph, StemCellsPalette.stemCellsSettingsGlyph)
@@ -273,12 +275,17 @@ class StemCellDetailActivityCardView(context: Context, private val id: String) :
             frames.separator?.let { separator.setFrame(local(it)) }
         }
 
+        override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+            press.touched(event)
+            return super.dispatchTouchEvent(event)
+        }
+
         override fun setPressed(pressed: Boolean) {
             super.setPressed(pressed)
             applyPressed()
         }
 
-        private fun applyPressed() = setBackgroundColor(if (isPressed && opens) Theme.color(StemCellsPalette.stemCellsRowPressed) else 0)
+        private fun applyPressed() = press.show(isPressed && opens)
 
         override fun applyTheme() {
             item?.let { tileFill.setColor(Theme.color(it.tile.color)) }

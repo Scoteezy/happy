@@ -5,4 +5,7 @@
     <item name="chat_media" type="id" />
     <!-- A story's source view's corner radius (dp, Double), for the viewer to open out of. -->
     <item name="stories_corner_radius" type="id" />
+    <!-- A composer button's press springs (AgentInputCardView.swell). -->
+    <item name="composer_swell_x" type="id" />
+    <item name="composer_swell_y" type="id" />
 </resources>

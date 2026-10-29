@@ -180,6 +180,20 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             addView(controls)
         }
     private var lastHeight = -1.0
+    /**
+     * Whether the height change [onHeightChanged] is reporting should
+     * animate (happy-ios `animatesHeightChange`): only one the typed text
+     * made. Chips, pictures and a text set with `animatesHeight = false`
+     * take theirs at once.
+     */
+    var animatesHeightChange = true
+        private set
+    /** A text being set that mustn't animate the height it makes. */
+    private var quietText = false
+    /** The layout last placed at its own height: where an owner's animated height starts from. */
+    private var settled: AgentInputCardLayout? = null
+    /** Set by an owner while it animates the card's height: the height it is given is then a step between layouts. */
+    var animatingHeight = false
 
     val text: String get() = textView.string
 
@@ -208,7 +222,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 onTextChanged?.invoke()
-                reportHeight()
+                reportHeight(animated = !quietText)
             }
         })
         textView.setOnFocusChangeListener { _, focused -> onFocusChanged?.invoke(focused) }
@@ -324,7 +338,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             panelShape(previous.desktop) != panelShape(config.desktop)
         ) {
             requestLayout()
-            reportHeight()
+            reportHeight(animated = false)
         }
     }
 
@@ -366,16 +380,22 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         return Rect((at[0] - origin[0]) / d, (at[1] - origin[1]) / d, button.width / d, button.height / d)
     }
 
-    fun setText(text: String) {
+    fun setText(text: String, animatesHeight: Boolean = true) {
         if (text == this.text) return
-        textView.setText(text)
+        quietly(!animatesHeight) { textView.setText(text) }
         textView.setSelection(text.length)
     }
 
     /** The text with the caret at [cursor] (an autocomplete pick). */
-    fun setText(text: String, cursor: Int) {
-        if (text != this.text) textView.setText(text)
+    fun setText(text: String, cursor: Int, animatesHeight: Boolean = true) {
+        if (text != this.text) quietly(!animatesHeight) { textView.setText(text) }
         textView.setSelection(cursor.coerceIn(0, text.length))
+    }
+
+    private inline fun quietly(quiet: Boolean, set: () -> Unit) {
+        val was = quietText
+        quietText = quiet || was
+        try { set() } finally { quietText = was }
     }
 
     /** The caret or selection, as UTF-16 offsets. */
@@ -491,12 +511,14 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
 
     override fun sizeThatFits(width: Double, height: Double): Size = Size(width, height(width))
 
-    private fun reportHeight() {
+    private fun reportHeight(animated: Boolean) {
         if (width <= 0) return
         val h = height(com.slopus.happy.ui.view.px(width))
         if (h != lastHeight) {
             lastHeight = h
+            animatesHeightChange = animated
             onHeightChanged?.invoke()
+            animatesHeightChange = true
         }
     }
 
@@ -504,8 +526,22 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         desktopLayout(width)?.let { return layoutDesktop(it, width) }
         val l = layout(width)
         lastHeight = l.size.height
-        surface.setFrame(Rect(0.0, 0.0, width, l.size.height))
+        // Given a height between the last settled layout's and this one's (an
+        // owner animating the change), every part goes that far between them,
+        // as UIKit animates the subviews' frames; the text is cut at its
+        // share, so a new line comes into view as the card grows.
+        val from = settled?.takeIf { animatingHeight && it.size.width == l.size.width && it.size.height != l.size.height }
+        val t = if (from == null || height == l.size.height) 1.0
+            else ((height - from.size.height) / (l.size.height - from.size.height)).coerceIn(0.0, 1.0)
+        val moving = from != null && t < 1.0
+        if (!moving) settled = l
+        fun at(a: Rect, b: Rect) = if (!moving) b
+            else Rect(a.minX + (b.minX - a.minX) * t, a.minY + (b.minY - a.minY) * t, a.width + (b.width - a.width) * t, a.height + (b.height - a.height) * t)
+        surface.setFrame(Rect(0.0, 0.0, width, if (moving) height else l.size.height))
         textView.setFrame(l.text)
+        val textShown = if (from == null) l.text else at(from.text, l.text)
+        textView.clipBounds = if (textShown.height < l.text.height) android.graphics.Rect(0, 0, dp(l.text.width).toInt(), dp(textShown.height).toInt()) else null
+        textView.translationY = dp(textShown.minY - l.text.minY)
         textView.isVerticalScrollBarEnabled = l.textScrolls
         val strip = l.attachments
         attachmentStrip.visibility = if (strip == null) GONE else VISIBLE
@@ -513,14 +549,14 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
             attachmentStrip.insets = l.attachmentInsets
             attachmentStrip.setFrame(strip)
         }
-        l.add?.let { addButton.setFrame(it) }
-        middle.setFrame(l.middle)
+        l.add?.let { add -> addButton.setFrame(from?.add?.let { at(it, add) } ?: add) }
+        middle.setFrame(if (from == null) l.middle else at(from.middle, l.middle))
         val content = l.middleContent
         permissionChip.place(content.permission)
         modelChip.place(content.model)
         effortChip.place(content.effort)
         content.separator?.let { separator.setFrame(it) }
-        primaryButton.setFrame(l.primary)
+        primaryButton.setFrame(if (from == null) l.primary else at(from.primary, l.primary))
     }
 
     /** The flat panel: the strip and text where [AgentInputDesktopLayout] puts them, and its own action row. */
@@ -555,8 +591,9 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         }
 
         override fun setPressed(pressed: Boolean) {
+            val was = isPressed
             super.setPressed(pressed)
-            iconView.alpha = if (pressed) 0.5f else 1f
+            if (was != pressed) swell(this, pressed && isEnabled)
         }
 
         override fun layoutSubviews(width: Double, height: Double) = iconView.setFrame(Rect(0.0, 0.0, width, height))
@@ -732,8 +769,9 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         }
 
         override fun setPressed(pressed: Boolean) {
+            val was = isPressed
             super.setPressed(pressed)
-            iconView.alpha = if (pressed) 0.5f else 1f
+            if (was != pressed) swell(this, pressed && isEnabled)
         }
 
         override fun layoutSubviews(width: Double, height: Double) {
@@ -745,6 +783,32 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
     }
 
     companion object {
+        /**
+         * BubblePressable's press (happy-ios `ComposerPressableButton`): 0.7
+         * opacity and a 1.025 swell over 65 ms, then back on a spring that
+         * overshoots a little (UIKit's 0.25 s at damping 0.55).
+         */
+        private fun swell(view: View, pressed: Boolean) {
+            view.animate().cancel()
+            for (property in listOf(androidx.dynamicanimation.animation.DynamicAnimation.SCALE_X, androidx.dynamicanimation.animation.DynamicAnimation.SCALE_Y)) {
+                val key = if (property === androidx.dynamicanimation.animation.DynamicAnimation.SCALE_X) com.slopus.happy.R.id.composer_swell_x else com.slopus.happy.R.id.composer_swell_y
+                (view.getTag(key) as? androidx.dynamicanimation.animation.SpringAnimation)?.cancel()
+                if (pressed) continue
+                val spring = androidx.dynamicanimation.animation.SpringAnimation(view, property, 1f).apply {
+                    spring.dampingRatio = 0.55f
+                    // Settled in about 0.25 s at that damping: ω ≈ 4 / (ζ · 0.25).
+                    spring.stiffness = 850f
+                }
+                view.setTag(key, spring)
+                spring.start()
+            }
+            if (pressed) {
+                view.animate().scaleX(1.025f).scaleY(1.025f).alpha(0.7f).setDuration(65).start()
+            } else {
+                view.animate().alpha(1f).setDuration(250).start()
+            }
+        }
+
         /** Shaker.tsx: [view] slides through [shake]'s keyframes, ease in-out per step, added to where it is. */
         fun shake(view: View, shake: ComposerShake = ComposerShake.shaker) {
             val base = view.translationX

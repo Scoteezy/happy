@@ -94,6 +94,8 @@ class StemCellsSettingsCardView(context: Context) : ManualLayout(context), Theme
 
     /** One row: Settings' own, and the detail's folds and "Show more". */
     class RowView(context: Context) : ManualLayout(context), ThemeAware {
+        /** First: `applyTheme` in the initialiser below reads it. */
+        private val press = StemCellsPressFill(this)
         private val tile = View(context)
         private val tileFill = GradientDrawable().apply { cornerRadius = dp(StemCellsSettingsLayout.Metrics.tileRadius) }
         private val glyph = IconView(context, null, StemCellsSettingsLayout.Metrics.glyph, StemCellsPalette.stemCellsSettingsGlyph)
@@ -186,14 +188,17 @@ class StemCellsSettingsCardView(context: Context) : ManualLayout(context), Theme
 
         override fun layoutSubviews(width: Double, height: Double) = place()
 
+        override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+            press.touched(event)
+            return super.dispatchTouchEvent(event)
+        }
+
         override fun setPressed(pressed: Boolean) {
             super.setPressed(pressed)
             applyPressed()
         }
 
-        private fun applyPressed() {
-            setBackgroundColor(if (isPressed && row?.action != null) Theme.color(StemCellsPalette.stemCellsRowPressed) else 0)
-        }
+        private fun applyPressed() = press.show(isPressed && row?.action != null)
 
         override fun applyTheme() {
             row?.icon?.let { tileFill.setColor(Theme.color(it.second.color)) }
@@ -213,6 +218,44 @@ class StemCellsSettingsCardView(context: Context) : ManualLayout(context), Theme
                 addView(toggle)
                 place()
             }
+        }
+    }
+}
+
+/**
+ * A settings-style row's pressed fill (happy-ios's rows set it on touch
+ * down and take it away over 0.2 s when the finger lifts; a cancelled
+ * touch, a scroll taking it, clears it at once). It is the row's background.
+ */
+internal class StemCellsPressFill(private val view: View) {
+    private val fill = android.graphics.drawable.ColorDrawable(0)
+    private var fade: android.animation.ValueAnimator? = null
+    private var cancelled = false
+
+    init {
+        view.background = fill
+    }
+
+    /** What the row's touch did; called from its `dispatchTouchEvent`. */
+    fun touched(event: android.view.MotionEvent) {
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> cancelled = false
+            android.view.MotionEvent.ACTION_CANCEL -> cancelled = true
+        }
+    }
+
+    fun show(pressed: Boolean) {
+        fade?.cancel()
+        fade = null
+        fill.color = Theme.color(StemCellsPalette.stemCellsRowPressed)
+        when {
+            pressed -> fill.alpha = 255
+            fill.alpha > 0 && !cancelled && view.isAttachedToWindow -> fade = android.animation.ValueAnimator.ofInt(fill.alpha, 0).apply {
+                duration = 200
+                addUpdateListener { fill.alpha = it.animatedValue as Int }
+                start()
+            }
+            else -> fill.alpha = 0
         }
     }
 }

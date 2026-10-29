@@ -46,6 +46,7 @@ import com.slopus.happy.ui.theme.ThemeAware
 import com.slopus.happy.ui.view.BounceScrollView
 import com.slopus.happy.ui.view.ManualLayout
 import com.slopus.happy.ui.view.px
+import com.slopus.happy.ui.view.dp
 import com.slopus.happy.stemcells.AgentMode
 import com.slopus.happy.stemcells.StemCellModelMenus
 import com.slopus.happy.ui.composer.AgentInputChip
@@ -126,6 +127,11 @@ class StemCellChatScreen(
     var onOpenArtifact: ((com.slopus.happy.stemcells.StemCellArtifact) -> Unit)? = null
 
     private lateinit var root: Root
+    /** The card's height while it moves to the one its text makes; null at rest. */
+    private var cardShown: Double? = null
+    /** The steering last shown waiting: one gone from it was taken up. */
+    private var queuedShown: Set<String> = emptySet()
+    private var cardGrowth: android.animation.ValueAnimator? = null
     private lateinit var scroll: BounceScrollView
     private lateinit var introView: StemCellIntroView
     private lateinit var working: StemCellWorkingView
@@ -270,7 +276,9 @@ class StemCellChatScreen(
             updatePrimary()
             if (!showingDraft) draftEdited(card.text)
         }
-        card.onHeightChanged = { root.requestLayout() }
+        card.onHeightChanged = {
+            if (card.animatesHeightChange && card.height > 0) growCard() else root.requestLayout()
+        }
         card.onPrimary = {
             if (card.text.isBlank() && pictures.images.isEmpty()) {
                 if (chat.working) conversationScope.launch { conversation.abort() }
@@ -683,6 +691,39 @@ class StemCellChatScreen(
         layoutTranscript()
     }
 
+    /**
+     * The card goes to the height its typed text makes over 0.2 s, and all
+     * that sits on it (the transcript's foot, the jump button, the scrim)
+     * with it, as iOS's `agentInputCardDidInvalidateHeight` animates the
+     * layout; from where it is if it was already moving.
+     */
+    private fun growCard() {
+        val from = cardShown ?: px(card.height)
+        cardGrowth?.cancel()
+        card.animatingHeight = true
+        cardShown = from
+        cardGrowth = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 200
+            interpolator = android.view.animation.PathInterpolator(0.42f, 0f, 0.58f, 1f)
+            addUpdateListener {
+                val to = card.height(px(card.width))
+                cardShown = from + (to - from) * it.animatedFraction
+                root.requestLayout()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (cardGrowth !== animation) return
+                    cardGrowth = null
+                    cardShown = null
+                    card.animatingHeight = false
+                    root.requestLayout()
+                }
+            })
+            start()
+        }
+        root.requestLayout()
+    }
+
     // Layout
 
     private fun layoutScreen(width: Double, height: Double) {
@@ -691,7 +732,7 @@ class StemCellChatScreen(
         val headerLayout = header.layout(width)
         header.setFrame(Rect(0.0, 0.0, width, headerLayout.scrim.height))
         val keyboardTop = if (keyboard > 0) height - safeArea.bottom - keyboard else Double.MAX_VALUE
-        val screen = StemCellChatScreenLayout(Size(width, height), safeArea, keyboardTop) { card.height(it) }
+        val screen = StemCellChatScreenLayout(Size(width, height), safeArea, keyboardTop) { cardShown ?: card.height(it) }
         card.setFrame(screen.card)
         val foot = StemCellChatFootLayout(Size(width, height), screen.card)
         composerScrim.setFrame(foot.scrim)
@@ -760,11 +801,23 @@ class StemCellChatScreen(
         } else {
             frames[introView] = null
         }
+        // Steering taken up goes into the transcript above the line, moving
+        // there over 0.25 s as the line moves under it (iOS's `taken`).
+        val taken = (queuedShown - queuedIds).isNotEmpty() && root.isAttachedToWindow
+        queuedShown = queuedIds
+        val before = if (taken) frames.filterKeys { it === working || it in rowViews.values } else emptyMap()
         for (plan in plans) {
             val view = rowViews[plan.id] ?: continue
             frames[view] = row(plan.id)?.let { stack.frames[it] }
         }
         frames[working] = if (chat.activity == null) null else stack.frames[first + settled.size]
+        for ((view, was) in before) {
+            val now = frames[view] ?: continue
+            if (was == null || was.minY == now.minY) continue
+            view.animate().cancel()
+            view.translationY = dp(was.minY - now.minY).toFloat()
+            view.animate().translationY(0f).setDuration(250).setInterpolator(android.view.animation.PathInterpolator(0.42f, 0f, 0.58f, 1f)).start()
+        }
         val previous = scroll.contentHeight
         scroll.contentHeight = stack.contentHeight
         scroll.content.setFrame(Rect(0.0, 0.0, width, stack.contentHeight))
@@ -876,7 +929,7 @@ class StemCellChatScreen(
     private fun showDraft(text: String) {
         if (card.text == text) return
         showingDraft = true
-        card.setText(text, text.length)
+        card.setText(text, text.length, animatesHeight = false)
         showingDraft = false
         updatePrimary()
     }
