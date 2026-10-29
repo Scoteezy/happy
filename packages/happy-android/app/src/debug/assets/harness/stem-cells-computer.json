@@ -1,0 +1,406 @@
+{
+  "about": "A paired computer for the Stem Cells harnesses, written from happy-agent's API.md. Android's debug harness and the iOS reference host both read this file and serve it as the daemon would. Every number under a key ending in 'At', and 'since', is a Unix millisecond time as of 'now'; a harness shifts them all by its own clock minus 'now', so relative times read the same on both.",
+  "now": 1793000000000,
+  "health": {
+    "ready": true,
+    "protocol": 22,
+    "capabilities": {
+      "stemCellIdentities": true,
+      "sidebarOperations": true,
+      "sidebarProposals": true,
+      "sidebarAttachments": true,
+      "stories": true,
+      "stickers": true
+    }
+  },
+  "settings": {
+    "happy-desktop.experiments.stemCells": true
+  },
+  "sidebar": {
+    "artifactId": "arsidebar",
+    "version": 12,
+    "html": "<nav>\n  <happy-search/>\n  <happy-create/>\n  <happy-space id=\"sphappy\" expanded=\"true\">\n    <happy-space id=\"agprio\"/>\n  </happy-space>\n  <happy-space id=\"spgroceries\"/>\n  <happy-separator id=\"divider\"/>\n  <happy-section id=\"bots\" label=\"Bots\"/>\n  <happy-space id=\"spresearch\"/>\n  <happy-section id=\"tasks\" label=\"Tasks\"/>\n  <happy-space id=\"spandroid\" expanded=\"true\">\n    <happy-space id=\"agscreens\"/>\n    <happy-space id=\"agnotes\"/>\n  </happy-space>\n  <happy-space id=\"splogin\"/>\n  <happy-space id=\"spchecklist\"/>\n  <happy-section id=\"personal\" label=\"Personal\"/>\n  <happy-space id=\"splisbon\"/>\n  <happy-space id=\"spbike\"/>\n</nav>\n",
+    "agentIcons": {
+      "agprio": { "type": "library", "slug": "prioritize" },
+      "agscreens": { "type": "library", "slug": "design" },
+      "agnotes": { "type": "library", "slug": "docs" }
+    }
+  },
+  "spaces": [
+    {
+      "id": "sphappy", "title": "Happy", "icon": null,
+      "target": { "kind": "bot", "id": "bthappy", "agentId": "aghappy", "workspaceId": "wshappy" },
+      "sectionId": null, "orderKey": "1", "placement": "settled", "visibility": "shown", "working": false,
+      "version": 3, "createdAt": 1792000000000, "updatedAt": 1792990000000
+    },
+    {
+      "id": "spgroceries", "title": "Groceries", "icon": null,
+      "target": { "kind": "surface", "id": "sfgroceries", "agentId": null, "workspaceId": null },
+      "sectionId": null, "orderKey": "2", "placement": "settled", "visibility": "shown", "working": false,
+      "version": 2, "createdAt": 1792500000000, "updatedAt": 1792980000000
+    },
+    {
+      "id": "spresearch", "title": "Research Assistant", "icon": { "type": "library", "slug": "investigate" },
+      "target": { "kind": "bot", "id": "btresearch", "agentId": "agresearch", "workspaceId": "wsresearch" },
+      "sectionId": null, "orderKey": "3", "placement": "settled", "visibility": "shown", "working": false,
+      "version": 4, "createdAt": 1792000000000, "updatedAt": 1792900000000
+    },
+    {
+      "id": "spandroid", "title": "Android 2.5 release", "icon": { "type": "library", "slug": "app-store-release" },
+      "target": { "kind": "task", "id": "tkandroid", "agentId": "agandroid", "workspaceId": "wsandroid" },
+      "sectionId": null, "orderKey": "4", "placement": "settled", "visibility": "shown", "working": true,
+      "version": 9, "createdAt": 1792700000000, "updatedAt": 1792999000000
+    },
+    {
+      "id": "splogin", "title": "Fix login redirect", "icon": { "type": "library", "slug": "login" },
+      "target": { "kind": "task", "id": "tklogin", "agentId": "aglogin", "workspaceId": "wslogin" },
+      "sectionId": null, "orderKey": "5", "placement": "settled", "visibility": "shown", "working": false,
+      "version": 6, "createdAt": 1792800000000, "updatedAt": 1792996000000
+    },
+    {
+      "id": "spchecklist", "title": "Release checklist", "icon": null,
+      "target": { "kind": "surface", "id": "sfchecklist", "agentId": null, "workspaceId": null },
+      "sectionId": null, "orderKey": "6", "placement": "settled", "visibility": "shown", "working": false,
+      "version": 1, "createdAt": 1792850000000, "updatedAt": 1792850000000
+    },
+    {
+      "id": "splisbon", "title": "Plan the Lisbon trip", "icon": { "type": "library", "slug": "travel" },
+      "target": { "kind": "task", "id": "tklisbon", "agentId": "aglisbon", "workspaceId": "wslisbon" },
+      "sectionId": null, "orderKey": "7", "placement": "settled", "visibility": "shown", "working": false,
+      "version": 3, "createdAt": 1792400000000, "updatedAt": 1792700000000
+    },
+    {
+      "id": "spbike", "title": null, "icon": { "type": "stem_cell" },
+      "target": { "kind": "task", "id": "tkbike", "agentId": "agbike", "workspaceId": "wsbike" },
+      "sectionId": null, "orderKey": "8", "placement": "settled", "visibility": "shown", "working": false,
+      "version": 1, "createdAt": 1792600000000, "updatedAt": 1792600000000
+    }
+  ],
+  "bots": [
+    {
+      "id": "bthappy", "name": "Happy", "username": "happy", "isAdmin": true, "systemKey": "chief_of_staff",
+      "workspaceId": "wshappy", "compute": { "type": "host", "path": "/Users/you/Happy/Bots/happy" },
+      "status": "active", "avatar": null, "orderKey": "1", "version": "v-bthappy-1",
+      "createdAt": 1792000000000, "updatedAt": 1792000000000, "archivedAt": null,
+      "agent": {
+        "id": "aghappy", "workspaceId": "wshappy", "parentAgentId": null, "subtask": false, "userVisible": true,
+        "managedByAnotherAgent": false, "canSendMessages": true, "title": "Happy", "titleStatus": "ready",
+        "status": "idle", "wait": null, "subagents": { "total": 1, "running": 0 }, "processes": { "running": 0 },
+        "pendingQuestionId": null, "unread": null, "orderKey": "1", "version": "v-aghappy-1",
+        "createdAt": 1792000000000, "updatedAt": 1792990000000, "archivedAt": null,
+        "subtasks": [
+          {
+            "id": "agprio", "workspaceId": "wshappy", "parentAgentId": "aghappy", "subtask": true, "subtasks": [],
+            "userVisible": true, "managedByAnotherAgent": true, "canSendMessages": true, "title": "Prioritizing",
+            "titleStatus": "ready", "status": "idle", "wait": null, "subagents": { "total": 0, "running": 0 },
+            "processes": { "running": 0 }, "pendingQuestionId": null, "unread": null, "subtaskOrderKey": "1",
+            "version": "v-agprio-1", "createdAt": 1792000000000, "updatedAt": 1792980000000, "archivedAt": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "btresearch", "name": "Research Assistant", "username": "research_assistant", "isAdmin": false, "systemKey": null,
+      "workspaceId": "wsresearch", "compute": { "type": "host", "path": "/Users/you/Happy/Bots/research_assistant" },
+      "status": "active", "avatar": null, "orderKey": "2", "version": "v-btresearch-1",
+      "createdAt": 1792000000000, "updatedAt": 1792000000000, "archivedAt": null,
+      "agent": {
+        "id": "agresearch", "workspaceId": "wsresearch", "parentAgentId": null, "subtask": false, "subtasks": [],
+        "userVisible": true, "managedByAnotherAgent": false, "canSendMessages": true, "title": "Research Assistant",
+        "titleStatus": "ready", "status": "idle", "wait": null, "subagents": { "total": 0, "running": 0 },
+        "processes": { "running": 0 }, "pendingQuestionId": null, "unread": null, "orderKey": "2",
+        "version": "v-agresearch-1", "createdAt": 1792000000000, "updatedAt": 1792900000000, "archivedAt": null
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "tkandroid", "name": "Android 2.5 release", "folderName": "android_2_5_release", "ownerUserId": null,
+      "creatorAgentId": null, "workspaceId": "wsandroid", "compute": { "type": "host", "path": "/Users/you/Happy/Tasks/android_2_5_release" },
+      "status": "active", "canArchive": true, "version": "v-tkandroid-1",
+      "createdAt": 1792700000000, "updatedAt": 1792700000000, "archivedAt": null,
+      "agent": {
+        "id": "agandroid", "workspaceId": "wsandroid", "parentAgentId": null, "subtask": false,
+        "userVisible": true, "managedByAnotherAgent": false, "canSendMessages": true, "title": "Android 2.5 release",
+        "titleStatus": "ready", "status": "running_tools", "wait": null, "subagents": { "total": 2, "running": 1 },
+        "processes": { "running": 1 }, "pendingQuestionId": null, "unread": null, "orderKey": "1",
+        "version": "v-agandroid-1", "createdAt": 1792700000000, "updatedAt": 1792999000000, "archivedAt": null,
+        "subtasks": [
+          {
+            "id": "agscreens", "workspaceId": "wsandroid", "parentAgentId": "agandroid", "subtask": true, "subtasks": [],
+            "userVisible": true, "managedByAnotherAgent": true, "canSendMessages": true, "title": "Store screenshots",
+            "titleStatus": "ready", "status": "running_tools", "wait": null, "subagents": { "total": 0, "running": 0 },
+            "processes": { "running": 0 }, "pendingQuestionId": null, "unread": null, "subtaskOrderKey": "1",
+            "version": "v-agscreens-1", "createdAt": 1792990000000, "updatedAt": 1792999500000, "archivedAt": null
+          },
+          {
+            "id": "agnotes", "workspaceId": "wsandroid", "parentAgentId": "agandroid", "subtask": true, "subtasks": [],
+            "userVisible": true, "managedByAnotherAgent": true, "canSendMessages": true, "title": "Release notes",
+            "titleStatus": "ready", "status": "idle", "wait": null, "subagents": { "total": 0, "running": 0 },
+            "processes": { "running": 0 }, "pendingQuestionId": "qnotes", "unread": null, "subtaskOrderKey": "2",
+            "version": "v-agnotes-1", "createdAt": 1792980000000, "updatedAt": 1792998000000, "archivedAt": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "tklogin", "name": "Fix login redirect", "folderName": "fix_login_redirect", "ownerUserId": null,
+      "creatorAgentId": null, "workspaceId": "wslogin", "compute": { "type": "host", "path": "/Users/you/Happy/Tasks/fix_login_redirect" },
+      "status": "active", "canArchive": true, "version": "v-tklogin-1",
+      "createdAt": 1792800000000, "updatedAt": 1792800000000, "archivedAt": null,
+      "agent": {
+        "id": "aglogin", "workspaceId": "wslogin", "parentAgentId": null, "subtask": false, "subtasks": [],
+        "userVisible": true, "managedByAnotherAgent": false, "canSendMessages": true, "title": "Fix login redirect",
+        "titleStatus": "ready", "status": "idle", "wait": null, "subagents": { "total": 0, "running": 0 },
+        "processes": { "running": 0 }, "pendingQuestionId": null,
+        "unread": { "reason": "turn_finished", "since": 1792996000000 }, "orderKey": "2",
+        "version": "v-aglogin-1", "createdAt": 1792800000000, "updatedAt": 1792996000000, "archivedAt": null
+      }
+    },
+    {
+      "id": "tklisbon", "name": "Plan the Lisbon trip", "folderName": "plan_the_lisbon_trip", "ownerUserId": null,
+      "creatorAgentId": null, "workspaceId": "wslisbon", "compute": { "type": "host", "path": "/Users/you/Happy/Tasks/plan_the_lisbon_trip" },
+      "status": "active", "canArchive": true, "version": "v-tklisbon-1",
+      "createdAt": 1792400000000, "updatedAt": 1792400000000, "archivedAt": null,
+      "agent": {
+        "id": "aglisbon", "workspaceId": "wslisbon", "parentAgentId": null, "subtask": false, "subtasks": [],
+        "userVisible": true, "managedByAnotherAgent": false, "canSendMessages": true, "title": "Plan the Lisbon trip",
+        "titleStatus": "ready", "status": "idle", "wait": null, "subagents": { "total": 0, "running": 0 },
+        "processes": { "running": 0 }, "pendingQuestionId": null, "unread": null, "orderKey": "3",
+        "version": "v-aglisbon-1", "createdAt": 1792400000000, "updatedAt": 1792700000000, "archivedAt": null
+      }
+    },
+    {
+      "id": "tkbike", "name": "New Task", "folderName": "new_task_bike", "ownerUserId": null,
+      "creatorAgentId": null, "workspaceId": "wsbike", "compute": { "type": "host", "path": "/Users/you/Happy/Tasks/new_task_bike" },
+      "status": "active", "canArchive": true, "version": "v-tkbike-1",
+      "createdAt": 1792600000000, "updatedAt": 1792600000000, "archivedAt": null,
+      "agent": {
+        "id": "agbike", "workspaceId": "wsbike", "parentAgentId": null, "subtask": false, "subtasks": [],
+        "userVisible": true, "managedByAnotherAgent": false, "canSendMessages": true, "title": null,
+        "titleStatus": "pending", "status": "idle", "wait": null, "subagents": { "total": 0, "running": 0 },
+        "processes": { "running": 0 }, "pendingQuestionId": null, "unread": null, "orderKey": "4",
+        "version": "v-agbike-1", "createdAt": 1792600000000, "updatedAt": 1792600000000, "archivedAt": null
+      }
+    }
+  ],
+  "surfaces": [
+    { "id": "sfgroceries", "type": "todo", "name": "Groceries", "version": "v-sfgroceries-1" },
+    { "id": "sfchecklist", "type": "document", "name": "Release checklist", "version": "v-sfchecklist-1" }
+  ],
+  "todos": {
+    "sfgroceries": [
+      { "id": "tdoranges", "text": "Oranges", "status": "active" },
+      { "id": "tdbread", "text": "Sourdough bread", "status": "active" },
+      { "id": "tdcoffee", "text": "Coffee beans", "status": "active" },
+      { "id": "tdmilk", "text": "Oat milk", "status": "completed" }
+    ]
+  },
+  "documents": {
+    "sfchecklist": "# Release checklist\n\n- [x] Bump version to 2.5.0\n- [x] Changelog\n- [ ] Store screenshots\n- [ ] Preview track\n"
+  },
+  "config": {
+    "config": {
+      "defaults": { "providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "high", "permissionMode": "auto" },
+      "models": {
+        "anthropic/opus-5": { "name": "Opus 5", "efforts": ["off", "low", "medium", "high", "max"], "defaultEffort": "medium", "serviceTiers": [] },
+        "anthropic/sonnet-5": { "name": "Sonnet 5", "efforts": ["off", "low", "medium", "high"], "defaultEffort": "high", "serviceTiers": [] },
+        "openai/sol": { "name": "GPT Sol", "efforts": ["low", "medium", "high", "xhigh"], "defaultEffort": "medium", "serviceTiers": ["priority"] }
+      },
+      "providers": {
+        "claude": { "name": "Claude", "type": "claude", "enabled": true, "hidden": false,
+          "models": [{ "id": "anthropic/opus-5", "enabled": true }, { "id": "anthropic/sonnet-5", "enabled": true }] },
+        "codex": { "name": "Codex", "type": "codex", "enabled": true, "models": [{ "id": "openai/sol", "enabled": true }] }
+      }
+    }
+  },
+  "usage": {
+    "providers": [
+      { "providerId": "claude", "usage": { "planName": "Max", "exhausted": false, "capturedAt": 1792999000000,
+          "windows": { "fiveHour": { "usedPercent": 32, "resetsAt": 1793010000000 }, "weekly": { "usedPercent": 61, "resetsAt": 1793300000000 } } },
+        "refreshedAt": 1792999000000, "refreshError": null, "refreshing": false },
+      { "providerId": "codex", "usage": { "planName": "Pro", "exhausted": false, "capturedAt": 1792999000000,
+          "windows": { "fiveHour": { "usedPercent": 8, "resetsAt": 1793012000000 }, "weekly": { "usedPercent": 22, "resetsAt": 1793400000000 } } },
+        "refreshedAt": 1792999000000, "refreshError": null, "refreshing": false }
+    ]
+  },
+  "modes": {
+    "default": { "providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "high", "serviceTier": null, "permissionMode": "auto" }
+  },
+  "media": {
+    "tcshots/0": { "color": "#FF8D28", "label": "Home" },
+    "tcshots/1": { "color": "#0088FF", "label": "Chat" },
+    "tcshots/2": { "color": "#34C759", "label": "Settings" }
+  },
+  "artifacts": {
+    "arnotes": {
+      "artifact": {
+        "id": "arnotes", "type": "markdown", "title": "Store notes", "status": "active", "latestVersion": 2, "latestMajor": 1, "latestMinor": 1,
+        "entry": { "path": "index.md", "mimeType": "text/markdown", "size": 210 }, "fileCount": 1, "size": 210,
+        "background": null, "display": null, "live": null, "source": null,
+        "createdBy": { "kind": "agent", "agentId": "agandroid", "botId": null }, "createdAt": 1792990000000,
+        "updatedBy": { "kind": "agent", "agentId": "agandroid", "botId": null }, "updatedSource": null, "updatedAt": 1792998000000,
+        "deletedBy": null, "deletedSource": null, "deletedAt": null, "version": "v-arnotes-2"
+      },
+      "files": {
+        "index.md": "# Happy 2.5\n\n- Stem Cells: your computer's work, as a sidebar.\n- Stories from the agents you work with.\n- Faster chat, smoother scrolling.\n"
+      }
+    }
+  },
+  "agents": {
+    "aghappy": {
+      "mode": { "providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "high", "serviceTier": null, "permissionMode": "auto" },
+      "draft": { "value": null, "updatedAt": 1792000000000 },
+      "runs": [
+        {
+          "id": "rnhappy1", "status": "completed", "reason": "completed", "startedAt": 1792980000000, "endedAt": 1792980030000,
+          "messages": [
+            { "id": "mshappy1", "role": "user", "createdAt": 1792980000000, "status": "accepted", "metadata": {},
+              "content": [{ "type": "text", "text": "What's on my plate today?" }] },
+            { "id": "mshappy2", "role": "agent", "createdAt": 1792980010000, "status": "completed", "metadata": { "providerId": "claude", "modelId": "anthropic/sonnet-5" },
+              "content": [{ "type": "text", "text": "Three things are moving:\n\n1. **Android 2.5 release** is uploading store screenshots.\n2. **Fix login redirect** has an answer waiting for you.\n3. The Lisbon trip is planned through Thursday.\n\nGroceries has three things left." }] }
+          ]
+        },
+        {
+          "id": "rnhappy2", "status": "completed", "reason": "completed", "startedAt": 1792990000000, "endedAt": 1792990005000,
+          "messages": [
+            { "id": "mshappy3", "role": "agent", "createdAt": 1792990000000, "status": "completed",
+              "metadata": { "senderAgentId": "agprio", "senderAgentExplanation": "Tidied the sidebar" },
+              "content": [{ "type": "text", "text": "Message from agent agprio:\n\nMoved Plan the Lisbon trip to Personal." }] }
+          ]
+        }
+      ]
+    },
+    "agprio": {
+      "mode": { "providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "low", "serviceTier": null, "permissionMode": "auto" },
+      "draft": { "value": null, "updatedAt": 1792000000000 },
+      "runs": [
+        {
+          "id": "rnprio1", "status": "completed", "reason": "completed", "startedAt": 1792990000000, "endedAt": 1792990004000,
+          "messages": [
+            { "id": "msprio1", "role": "agent", "createdAt": 1792990000000, "status": "completed", "metadata": {},
+              "content": [{ "type": "text", "text": "Moved Plan the Lisbon trip to Personal." }] }
+          ]
+        }
+      ]
+    },
+    "agresearch": {
+      "mode": { "providerId": "codex", "modelId": "openai/sol", "effort": "medium", "serviceTier": null, "permissionMode": "auto" },
+      "draft": { "value": { "text": "Compare the three e-bike shops near ", "providerId": "codex", "modelId": "openai/sol", "effort": "medium", "serviceTier": null, "permissionMode": "auto" }, "updatedAt": 1792900000000 },
+      "runs": [
+        {
+          "id": "rnresearch1", "status": "completed", "reason": "completed", "startedAt": 1792900000000, "endedAt": 1792900060000,
+          "messages": [
+            { "id": "msresearch1", "role": "user", "createdAt": 1792900000000, "status": "accepted", "metadata": {},
+              "content": [{ "type": "text", "text": "Find the best-reviewed bike shops in Lisbon." }] },
+            { "id": "msresearch2", "role": "agent", "createdAt": 1792900030000, "status": "completed", "metadata": {},
+              "content": [{ "type": "text", "text": "Here are the three with the most consistent reviews:\n\n- [Lisbon Bike Rentals](https://www.lisbonbikerentals.com) near Cais do Sodré\n- [Bike Iberia](https://bikeiberia.com/rentals), which does electric ones\n- https://www.rentabikelisboa.pt in Belém\n\nAll three are open on Sundays." }] }
+          ]
+        }
+      ]
+    },
+    "agandroid": {
+      "mode": { "providerId": "claude", "modelId": "anthropic/opus-5", "effort": "medium", "serviceTier": null, "permissionMode": "auto" },
+      "draft": { "value": null, "updatedAt": 1792700000000 },
+      "processes": [
+        { "id": "prgradle", "agentId": "agandroid", "command": "./gradlew :app:bundleRelease", "status": "running", "startedAt": 1792998000000 }
+      ],
+      "runs": [
+        {
+          "id": "rnandroid1", "status": "completed", "reason": "completed", "startedAt": 1792990000000, "endedAt": 1792991000000,
+          "messages": [
+            { "id": "msandroid1", "role": "user", "createdAt": 1792990000000, "status": "accepted", "metadata": {},
+              "content": [{ "type": "text", "text": "Cut the 2.5 release candidate and show me the new store screenshots." }] },
+            { "id": "msandroid2", "role": "agent", "createdAt": 1792990100000, "status": "completed", "metadata": {},
+              "content": [
+                { "type": "reasoning", "text": "Checking the version and the screenshot jobs." },
+                { "type": "text", "text": "The release candidate is cut: **2.5.0 (412)** on `release/2.5`.\n\n```sh\ngit tag v2.5.0-rc1\n./gradlew :app:bundleRelease\n```\n\nThe store screenshots so far:" },
+                { "type": "tool_call", "id": "tcshots", "name": "present_files", "status": "completed",
+                  "presentation": { "type": "media", "items": [
+                    { "kind": "image", "name": "home.png", "mimeType": "image/png", "size": 48211, "width": 1080, "height": 2340, "thumbhash": null, "scale": 3, "source": { "path": "shots/home.png", "absolutePath": "/Users/you/Happy/Tasks/android_2_5_release/shots/home.png" } },
+                    { "kind": "image", "name": "chat.png", "mimeType": "image/png", "size": 51007, "width": 1080, "height": 2340, "thumbhash": null, "scale": 3, "source": { "path": "shots/chat.png", "absolutePath": "/Users/you/Happy/Tasks/android_2_5_release/shots/chat.png" } },
+                    { "kind": "image", "name": "settings.png", "mimeType": "image/png", "size": 39550, "width": 1080, "height": 2340, "thumbhash": null, "scale": 3, "source": { "path": "shots/settings.png", "absolutePath": "/Users/you/Happy/Tasks/android_2_5_release/shots/settings.png" } }
+                  ], "layout": null } },
+                { "type": "text", "text": "The dark-mode set is next." }
+              ] }
+          ]
+        },
+        {
+          "id": "rnandroid2", "status": "running", "reason": null, "startedAt": 1792998000000, "endedAt": null,
+          "messages": [
+            { "id": "msandroid3", "role": "user", "createdAt": 1792998000000, "status": "accepted", "metadata": {},
+              "content": [{ "type": "text", "text": "Draft the store notes and push it to the preview track." }] },
+            { "id": "msandroid4", "role": "agent", "createdAt": 1792998100000, "status": "completed", "metadata": {},
+              "content": [
+                { "type": "text", "text": "Here are the store notes for 2.5:" },
+                { "type": "tool_call", "id": "tcnotes", "name": "update_artifact", "status": "completed",
+                  "presentation": { "type": "artifact", "artifactId": "arnotes", "artifactType": "markdown", "title": "Store notes", "version": 2, "shows": "latest" } },
+                { "type": "text", "text": "Building the bundle for the preview track now." }
+              ] }
+          ]
+        }
+      ]
+    },
+    "agscreens": {
+      "mode": { "providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "medium", "serviceTier": null, "permissionMode": "auto" },
+      "draft": { "value": null, "updatedAt": 1792990000000 },
+      "runs": [
+        {
+          "id": "rnscreens1", "status": "running", "reason": null, "startedAt": 1792999000000, "endedAt": null,
+          "messages": [
+            { "id": "msscreens1", "role": "agent", "createdAt": 1792999000000, "status": "completed",
+              "metadata": { "senderAgentId": "agandroid" },
+              "content": [{ "type": "text", "text": "Message from agent agandroid:\n\nCapture the dark-mode store screenshots on a Pixel 9." }] }
+          ]
+        }
+      ]
+    },
+    "agnotes": {
+      "mode": { "providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "medium", "serviceTier": null, "permissionMode": "auto" },
+      "draft": { "value": null, "updatedAt": 1792980000000 },
+      "runs": []
+    },
+    "aglogin": {
+      "mode": { "providerId": "claude", "modelId": "anthropic/opus-5", "effort": "high", "serviceTier": null, "permissionMode": "auto" },
+      "draft": { "value": null, "updatedAt": 1792800000000 },
+      "runs": [
+        {
+          "id": "rnlogin1", "status": "completed", "reason": "completed", "startedAt": 1792995000000, "endedAt": 1792996000000,
+          "messages": [
+            { "id": "mslogin1", "role": "user", "createdAt": 1792995000000, "status": "accepted", "metadata": {},
+              "content": [{ "type": "text", "text": "After the magic link, login loops back to /welcome. Why?" }] },
+            { "id": "mslogin2", "role": "agent", "createdAt": 1792995500000, "status": "completed", "metadata": {},
+              "content": [{ "type": "text", "text": "The session cookie is set on `app.happy.dev`, but the magic link lands on `happy.dev`, so the guard never sees it and sends you back.\n\nScoping the cookie to the parent domain fixes it:\n\n```ts\nres.cookie(\"session\", token, {\n  domain: \".happy.dev\",\n  sameSite: \"lax\",\n  secure: true,\n});\n```\n\nShall I open a pull request?" }] }
+          ]
+        }
+      ]
+    },
+    "aglisbon": {
+      "mode": { "providerId": "claude", "modelId": "anthropic/sonnet-5", "effort": "high", "serviceTier": null, "permissionMode": "auto" },
+      "draft": { "value": null, "updatedAt": 1792400000000 },
+      "runs": [
+        {
+          "id": "rnlisbon1", "status": "completed", "reason": "completed", "startedAt": 1792690000000, "endedAt": 1792700000000,
+          "messages": [
+            { "id": "mslisbon1", "role": "user", "createdAt": 1792690000000, "status": "accepted", "metadata": {},
+              "content": [{ "type": "text", "text": "Plan four days in Lisbon in November." }] },
+            { "id": "mslisbon2", "role": "agent", "createdAt": 1792695000000, "status": "completed", "metadata": {},
+              "content": [{ "type": "text", "text": "## Four days in Lisbon\n\n**Monday** — Alfama, the castle, fado at night.\n**Tuesday** — Belém: the tower, the monastery, pastéis.\n**Wednesday** — a day trip to Sintra.\n**Thursday** — LX Factory and the river.\n\nNovember is mild, around 17°C, with some rain: pack a light jacket." }] }
+          ]
+        }
+      ]
+    },
+    "agbike": {
+      "mode": null,
+      "draft": { "value": null, "updatedAt": 1792600000000 },
+      "runs": []
+    }
+  },
+  "reply": {
+    "about": "What the fake computer answers to anything sent: the run starts, the agent thinks, then writes this in pieces of 'chunk' characters every 'intervalMs'.",
+    "thinkingMs": 900,
+    "chunk": 6,
+    "intervalMs": 60,
+    "text": "On it. I read what you wrote and checked the workspace: nothing else is running, so this goes first.\n\nI'll report back here when it's done."
+  }
+}
