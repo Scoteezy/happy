@@ -57,6 +57,8 @@ class AuthRepository(
     private val registryStore: AccountRegistryStore = AccountRegistryStore.InMemory(),
     /** The server a sign-in is for: the one onboarding chose. */
     private val serverUrl: () -> String = { "" },
+    /** A successful sign-in, not startup restore or sign-out handover. */
+    private val onSignedIn: suspend () -> Unit = {},
 ) {
     private val lock = Any()
     private val registryState = MutableStateFlow(bootstrap())
@@ -123,6 +125,7 @@ class AuthRepository(
         }
         adding.value = false
         mutableState.value = signedIn
+        onSignedIn()
     }
 
     private suspend fun login(secret: ByteArray) {

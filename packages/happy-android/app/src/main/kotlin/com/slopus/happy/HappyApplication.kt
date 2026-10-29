@@ -5,14 +5,19 @@ import android.content.ComponentCallbacks2
 import com.slopus.happy.attachments.AttachmentServices
 import com.slopus.happy.push.PushServices
 
-class HappyApplication : Application() {
+open class HappyApplication : Application() {
     val graph: AppGraph by lazy {
-        AppGraph(
+        createGraph().also {
+            com.slopus.happy.direct.Tailcat.install(this)
+            PushServices.unregisterOnLogout(this, it)
+        }
+    }
+
+    protected open fun createGraph(): AppGraph = AppGraph(
             context = this,
             clientId = "android/${BuildConfig.VERSION_NAME}",
             defaultServerUrl = BuildConfig.DEFAULT_SERVER_URL,
-        ).also { PushServices.unregisterOnLogout(this, it) }
-    }
+        )
 
     /** iOS's memory warning: decoded attachment pictures go first. */
     @Suppress("DEPRECATION")

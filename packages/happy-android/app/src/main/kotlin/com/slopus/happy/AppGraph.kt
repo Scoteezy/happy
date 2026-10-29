@@ -53,11 +53,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flatMapLatest
@@ -86,6 +88,8 @@ class AppGraph(
     secureStoreKeys: SecureStoreKeys = AndroidKeyStoreKeys(),
     /** Null keeps every account's database in memory (tests). */
     private val databaseName: String? = HappyDatabase.NAME,
+    val directTransport: (com.slopus.happy.direct.DirectDeviceCredentials) -> com.slopus.happy.direct.DirectTransport =
+        { com.slopus.happy.direct.TailcatHttpTransport(it.address, it.port) },
 ) {
     private val appContext: Context = context.applicationContext ?: context
 
@@ -106,17 +110,17 @@ class AppGraph(
     @Volatile private var activeServerUrl: String? = null
     val http = HappyHttp(okHttp, serverUrl = { activeServerUrl ?: serverConfig.url.value }, clientId = clientId)
     val authApi = AuthApi(HappyHttp(okHttp, serverUrl = { serverConfig.url.value }, clientId = clientId))
+    private val secureStore = ExpoSecureStore(
+        prefs = context.getSharedPreferences(ExpoSecureStore.PREFS_NAME, Context.MODE_PRIVATE),
+        keys = secureStoreKeys,
+        defaultPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE),
+    )
     val auth = AuthRepository(
-        SecureStoreCredentialStore(
-            ExpoSecureStore(
-                prefs = context.getSharedPreferences(ExpoSecureStore.PREFS_NAME, Context.MODE_PRIVATE),
-                keys = secureStoreKeys,
-                defaultPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE),
-            ),
-        ),
+        SecureStoreCredentialStore(secureStore),
         authApi,
         registryStore = AccountRegistryFile(LocalCaches.registryFile(appContext)),
         serverUrl = { serverConfig.url.value },
+        onSignedIn = { direct.select(null) },
     )
 
     private val databases = HashMap<String?, HappyDatabase>()
@@ -246,9 +250,6 @@ class AppGraph(
         scope.launch {
             foreground.collect { if (it) purchases.refresh() }
         }
-        scope.launch {
-            auth.state.collect { state -> accountLock.withLock { switchAccount(state) } }
-        }
     }
 
     private fun purchaseAccount(): PurchaseAccount? = (auth.state.value as? AuthState.SignedIn)?.publicId
@@ -265,7 +266,84 @@ class AppGraph(
     /** The app came to the foreground or left it (MainActivity onStart/onStop). */
     fun setForeground(value: Boolean) {
         foreground.value = value
+        directScope.launch { direct.setForeground(value) }
     }
+
+    // Direct (happy-ios `AccountController.direct`)
+
+    private val directScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+    private val directDirectory = java.io.File(appContext.filesDir, "direct")
+
+    /** Paired computers (Direct): each one's identity, credentials and sync engine. */
+    val direct = com.slopus.happy.direct.DirectAccounts(
+        com.slopus.happy.direct.SecureStoreDirectCredentialStore(secureStore),
+        directDirectory,
+        directScope,
+        makeTransport = { directTransport(it) },
+        // Each engine its own one-at-a-time scope, as the store's actor.
+        makeEngine = { id, client ->
+            com.slopus.happy.direct.DirectSyncEngine(client, java.io.File(directDirectory, id), CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1)))
+        },
+        offlineDirectory = { id -> java.io.File(directDirectory, id) },
+    )
+
+    /** Published only once the selected account's store and preferences are ready. */
+    data class ShellAccount(val relay: AuthState, val directId: String?)
+    private val shellState = MutableStateFlow<ShellAccount?>(null)
+    val shellAccount: StateFlow<ShellAccount?> = shellState.asStateFlow()
+    private val shellOperationLock = Mutex()
+
+    init {
+        scope.launch {
+            direct.setForeground(foreground.value)
+            direct.restore()
+            if (!stemCells.showsComputers) direct.select(null)
+            combine(auth.state, direct.state) { relay, computers -> ShellAccount(relay, computers.activeId) }
+                .distinctUntilChanged()
+                .collect { selected ->
+                    if (selected.directId == null && selected.relay is AuthState.SignedOut && stemCells.showsComputers) {
+                        val computers = direct.state.value.accounts
+                        val fallback = computers.firstOrNull { !it.revoked } ?: computers.firstOrNull()
+                        if (fallback != null) {
+                            direct.select(fallback.id)
+                            return@collect
+                        }
+                    }
+                    accountLock.withLock {
+                        if (selected.directId == null) {
+                            switchAccount(selected.relay)
+                        } else {
+                            stopAccount()
+                            localSettings.switchTo(localPreferences(selected.directId))
+                        }
+                        shellState.value = selected
+                    }
+                }
+        }
+    }
+
+    suspend fun selectDirect(accountId: String) = scope.async {
+        shellOperationLock.withLock {
+            direct.select(accountId)
+            shellAccount.first { it?.directId == accountId }
+        }
+        Unit
+    }.await()
+
+    /** Saving a proven pairing must finish even when the resulting home removes its screen. */
+    suspend fun addDirect(credentials: com.slopus.happy.direct.DirectDeviceCredentials) = scope.async {
+        shellOperationLock.withLock { direct.add(credentials) }
+    }.await()
+
+    suspend fun removeDirect(accountId: String) = scope.async {
+        shellOperationLock.withLock {
+            val wasActive = direct.state.value.activeId == accountId
+            direct.remove(accountId)
+            appContext.deleteSharedPreferences("${LocalSettings.PREFS_NAME}-$accountId")
+            if (wasActive) direct.state.value.accounts.firstOrNull()?.let { direct.select(it.id) }
+        }
+        Unit
+    }.await()
 
     private val logoutHooks = CopyOnWriteArrayList<suspend (authToken: String) -> Unit>()
 
@@ -295,12 +373,12 @@ class AppGraph(
             withContext(Dispatchers.IO) {
                 store.clearAll()
                 // persistence.ts clearPersistence: everything in the default MMKV goes, the server choice stays.
-                localSettings.clear()
+                LocalSettings(localPreferences(id)).clear()
                 changelog.clear()
                 for (name in WIPED_PREFS) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
                 LocalCaches.wipeShared(appContext)
                 // Off its database and preferences before they go; the next account, if any, replaces these.
-                localSettings.switchTo(localPreferences(null))
+                if (direct.state.value.activeId == null) localSettings.switchTo(localPreferences(null))
                 store.switchTo(database(null))
                 removeAccountStorage(id)
             }
@@ -346,7 +424,14 @@ class AppGraph(
     }
 
     /** Makes another signed-in account the active one; the screens are rebuilt for it. Throws when it can't be. */
-    suspend fun switchAccount(accountId: String) = auth.switchTo(accountId)
+    suspend fun switchAccount(accountId: String) = scope.async {
+        shellOperationLock.withLock {
+            auth.switchTo(accountId)
+            direct.select(null)
+            shellAccount.first { it?.directId == null && (it?.relay as? AuthState.SignedIn)?.encryption?.anonId == accountId }
+        }
+        Unit
+    }.await()
 
     /**
      * happy-ios `accountHoldingSession`: the signed-in account whose store
