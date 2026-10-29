@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** What the app is handed from outside (happy-ios `SceneDelegate`). */
 sealed interface DeepLink {
+    data class Direct(val link: String) : DeepLink
     /** `happy://terminal?<key>` or `happy:///account?<key>`: a pairing to confirm and approve. */
     data class Pairing(val link: String, val isTerminal: Boolean) : DeepLink
 
@@ -26,6 +27,7 @@ sealed interface DeepLink {
 fun parseDeepLink(link: String): DeepLink? {
     val text = link.trim()
     return when {
+        com.slopus.happy.direct.DirectPairingLink.isDirect(text) -> DeepLink.Direct(text)
         text.startsWith(TERMINAL_URL_PREFIX) -> DeepLink.Pairing(text, isTerminal = true)
         text.startsWith(AccountLink.URL_PREFIX) -> DeepLink.Pairing(text, isTerminal = false)
         else -> null

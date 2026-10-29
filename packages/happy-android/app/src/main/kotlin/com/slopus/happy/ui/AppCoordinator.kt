@@ -25,6 +25,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import com.slopus.happy.ui.stemcells.StemCellsSession
+import com.slopus.happy.ui.stemcells.StemCellsDirectHomeScreen
+import com.slopus.happy.ui.stemcells.StemCellsSettingsScreen
+import com.slopus.happy.ui.stemcells.AppStemCellsSettingsHost
+import com.slopus.happy.ui.stemcells.DirectPairingFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -42,6 +50,7 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
 
     /** The account the root was built for; null while signed out, unset before the first. */
     private var rootAccount: Any? = UNSET
+    private val settingsHost = AppStemCellsSettingsHost(graph, activity.lifecycleScope, activity)
 
     fun start() {
         Theme.install(activity)
@@ -56,10 +65,24 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
         }
         activity.lifecycleScope.launch {
             activity.repeatOnLifecycle(Lifecycle.State.CREATED) {
-                graph.storeAccount
-                    .map { (it as? AuthState.SignedIn)?.credentials?.token }
-                    .distinctUntilChanged()
-                    .collect { token -> show(token) }
+                graph.shellAccount.filterNotNull().collectLatest { show(it) }
+            }
+        }
+        activity.lifecycleScope.launch {
+            graph.directRestoreFailed.filter { it }.collect {
+                graph.shellAccount.filterNotNull().first()
+                Alerts.show(activity, "Could not load paired computers", "Your saved data has not been removed. Restart Happy to try again.")
+            }
+        }
+        activity.lifecycleScope.launch {
+            var knownComputers = emptySet<String>()
+            graph.direct.state.collect { state ->
+                val current = state.accounts.map { it.id }.toSet()
+                (knownComputers - current).forEach(StemCellsSession::forget)
+                knownComputers = current
+                (stack.all.firstOrNull() as? StemCellsDirectHomeScreen)?.let { home ->
+                    state.accounts.firstOrNull { it.id == home.session.accountId }?.let { home.header.title = it.name }
+                }
             }
         }
         activity.lifecycleScope.launch {
@@ -70,7 +93,9 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
     }
 
     private fun open(link: DeepLink) {
+        if (stack.top == null) return
         when (link) {
+            is DeepLink.Direct -> if (DeepLinks.consume(link)) stack.top?.let { DirectPairingFlow.open(link.link, graph, it) }
             is DeepLink.Pairing -> if (DeepLinks.consume(link)) openPairing(link)
             is DeepLink.Session -> openNotificationSession(link)
         }
@@ -111,6 +136,23 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
         val active = graph.storeAccount.value as? AuthState.SignedIn
         if (active == null) {
             DeepLinks.consume(link)
+            return
+        }
+        if (graph.shellAccount.value?.directId != null) {
+            if (lookingUpNotification) return
+            lookingUpNotification = true
+            activity.lifecycleScope.launch {
+                try {
+                    val owner = runCatching { graph.accountHoldingSession(link.id) }.getOrNull() ?: active.encryption.anonId
+                    graph.switchAccount(owner)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    DeepLinks.consume(link)
+                    Alerts.show(activity, activity.getString(R.string.common_error), "Could not open this notification.")
+                } finally { lookingUpNotification = false }
+                if (DeepLinks.pending.value == link) openNotificationSession(link)
+            }
             return
         }
         if (stack.all.firstOrNull() !is HomeScreen || lookingUpNotification) return
@@ -166,16 +208,25 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
         controller.isAppearanceLightNavigationBars = !Theme.isDark
     }
 
-    private fun show(token: String?) {
-        if (rootAccount != UNSET && rootAccount == token) return
+    private suspend fun show(account: AppGraph.ShellAccount) {
+        val token = (account.relay as? AuthState.SignedIn)?.credentials?.token
+        val identity = account.directId ?: token
+        if (rootAccount != UNSET && rootAccount == identity) return
         val first = rootAccount == UNSET
-        rootAccount = token
+        val direct = account.directId?.let { id ->
+            graph.direct.syncEngine(id)?.let { StemCellsSession.session(id, it) }
+        }
         val screen: Screen = when {
+            direct != null -> StemCellsDirectHomeScreen(activity, direct, graph.direct.state.value.active?.name ?: "Happy Agent").also { home ->
+                home.openSettings = { home.push(StemCellsSettingsScreen(activity, settingsHost, direct.accountId)) }
+            }
             token != null -> HomeScreen(activity, graph)
             graph.stemCells.isAvailable -> StemCellsLinkScreen(activity, graph)
             else -> WelcomeScreen(activity, graph)
         }
-        stack.setScreens(listOf(screen), animated = !first)
+        rootAccount = identity
+        val kept = (stack.top as? StemCellsSettingsScreen)?.takeIf { stack.all.size == 2 && (direct != null || token != null) }
+        stack.setScreens(listOfNotNull(screen, kept), animated = !first && kept == null)
         root.rootDidChange()
         DeepLinks.pending.value?.let(::open)
     }

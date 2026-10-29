@@ -103,6 +103,10 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         header.filterButton.setOnClickListener { showFilterMenu() }
         // Where a computer is a home of its own, the account's picture leads to the profiles' settings.
         header.showsAccountAvatar = graph.stemCells.isAvailable
+        header.logoControl.setOnClickListener {
+            push(com.slopus.happy.ui.stemcells.StemCellsSettingsScreen(context,
+                com.slopus.happy.ui.stemcells.AppStemCellsSettingsHost(graph, scope, context), null))
+        }
         dock.visibility = View.GONE
         dockController.render()
         bar.actions = listOf(

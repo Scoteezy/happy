@@ -205,10 +205,7 @@ class SettingsScreen(context: Context, private val graph: AppGraph) : BarScreen(
     // Connect a terminal (useConnectTerminal.ts)
 
     private fun scanTerminal() {
-        scope.launch {
-            val text = PairingFlow.scan(context, PairingFlow.Kind.Terminal) ?: return@launch
-            approve(text)
-        }
+        com.slopus.happy.ui.stemcells.DirectPairingFlow.scan(graph, this)
     }
 
     private fun enterTerminalUrl() {
@@ -219,6 +216,10 @@ class SettingsScreen(context: Context, private val graph: AppGraph) : BarScreen(
     }
 
     private suspend fun approve(text: String) {
+        if (com.slopus.happy.direct.DirectPairingLink.isDirect(text)) {
+            com.slopus.happy.ui.stemcells.DirectPairingFlow.open(text, graph, this)
+            return
+        }
         if (connectingTerminal) return
         connectingTerminal = true
         rebuild()

@@ -214,15 +214,11 @@ class StemCellsLinkScreen(context: Context, private val graph: AppGraph) : BarSc
             }
         }
 
-        /** StemCellsScan.open: pairing straight to a computer is not ported yet (Stem Cells, build stage 8). */
-        private fun open(@Suppress("UNUSED_PARAMETER") link: String) {
-            Alerts.show(context, context.getString(R.string.stem_direct_connection), DIRECT_NOT_PORTED)
-        }
+        private fun open(link: String) = DirectPairingFlow.open(link, graph, this@StemCellsLinkScreen)
     }
 
     companion object {
         const val DESKTOP_URL = "https://happy.engineering"
-        private const val DIRECT_NOT_PORTED = "Direct pairing is not available in this Android build yet."
     }
 }
 

@@ -13,6 +13,13 @@ class DeepLinksTest {
     }
 
     @Test
+    fun directCodesIncludingMalformedOnesNeverFallThroughToRelay() {
+        for (text in listOf("happy://direct?invalid", "HAPPY://DIRECT?bad", "happy://direct")) {
+            assertEquals(DeepLink.Direct(text), parseDeepLink(text))
+        }
+    }
+
+    @Test
     fun anyOtherLinkIsNotTheApps() {
         assertNull(parseDeepLink("happy://session/s1"))
         assertNull(parseDeepLink("happy:///new"))
