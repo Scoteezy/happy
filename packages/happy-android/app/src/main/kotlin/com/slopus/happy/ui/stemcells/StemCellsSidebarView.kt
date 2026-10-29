@@ -34,6 +34,7 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
     /** A finger came down on a row that opens: it may be opened next. */
     var onIntent: ((StemCellsRow) -> Unit)? = null
     var onFold: ((StemCellsRow) -> Unit)? = null
+    var onHold: ((StemCellsRow, StemCellsRowView) -> Boolean)? = null
     /** A section's "+": new work in that section. Sections show it only when set. */
     var onAdd: ((StemCellsRow) -> Unit)? = null
     var images: StemCellsImages? = null
@@ -58,6 +59,53 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
         private set
     /** Where the last finger went down on a row, in the row's own dp. */
     private var downX = 0.0
+    private var editing: String? = null
+    val isEditing: Boolean get() = editing != null
+    var onEditingChanged: (() -> Unit)? = null
+
+    fun beginRename(rowId: String, text: String, commit: (String) -> Unit) {
+        finishRename()
+        val view = views[rowId] ?: return
+        editing = rowId
+        onEditingChanged?.invoke()
+        view.beginEditing(text) { value ->
+            if (editing != rowId) return@beginEditing
+            editing = null
+            onEditingChanged?.invoke()
+            val title = value?.trim()?.takeIf { it.isNotEmpty() && it != text } ?: return@beginEditing
+            view.holdLabel(title)
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+            commit(title)
+        }
+        post { revealRename() }
+    }
+
+    fun finishRename(keep: Boolean = true) {
+        val wasEditing = editing != null
+        editing?.let { views[it]?.finishEditing(keep) }
+        editing = null
+        if (wasEditing) onEditingChanged?.invoke()
+    }
+
+    /** Native keyboard insets can change after the field took focus. Keep it above the IME. */
+    fun revealRename() {
+        val frame = editing?.let { views[it]?.frames?.box } ?: return
+        val top = list.contentOffset + list.insetTop
+        val bottom = list.contentOffset + px(list.height) - list.insetBottom
+        if (frame.maxY + 24 > bottom) list.setContentOffset(frame.maxY + 24 - px(list.height) + list.insetBottom)
+        else if (frame.minY - 24 < top) list.setContentOffset(frame.minY - 24 - list.insetTop)
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            val field = editing?.let { views[it]?.findViewWithTag<View>("stem-rename") }
+            if (field != null) {
+                val at = IntArray(2).also(field::getLocationOnScreen)
+                if (event.rawX < at[0] || event.rawX > at[0] + field.width || event.rawY < at[1] || event.rawY > at[1] + field.height) finishRename()
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
 
     init {
         addView(list)
@@ -88,6 +136,7 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
         }
         val gone = views.keys.filter { it !in live }
         for (id in gone) {
+            if (editing == id) finishRename(keep = false)
             val view = views.remove(id) ?: continue
             list.content.removeView(view)
             list.content.frames.remove(view)
@@ -111,6 +160,10 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
             false
         }
         view.setOnClickListener { tapped(view) }
+        view.setOnLongClickListener {
+            val row = view.row
+            if (editing != null || row == null) false else onHold?.invoke(row, view) == true
+        }
         return view
     }
 

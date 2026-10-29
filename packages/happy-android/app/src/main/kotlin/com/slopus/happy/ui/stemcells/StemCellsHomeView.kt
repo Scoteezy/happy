@@ -57,6 +57,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
 
     /** A row was opened: its conversation, its Surface, or the artifacts. */
     var onOpen: ((StemCellsRow) -> Unit)? = null
+    var onHold: ((StemCellsRow, StemCellsRowView) -> Boolean)? = null
     /** New work exists: its conversation opens over home, with the library when asked. */
     var onNewWork: ((StemCellCreation, Boolean) -> Unit)? = null
     var onPair: (() -> Unit)? = null
@@ -67,6 +68,8 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
     var contentInsets = HomeContentInsets(LayoutInsets.Zero, 0.0)
         set(value) { if (field != value) { field = value; requestLayout() } }
     var safeArea = LayoutInsets.Zero
+        set(value) { if (field != value) { field = value; requestLayout() } }
+    var keyboardHeight = 0.0
         set(value) { if (field != value) { field = value; requestLayout() } }
 
     var session: StemCellsSession? = null
@@ -112,6 +115,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         dock.onPressChip = { openPicker(it) }
         addView(dock)
         sidebar.onSelect = { open(it) }
+        sidebar.onHold = { row, source -> usesSpaces && onHold?.invoke(row, source) == true }
         sidebar.onFold = { fold(it) }
         sidebar.onAdd = { row -> makeNewWork(sectionId = if (usesSpaces) row.nodeId else null) }
         empty.onPair = { onPair?.invoke() }
@@ -155,6 +159,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
     }
 
     fun disappear() {
+        sidebar.finishRename()
         session?.store?.attentionVisibleUpdate(false)
         picker?.close(animated = false)
     }
@@ -165,6 +170,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
 
     /** Back closes the dock's list first; true when it did. */
     fun back(): Boolean {
+        if (sidebar.isEditing) { sidebar.finishRename(); return true }
         val picker = picker ?: return false
         picker.outside()
         return true
@@ -263,7 +269,8 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
         val docked = StemCellsDockLayout(size, safeArea) { dock.height(it) }
         dock.setFrame(docked.card)
         dockScrim.setFrame(docked.scrim)
-        val listBottom = if (dock.visibility == VISIBLE) docked.listBottom else contentInsets.listBottom
+        val restingBottom = if (dock.visibility == VISIBLE) docked.listBottom else contentInsets.listBottom
+        val listBottom = if (sidebar.isEditing && keyboardHeight > 0) maxOf(restingBottom, keyboardHeight + safeArea.bottom + 12) else restingBottom
         val layout = StemCellsHomeLayout(size, contentInsets.contentTop, contentInsets.chromeTop, listBottom, bannerHeight)
         banner.setFrameOrHide(if (banner.isEmpty) null else layout.banner)
         sidebar.setFrame(com.slopus.happy.layout.Rect(0.0, 0.0, width, height))
@@ -275,6 +282,7 @@ class StemCellsHomeView(context: Context) : ManualLayout(context) {
             // A shrinking top leaves nothing scrolled past it.
             if (atTop || (!list.isDragging && list.contentOffset < -insets.top)) list.setContentOffset(-insets.top)
         }
+        sidebar.revealRename()
         empty.setFrame(layout.empty)
         picker?.follow()
     }

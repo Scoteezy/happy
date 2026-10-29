@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.SystemClock
 import android.text.StaticLayout
 import android.view.View
+import android.view.KeyEvent
 import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import com.slopus.happy.layout.ColorToken
@@ -26,6 +27,7 @@ import com.slopus.happy.stemcells.StemCellsRow
 import com.slopus.happy.stemcells.StemCellsRow.Kind
 import com.slopus.happy.stemcells.StemCellsRow.Mark
 import com.slopus.happy.ui.components.IconView
+import com.slopus.happy.ui.components.TextField
 import com.slopus.happy.ui.text.TextLayouts
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
@@ -64,6 +66,60 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
     private val add = IconView(context, StemCellsGlyphs.icon("add"), StemCellsMetrics.addGlyph, StemCellsPalette.stemCellsRowText)
     private val rule = View(context)
     private var pictureJob: Job? = null
+    private var renameField: TextField? = null
+    private var renameDone: ((String?) -> Unit)? = null
+    private var heldLabel: String? = null
+    private val releaseLabel = Runnable {
+        heldLabel = null
+        row?.let { applyText(it); contentDescription = it.label }
+    }
+
+    val isEditing: Boolean get() = renameField != null
+
+    /** The row's own title frame/font becomes a native field, with its text selected. */
+    fun beginEditing(text: String, done: (String?) -> Unit) {
+        val row = row ?: return
+        if (isEditing) return
+        val style = if (row.kind == Kind.Section) StemCellsFonts.mono(true, StemCellsMetrics.sectionLabelSize, StemCellsMetrics.sectionLabelSize * StemCellsMetrics.sectionTracking)
+            else StemCellsFonts.ui(StemCellsFonts.Weight.Medium, StemCellsMetrics.labelSize)
+        val field = TextField(context, style, StemCellsPalette.stemCellsRowTextActive).apply {
+            tag = "stem-rename"
+            contentDescription = context.getString(com.slopus.happy.R.string.stem_rename)
+            setText(text)
+            onReturn = { finishEditing() }
+            onFocusChangeListener = OnFocusChangeListener { _, focused -> if (!focused) finishEditing() }
+            setOnKeyListener { _, key, event ->
+                if (key == KeyEvent.KEYCODE_ESCAPE && event.action == KeyEvent.ACTION_DOWN) { finishEditing(keep = false); true } else false
+            }
+        }
+        renameDone = done
+        renameField = field
+        label.visibility = GONE
+        addView(field)
+        requestLayout()
+        field.focus()
+        field.selectAll()
+    }
+
+    fun finishEditing(keep: Boolean = true) {
+        val field = renameField ?: return
+        val done = renameDone
+        renameField = null
+        renameDone = null
+        field.onFocusChangeListener = null
+        field.dismissKeyboard()
+        removeView(field)
+        label.visibility = VISIBLE
+        done?.invoke(field.string.takeIf { keep })
+    }
+
+    fun holdLabel(title: String) {
+        removeCallbacks(releaseLabel)
+        heldLabel = title
+        row?.let { applyText(it) }
+        contentDescription = title
+        postDelayed(releaseLabel, 4000)
+    }
 
     var row: StemCellsRow? = null
         private set
@@ -99,11 +155,12 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
         if (row == this.row) return
         val previous = this.row
         this.row = row
+        if (heldLabel == row.label) { heldLabel = null; removeCallbacks(releaseLabel) }
         if (previous?.mark != row.mark) applyMark(row.mark)
         applyText(row)
         applyTrailing(row)
         applyState()
-        contentDescription = if (row.kind == Kind.Separator) null else row.label
+        contentDescription = if (row.kind == Kind.Separator) null else heldLabel ?: row.label
         importantForAccessibility = if (row.kind == Kind.Separator) IMPORTANT_FOR_ACCESSIBILITY_NO else IMPORTANT_FOR_ACCESSIBILITY_YES
         isClickable = row.kind != Kind.Separator
         androidx.core.view.ViewCompat.setAccessibilityHeading(this, row.kind == Kind.Section)
@@ -166,13 +223,13 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
         when (row.kind) {
             Kind.Section -> {
                 label.style = StemCellsFonts.mono(true, StemCellsMetrics.sectionLabelSize, StemCellsMetrics.sectionLabelSize * StemCellsMetrics.sectionTracking)
-                label.text = row.label.uppercase()
+                label.text = (heldLabel ?: row.label).uppercase()
             }
             Kind.Separator -> label.text = ""
             else -> {
                 val weight = if (row.unread) StemCellsFonts.Weight.Bold else if (current) StemCellsFonts.Weight.SemiBold else StemCellsFonts.Weight.Medium
                 label.style = StemCellsFonts.ui(weight, StemCellsMetrics.labelSize)
-                label.text = row.label
+                label.text = heldLabel ?: row.label
             }
         }
         // Working rows shimmer their title; nothing else spins.
@@ -234,6 +291,7 @@ class StemCellsRowView(context: Context) : ManualLayout(context), ThemeAware {
         picture.setFrame(mark)
         glyph.setFrame(mark)
         label.setFrame(local(frames.label))
+        renameField?.setFrame(local(frames.label))
         trailing.setFrame(frames.trailing?.let(::local) ?: Rect.Zero)
         chevron.setFrame(frames.chevronGlyph?.let(::local) ?: Rect.Zero)
         add.setFrameOrHide(frames.add?.let(::local))
