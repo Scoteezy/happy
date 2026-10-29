@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the camera app is handed to write a taken picture into (ui/composer/ComposerImagePicker.kt takePhoto). -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+</paths>

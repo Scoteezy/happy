@@ -764,7 +764,10 @@ tiles that find `StemCellMediaLoader` under `R.id.chat_media`. The
 composer's model and effort chips (`opensPicker`) hand their press to
 the screen, which opens `StemCellPickerPresenter`'s panels over its root;
 `StemCellModelState` (on the session) holds the catalog, the usage and
-the dock's pick for new work.
+the dock's pick for new work. The "+" opens `StemCellAttachSheet` over
+the screen's root (its pictures through `ComposerImagePicker`'s library,
+files and camera, the camera app writing into `cache/camera` through the
+`${applicationId}.files` FileProvider).
 
 - A paired computer is reached through `DirectTransport`. `DirectAccounts`
   owns the paired computers, their identity loops and one

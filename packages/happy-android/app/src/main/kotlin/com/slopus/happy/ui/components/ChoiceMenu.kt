@@ -34,13 +34,16 @@ import kotlin.math.min
  * lines instead of cutting it, and keeps the section titles iOS shows.
  */
 object ChoiceMenu {
-    data class Option(val key: String, val label: String, val isDisabled: Boolean = false, val isAction: Boolean = false)
+    /** [subtitle] is a grey line under the label, as a UIMenu action's. */
+    data class Option(val key: String, val label: String, val isDisabled: Boolean = false, val isAction: Boolean = false, val subtitle: String? = null)
 
     /** [selectedKey], when set, is the section's own checked row, over the menu's. */
     data class Section(val title: String?, val options: List<Option>, val selectedKey: String? = null)
 
     private val TITLE = TextStyle(FontFace.System, 13)
     private val ROW = TextStyle(FontFace.System, 17)
+    private val SUBTITLE = TextStyle(FontFace.System, 13)
+    private const val SUBTITLE_GAP = 2.0
     private const val MIN_WIDTH = 180.0
     private const val MAX_WIDTH = 300.0
     private const val PADDING_H = 16.0
@@ -134,7 +137,7 @@ object ChoiceMenu {
                 widest = max(
                     widest,
                     when (view) {
-                        is Row -> view.label.measure(Double.MAX_VALUE).width + 2 * PADDING_H + CHECK_SLOT
+                        is Row -> view.naturalWidth() + 2 * PADDING_H + CHECK_SLOT
                         is Label -> view.measure(Double.MAX_VALUE).width + 2 * PADDING_H + CHECK_SLOT
                         else -> 0.0
                     },
@@ -152,7 +155,7 @@ object ChoiceMenu {
                 val frame = when {
                     tag === Divider -> Rect(0.0, y + 4, width, 1.0 / Theme.density).also { y += 9 }
                     view is Row -> {
-                        val text = view.label.measure(width - 2 * PADDING_H - CHECK_SLOT).height
+                        val text = view.textHeight(width - 2 * PADDING_H - CHECK_SLOT)
                         Rect(0.0, y, width, max(ROW_MIN_HEIGHT, text + 2 * ROW_PADDING_V)).also {
                             if (view.checked) selectedTop = y
                             y = it.maxY
@@ -188,23 +191,35 @@ object ChoiceMenu {
     /** One choice: the tick in its slot, then the label, wrapped over two lines at most. */
     private class Row(context: Context, option: Option, val checked: Boolean) : ManualLayout(context) {
         val label = Label(context, ROW, if (option.isDisabled) Palette.textSecondary else Palette.text, maxLines = 2).apply { text = option.label }
+        private val subtitle = option.subtitle?.let { line -> Label(context, SUBTITLE, Palette.textSecondary, maxLines = 2).apply { text = line } }
         private val check = IconView(context, Icon.ionicons("checkmark"), 20.0, Palette.text)
+
+        /** The wider of the label and its subtitle on one line. */
+        fun naturalWidth(): Double = max(label.measure(Double.MAX_VALUE).width, subtitle?.measure(Double.MAX_VALUE)?.width ?: 0.0)
+
+        /** The label and its subtitle, offered [width]. */
+        fun textHeight(width: Double): Double =
+            label.measure(width).height + (subtitle?.let { SUBTITLE_GAP + it.measure(width).height } ?: 0.0)
 
         init {
             addView(label)
+            subtitle?.let(::addView)
             check.visibility = if (checked) VISIBLE else GONE
             addView(check)
             isClickable = !option.isDisabled
             isFocusable = !option.isDisabled
             background = RippleDrawable(ColorStateList.valueOf(Theme.color(Palette.divider)), null, ColorDrawable(0xFFFFFFFF.toInt()))
-            contentDescription = option.label
+            contentDescription = listOfNotNull(option.label, option.subtitle).joinToString(", ")
             isSelected = checked
         }
 
         override fun layoutSubviews(width: Double, height: Double) {
             check.setFrame(Rect(PADDING_H, (height - 20) / 2, 20.0, 20.0))
-            val size = label.measure(width - 2 * PADDING_H - CHECK_SLOT)
-            label.setFrame(Rect(PADDING_H + CHECK_SLOT, (height - size.height) / 2, width - 2 * PADDING_H - CHECK_SLOT, size.height))
+            val textWidth = width - 2 * PADDING_H - CHECK_SLOT
+            val size = label.measure(textWidth)
+            val top = (height - textHeight(textWidth)) / 2
+            label.setFrame(Rect(PADDING_H + CHECK_SLOT, top, textWidth, size.height))
+            subtitle?.let { it.setFrame(Rect(PADDING_H + CHECK_SLOT, top + size.height + SUBTITLE_GAP, textWidth, it.measure(textWidth).height)) }
         }
     }
 }

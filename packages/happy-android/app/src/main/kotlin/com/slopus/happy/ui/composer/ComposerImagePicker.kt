@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
@@ -11,6 +12,7 @@ import android.view.ContextThemeWrapper
 import androidx.activity.ComponentActivity
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.attachments.ComposerAttachmentStaging
@@ -109,12 +111,58 @@ class ComposerImagePicker(private val context: Context, private val scope: Corou
         staging.close()
     }
 
+    /** Room for this many more pictures in the message. */
+    fun room(): Int = remaining()
+
+    /** Whether a camera app can take a picture for the message. */
+    val canTakePhoto: Boolean
+        get() = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+
+    /**
+     * A picture taken with the camera app (happy-ios presents the camera),
+     * written where the camera is handed a file through the app's
+     * FileProvider, then held as a picked one. [done] hears whether one was.
+     */
+    fun takePhoto(done: (Boolean) -> Unit = {}) {
+        if (remaining() == 0) return limitAlert().also { done(false) }
+        val activity = activity() ?: return done(false)
+        val folder = java.io.File(context.cacheDir, "camera").apply { mkdirs() }
+        val file = java.io.File(folder, "photo_${System.currentTimeMillis()}.jpg")
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
+        var launcher: androidx.activity.result.ActivityResultLauncher<Uri>? = null
+        launcher = activity.activityResultRegistry.register("composer-camera", ActivityResultContracts.TakePicture()) { taken ->
+            launcher?.unregister()
+            if (taken && file.length() > 0) add(listOf(Uri.fromFile(file)), pasted = false) { file.delete() } else file.delete()
+            done(taken)
+        }
+        runCatching { launcher.launch(uri) }.onFailure {
+            launcher.unregister()
+            done(false)
+        }
+    }
+
+    /** Pictures from the documents the system's file picker opens (happy-ios's Files). */
+    fun pickFiles(done: (Boolean) -> Unit = {}) {
+        if (remaining() == 0) return limitAlert().also { done(false) }
+        val activity = activity() ?: return done(false)
+        var launcher: androidx.activity.result.ActivityResultLauncher<Array<String>>? = null
+        launcher = activity.activityResultRegistry.register("composer-files", ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            launcher?.unregister()
+            add(uris, pasted = false)
+            done(uris.isNotEmpty())
+        }
+        launcher.launch(arrayOf("image/*"))
+    }
+
     // Library
 
-    private fun pickImages() {
+    /** The system photo picker, up to what is left of the message's room. */
+    fun pickLibrary(done: (Boolean) -> Unit = {}) = pickImages(done)
+
+    private fun pickImages(done: (Boolean) -> Unit = {}) {
         val remaining = remaining()
-        if (remaining == 0) return limitAlert()
-        val activity = activity() ?: return
+        if (remaining == 0) return limitAlert().also { done(false) }
+        val activity = activity() ?: return done(false)
         val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
         // Registered for this one pick, as the limit moves with the selection.
         var launcher: androidx.activity.result.ActivityResultLauncher<PickVisualMediaRequest>? = null
@@ -122,11 +170,13 @@ class ComposerImagePicker(private val context: Context, private val scope: Corou
             launcher = activity.activityResultRegistry.register("composer-photo", ActivityResultContracts.PickVisualMedia()) { uri ->
                 launcher?.unregister()
                 add(listOfNotNull(uri), pasted = false)
+                done(uri != null)
             }
         } else {
             launcher = activity.activityResultRegistry.register("composer-photos", ActivityResultContracts.PickMultipleVisualMedia(remaining)) { uris ->
                 launcher?.unregister()
                 add(uris, pasted = false)
+                done(uris.isNotEmpty())
             }
         }
         launcher.launch(request)
@@ -157,8 +207,8 @@ class ComposerImagePicker(private val context: Context, private val scope: Corou
     // Admission
 
     /** Converts each off the main thread, one after another so they wait in the order they came, and holds it. */
-    private fun add(uris: List<Uri>, pasted: Boolean) {
-        if (uris.isEmpty()) return
+    private fun add(uris: List<Uri>, pasted: Boolean, after: () -> Unit = {}) {
+        if (uris.isEmpty()) return after()
         scope.launch {
             // The limit may have moved while picking.
             for (uri in uris.take(remaining())) {
@@ -176,6 +226,7 @@ class ComposerImagePicker(private val context: Context, private val scope: Corou
                     alert(context.getString(R.string.image_upload_upload_failed_title), context.resources.plural(R.plurals.image_upload_upload_failed_message, 1, 1))
                 }
             }
+            after()
         }
     }
 

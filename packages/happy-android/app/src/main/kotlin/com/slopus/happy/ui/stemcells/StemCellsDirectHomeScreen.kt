@@ -55,7 +55,7 @@ class StemCellsDirectHomeScreen(
         }
         stemCells.onNewWork = { creation, library ->
             newWork?.invoke(creation, library)
-            push(StemCellChatScreen.forNewWork(context, session, creation))
+            push(StemCellChatScreen.forNewWork(context, session, creation, attaching = library))
         }
         stemCells.onBackStateChanged = { stack?.backStateChanged() }
         stemCells.attach(session)

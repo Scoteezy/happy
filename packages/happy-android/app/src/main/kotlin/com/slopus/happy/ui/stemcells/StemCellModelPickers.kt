@@ -80,6 +80,24 @@ object StemCellModelPickers {
     /** The modes a message may run with, from least to most it may do. */
     val permissionModes = listOf("read_only", "workspace_write", "auto", "full_access")
 
+    /** A permission mode's name (API.md's `permissionMode`). */
+    fun permissionName(context: Context, mode: String): String = when (mode) {
+        "read_only" -> context.getString(R.string.stem_permission_read_only)
+        "workspace_write" -> context.getString(R.string.stem_permission_workspace_write)
+        "auto" -> context.getString(R.string.stem_permission_auto)
+        "full_access" -> context.getString(R.string.stem_permission_full_access)
+        else -> mode
+    }
+
+    /** What a permission mode allows. */
+    fun permissionDetail(context: Context, mode: String): String? = when (mode) {
+        "read_only" -> context.getString(R.string.stem_permission_read_only_detail)
+        "workspace_write" -> context.getString(R.string.stem_permission_workspace_write_detail)
+        "auto" -> context.getString(R.string.stem_permission_auto_detail)
+        "full_access" -> context.getString(R.string.stem_permission_full_access_detail)
+        else -> null
+    }
+
     // Lists
 
     /**

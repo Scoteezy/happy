@@ -118,4 +118,22 @@
     <string name="stem_age_minutes">%1$d min ago</string>
     <string name="stem_age_hours">%1$d hr ago</string>
     <string name="stem_age_at">at %1$s</string>
+    <!-- The composer's "+" sheet, as Claude's "Add to session". -->
+    <string name="stem_add_to_message">Add to message</string>
+    <string name="stem_photos">Photos</string>
+    <string name="stem_camera">Camera</string>
+    <string name="stem_camera_unavailable">No camera on this device</string>
+    <string name="stem_paste_from_clipboard">Paste from clipboard</string>
+    <string name="stem_add_files">Add files</string>
+    <string name="stem_close">Close</string>
+    <!-- The four permission modes a message runs with (API.md's permissionMode). -->
+    <string name="stem_permission">Permission</string>
+    <string name="stem_permission_read_only">Read only</string>
+    <string name="stem_permission_workspace_write">Workspace write</string>
+    <string name="stem_permission_auto">Auto</string>
+    <string name="stem_permission_full_access">Full access</string>
+    <string name="stem_permission_read_only_detail">Reads files; changes nothing.</string>
+    <string name="stem_permission_workspace_write_detail">Changes files in its workspace only.</string>
+    <string name="stem_permission_auto_detail">Anything past its workspace is reviewed first.</string>
+    <string name="stem_permission_full_access_detail">Acts on the whole computer without asking.</string>
 </resources>

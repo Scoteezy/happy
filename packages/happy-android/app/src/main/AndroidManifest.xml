@@ -16,6 +16,10 @@
     <!-- expo-store-review's isAvailableAsync looks for the Play Store (ui/home/ReviewPrompt.kt). -->
     <queries>
         <package android:name="com.android.vending" />
+        <!-- The composer's camera tile hands the camera app a file (ui/composer/ComposerImagePicker.kt). -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
     </queries>
 
     <application
@@ -45,6 +49,16 @@
                 <data android:scheme="happy" />
             </intent-filter>
         </activity>
+        <!-- The camera app writes a taken picture here (ui/composer/ComposerImagePicker.kt takePhoto). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/composer_files" />
+        </provider>
         <!-- Pushes relayed by Expo arrive as FCM data messages (push/PushServices.kt). -->
         <service
             android:name=".push.HappyMessagingService"

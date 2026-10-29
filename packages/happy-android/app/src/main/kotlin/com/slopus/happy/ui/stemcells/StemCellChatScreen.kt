@@ -37,6 +37,7 @@ import com.slopus.happy.ui.composer.AgentInputCardView
 import com.slopus.happy.ui.composer.ComposerImagePicker
 import com.slopus.happy.ui.home.HeaderScrimView
 import com.slopus.happy.ui.nav.BackInterceptor
+import com.slopus.happy.ui.components.ChoiceMenu
 import com.slopus.happy.ui.nav.Screen
 import com.slopus.happy.ui.tablet.ContentWidth
 import com.slopus.happy.ui.text.TextLayouts
@@ -80,6 +81,8 @@ class StemCellChatScreen(
     private val spaceId: String?,
     private var intro: StemCellIntroView.Mark?,
     creation: StemCellCreation? = null,
+    /** New work made from the dock's "+": the sheet comes up over it as it opens. */
+    attaching: Boolean = false,
 ) : Screen(context), BackInterceptor {
     /** The conversation's own line of work, one coroutine at a time, as the store's. */
     private val conversationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
@@ -101,6 +104,12 @@ class StemCellChatScreen(
     private var creating = creation != null
     /** The keyboard new work opens with, not yet asked for. */
     private var focusPending = creation != null
+    /** The "+" sheet asked for as the screen opens. */
+    private var attachPending = attaching
+    /** The "+" sheet while it is up. */
+    private var attachSheet: StemCellAttachSheet? = null
+    /** The keyboard was up as the sheet came: it comes back once the sheet is done. */
+    private var keyboardOwed = false
 
     var title: String = title
         private set
@@ -266,7 +275,7 @@ class StemCellChatScreen(
         }
         card.onSend = { send() }
         card.onStop = { conversationScope.launch { conversation.abort() } }
-        card.onAdd = { pictures.attach() }
+        card.onAdd = { presentAttach() }
         card.onRemoveAttachment = { pictures.remove(it) }
         card.onReceiveImages = { pictures.receive(it) }
         card.onPressChip = { openPicker(it) }
@@ -295,7 +304,13 @@ class StemCellChatScreen(
     override fun onAppear() {
         conversation.setVisible(true)
         // New work: the keyboard comes up with the screen.
-        if (focusPending) {
+        if (attachPending) {
+            // From the dock's "+": the sheet, and the keyboard once it is done.
+            attachPending = false
+            focusPending = false
+            keyboardOwed = true
+            root.post { presentAttach() }
+        } else if (focusPending) {
             focusPending = false
             root.post { card.focus() }
         }
@@ -306,9 +321,13 @@ class StemCellChatScreen(
         conversation.flushDraft()
     }
 
-    override val interceptsBack: Boolean get() = picker != null
+    override val interceptsBack: Boolean get() = picker != null || attachSheet != null
 
     override fun onBackPressed(): Boolean {
+        attachSheet?.let {
+            it.dismiss()
+            return true
+        }
         val picker = picker ?: return false
         picker.outside()
         return true
@@ -422,6 +441,109 @@ class StemCellChatScreen(
             StemCellModelPickers.configure(card, menus)
             picker?.update(menus, session.models.usage)
         }
+        attachSheet?.let {
+            it.permission = permissionName
+            it.permissionReady = menus != null
+        }
+    }
+
+    // Attach
+
+    /** The mode the next message runs with, by its name. */
+    private val permissionName: String
+        get() = StemCellModelPickers.permissionName(context, mode?.permissionMode ?: session.models.catalog?.defaultPermissionMode ?: "auto")
+
+    /**
+     * The "+" sheet over the screen. What it adds waits in the composer,
+     * which then takes the keyboard; the keyboard goes while the sheet is up.
+     */
+    private fun presentAttach() {
+        if (attachSheet != null) return
+        picker?.close(animated = false)
+        val sheet = StemCellAttachSheet(context, pictures.canTakePhoto, permissionName)
+        sheet.permissionReady = menus != null
+        if (session.models.catalog == null) session.models.load()
+        keyboardOwed = keyboardOwed || card.isTextFocused
+        card.blur()
+        sheet.onGone = {
+            attachSheet = null
+            stack?.backStateChanged()
+            settleFocus(added = false)
+        }
+        sheet.onAction = { action ->
+            if (action != StemCellAttachSheet.Action.Permission) {
+                attachSheet = null
+                stack?.backStateChanged()
+            }
+            when (action) {
+                StemCellAttachSheet.Action.Photos -> pictures.pickLibrary { settleFocus(added = it) }
+                StemCellAttachSheet.Action.Camera -> pictures.takePhoto { settleFocus(added = it) }
+                StemCellAttachSheet.Action.Paste -> pasteFromClipboard()
+                StemCellAttachSheet.Action.Files -> pictures.pickFiles { settleFocus(added = it) }
+                StemCellAttachSheet.Action.Permission -> openPermissionMenu(sheet)
+            }
+        }
+        sheet.safeBottom = safeArea.bottom
+        attachSheet = sheet
+        root.addView(sheet)
+        sheet.setFrame(Rect(0.0, 0.0, px(root.width), px(root.height)))
+        sheet.present()
+        stack?.backStateChanged()
+    }
+
+    /** The permission the next message runs with, each with what it allows, over the sheet. */
+    private fun openPermissionMenu(sheet: StemCellAttachSheet) {
+        val menus = menus ?: return session.models.load()
+        val options = StemCellModelPickers.permissionModes.map { mode ->
+            ChoiceMenu.Option(
+                StemCellModelPickers.key(StemCellModelPickers.Kind.Permission, mode),
+                StemCellModelPickers.permissionName(context, mode),
+                subtitle = StemCellModelPickers.permissionDetail(context, mode),
+            )
+        }
+        val selected = StemCellModelPickers.key(StemCellModelPickers.Kind.Permission, menus.selection.permissionMode)
+        ChoiceMenu.show(sheet.permissionRow, listOf(ChoiceMenu.Section(null, options)), selected) { choose(it) }
+    }
+
+    /**
+     * The clipboard: a picture attaches, text goes in where the cursor is,
+     * anything else is said, not sent.
+     */
+    private fun pasteFromClipboard() {
+        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+        val clip = clipboard?.primaryClip
+        val hasPicture = clip != null && (0 until clip.itemCount).any { index ->
+            val uri = clip.getItemAt(index).uri ?: return@any false
+            (context.contentResolver.getType(uri) ?: "").startsWith("image/") || clip.description.hasMimeType("image/*")
+        }
+        val text = if (hasPicture) null else clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() }
+        when {
+            hasPicture -> {
+                pictures.paste()
+                settleFocus(added = true)
+            }
+            text != null -> {
+                keyboardOwed = false
+                val selection = card.selection
+                val current = card.text
+                val start = selection.start.coerceIn(0, current.length)
+                val end = selection.end.coerceIn(start, current.length)
+                card.setText(current.substring(0, start) + text + current.substring(end), start + text.length)
+                card.focus()
+            }
+            else -> {
+                // Nothing a message can carry: said, as a paste of nothing is.
+                pictures.paste()
+                settleFocus(added = false)
+            }
+        }
+    }
+
+    /** Back from the sheet or what it opened: the keyboard returns if it was owed, or once a picture is in. */
+    private fun settleFocus(added: Boolean) {
+        val focuses = keyboardOwed || added
+        keyboardOwed = false
+        if (focuses && root.isAttachedToWindow) root.post { card.focus() }
     }
 
     /** A chip opens its list; with no models yet, they are asked for again. */
@@ -544,6 +666,10 @@ class StemCellChatScreen(
         scroll.setFrame(Rect(0.0, 0.0, width, height))
         layoutTranscript()
         picker?.follow()
+        attachSheet?.let {
+            it.safeBottom = safeArea.bottom
+            it.setFrame(Rect(0.0, 0.0, width, height))
+        }
     }
 
     private fun layoutTranscript() {
@@ -806,10 +932,10 @@ class StemCellChatScreen(
         }
 
         /** New work as the dock made it: up at once, before the daemon has made it, the keyboard with it. */
-        fun forNewWork(context: Context, session: StemCellsSession, creation: StemCellCreation): StemCellChatScreen =
+        fun forNewWork(context: Context, session: StemCellsSession, creation: StemCellCreation, attaching: Boolean = false): StemCellChatScreen =
             StemCellChatScreen(
                 context, session, creation.agentId, context.getString(R.string.stem_untitled), creation.spaceId,
-                StemCellIntroView.Mark.StemCell(creation.spaceId), creation,
+                StemCellIntroView.Mark.StemCell(creation.spaceId), creation, attaching,
             ).also { it.wire() }
     }
 
