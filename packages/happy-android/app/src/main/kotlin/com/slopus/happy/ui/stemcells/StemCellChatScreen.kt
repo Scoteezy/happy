@@ -26,6 +26,8 @@ import com.slopus.happy.stemcells.StemCellChatSnapshot
 import com.slopus.happy.stemcells.StemCellConversation
 import com.slopus.happy.stemcells.StemCellCreation
 import com.slopus.happy.stemcells.StemCellReferences
+import com.slopus.happy.stemcells.StemCellProposalShown
+import com.slopus.happy.stemcells.StemCellSidebarProposals
 import com.slopus.happy.stemcells.StemCellsRow
 import com.slopus.happy.stemcells.StemCellsSnapshot
 import com.slopus.happy.ui.chat.ChatRowAction
@@ -102,6 +104,11 @@ class StemCellChatScreen(
         persistence = session.engine, scope = conversationScope,
     )
     private val planner = StemCellChatPlanner(context.resources)
+    private val proposals = StemCellSidebarProposals(scope, session.client, session.store, context.getString(R.string.stem_proposal_failed)) {
+        if (::root.isInitialized) StemCellsHaptics.play(root, StemCellsHaptics.Moment.PutAway)
+    }
+    private val proposalViews = HashMap<String, StemCellSidebarProposalView>()
+    private var shownProposals: Map<String, StemCellProposalShown> = emptyMap()
     private val media = StemCellMediaLoader(session.client, agentId)
     private val pictures = ComposerImagePicker(context, scope)
     private val opensFocused = creation != null
@@ -240,6 +247,7 @@ class StemCellChatScreen(
         val key: StemCellChatPlanner.Key,
         val copied: String?,
         val opened: Set<String>,
+        val proposals: Map<String, StemCellProposalShown>,
         var queued: Set<String>,
     )
 
@@ -374,6 +382,7 @@ class StemCellChatScreen(
         }
         applyIntro()
         updatePrimary()
+        proposals.onChange = { replan() }
         unwatch = session.watch { follow(it) }
         scope.launch { conversation.updates.collect { apply(it) } }
         conversation.start()
@@ -445,6 +454,8 @@ class StemCellChatScreen(
 
     override fun onDestroy() {
         closeStoryPresentations()
+        proposals.stop()
+        proposalViews.clear()
         putAwayIfEmpty()
         rowViews.values.forEach { it.closeStories() }
         unwatch?.invoke()
@@ -484,6 +495,7 @@ class StemCellChatScreen(
     private fun follow(snapshot: StemCellsSnapshot) {
         if (snapshot.live && !live) {
             media.retryFailed()
+            proposals.reconnected()
             for (row in rowViews.values) row.retryMedia()
         }
         live = snapshot.live
@@ -491,7 +503,10 @@ class StemCellChatScreen(
             references = snapshot.references
             replan()
         }
-        sidebarRows = snapshot.allRows
+        if (sidebarRows != snapshot.allRows) {
+            sidebarRows = snapshot.allRows
+            proposals.spacesChanged()
+        }
         val row = spaceId?.let { id -> snapshot.allRows.firstOrNull { it.spaceId == id } } ?: return
         untouched = row.isUntouchedStemCell
         if (title != row.label) {
@@ -531,6 +546,7 @@ class StemCellChatScreen(
     private fun apply(snapshot: StemCellChatSnapshot) {
         val wasSettled = settled(chat)
         chat = snapshot
+        proposals.want(snapshot.items.flatMap { it.proposalIds })
         if (picked == snapshot.mode) picked = null
         media.register(snapshot.items)
         if (snapshot.draftArrivals != draftArrivals) {
@@ -741,9 +757,10 @@ class StemCellChatScreen(
         if (unread.isNotEmpty()) session.store.readArtifacts(unread)
         val copiedId = copied?.first
         val openedNow = opened.toSet()
+        val proposalState = proposals.shown
         val queued = items.takeLast(chat.queued).map { it.id }.toSet()
         val previous = planned
-        if (previous != null && previous.items == items && previous.key == key && previous.copied == copiedId && previous.opened == openedNow) {
+        if (previous != null && previous.items == items && previous.key == key && previous.copied == copiedId && previous.opened == openedNow && previous.proposals == proposalState) {
             // Only where the steering stands moved: the rows are the same.
             if (previous.queued != queued && planning == null) {
                 previous.queued = queued
@@ -754,12 +771,13 @@ class StemCellChatScreen(
             }
             return
         }
-        planned = Planned(items, key, copiedId, openedNow, queued)
+        planned = Planned(items, key, copiedId, openedNow, proposalState, queued)
         planning?.cancel()
         planning = scope.launch {
-            val plans = withContext(Dispatchers.Default) { planner.plans(items, key, copiedId, openedNow) }
+            val plans = withContext(Dispatchers.Default) { planner.plans(items, key, copiedId, openedNow, proposalState) }
             planning = null
             plansQueued = planned?.queued ?: queued
+            shownProposals = proposalState
             show(plans)
         }
     }
@@ -769,6 +787,7 @@ class StemCellChatScreen(
         planShown = true
         showIntro()
         val seen = HashSet<String>()
+        val hosted = HashSet<String>()
         for (plan in plans) {
             seen += plan.id
             val row = rowViews.getOrPut(plan.id) {
@@ -781,6 +800,27 @@ class StemCellChatScreen(
             // The id is the plan's; its action closure keeps it.
             row.onAction = { action, _, hold -> act(plan.id, action, hold) }
             row.bind(plan)
+            for (proposal in plan.proposals) {
+                val shown = shownProposals[proposal.artifactId] ?: continue
+                val key = "${plan.id}#${proposal.artifactId}"
+                hosted += key
+                val view = proposalViews.getOrPut(key) {
+                    StemCellSidebarProposalView(context, session.images).also { card ->
+                        if (!previewing) {
+                            card.onAccept = { proposals.accept(proposal.artifactId) }
+                            card.onDecline = { proposals.decline(proposal.artifactId) }
+                            card.onTurn = { rowId ->
+                                followsNewest = false
+                                StemCellsHaptics.play(card, StemCellsHaptics.Moment.Fold)
+                                proposals.turn(proposal.artifactId, rowId)
+                            }
+                        }
+                    }
+                }
+                if (view.parent !== row) row.addView(view)
+                view.apply(shown, proposal.layout)
+                view.setFrame(proposal.frame)
+            }
         }
         for (id in rowViews.keys.toList()) {
             if (id in seen) continue
@@ -788,6 +828,11 @@ class StemCellChatScreen(
             row.closeStories()
             scroll.content.frames.remove(row)
             scroll.content.removeView(row)
+        }
+        for (key in proposalViews.keys.toList()) {
+            if (key in hosted) continue
+            val view = proposalViews.remove(key) ?: continue
+            (view.parent as? android.view.ViewGroup)?.removeView(view)
         }
         layoutTranscript()
     }

@@ -75,6 +75,14 @@
     <string name="stem_untitled_agent">Untitled agent</string>
     <string name="stem_proposal_loading">Loading the proposed sidebar…</string>
     <string name="stem_proposal_missing">This proposal is no longer available.</string>
+    <string name="stem_proposed_sidebar">Proposed sidebar</string>
+    <string name="stem_proposal_version">v%1$d</string>
+    <string name="stem_proposal_label">Proposed sidebar, version %1$d</string>
+    <string name="stem_proposal_keep">Keep mine</string>
+    <string name="stem_proposal_use">Use this sidebar</string>
+    <string name="stem_proposal_accepted">You use this sidebar now.</string>
+    <string name="stem_proposal_declined">You kept your own sidebar.</string>
+    <string name="stem_proposal_failed">That didn\'t reach your computer. Try again.</string>
     <string name="stem_picture">Picture</string>
     <string name="stem_picture_number">%1$d of %2$d</string>
     <string name="stem_video">Video</string>

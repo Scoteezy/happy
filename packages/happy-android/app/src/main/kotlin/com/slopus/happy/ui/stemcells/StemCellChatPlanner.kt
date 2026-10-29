@@ -41,6 +41,7 @@ import com.slopus.happy.stemcells.StemCellMarkdown
 import com.slopus.happy.stemcells.StemCellMedia
 import com.slopus.happy.stemcells.StemCellMediaTree
 import com.slopus.happy.stemcells.StemCellReferences
+import com.slopus.happy.stemcells.StemCellProposalShown
 import com.slopus.happy.ui.chat.ChatBox
 import com.slopus.happy.ui.chat.ChatDrawItem
 import com.slopus.happy.ui.chat.ChatHit
@@ -48,6 +49,7 @@ import com.slopus.happy.ui.chat.ChatMedia
 import com.slopus.happy.ui.chat.ChatMermaidHeights
 import com.slopus.happy.ui.chat.ChatRowAction
 import com.slopus.happy.ui.chat.ChatRowPlan
+import com.slopus.happy.ui.chat.ChatProposal
 import com.slopus.happy.ui.chat.ChatStrings
 import com.slopus.happy.ui.chat.ChatTextEnv
 import com.slopus.happy.ui.chat.FaceSpan
@@ -78,39 +80,40 @@ class StemCellChatPlanner(private val resources: Resources) {
         val subagentTitles: Map<String, String> = emptyMap(),
     )
 
-    private class Cached(val item: StemCellChatItem, val key: Key, val copied: Boolean, val opened: Boolean, val plan: ChatRowPlan)
+    private class Cached(val item: StemCellChatItem, val key: Key, val copied: Boolean, val opened: Boolean, val proposals: List<StemCellProposalShown?>, val plan: ChatRowPlan)
 
     private var cache = HashMap<String, Cached>()
 
     /** `opened` are the other agents' messages opened to read. */
     @Synchronized
-    fun plans(items: List<StemCellChatItem>, key: Key, copied: String?, opened: Set<String> = emptySet()): List<ChatRowPlan> {
+    fun plans(items: List<StemCellChatItem>, key: Key, copied: String?, opened: Set<String> = emptySet(), proposals: Map<String, StemCellProposalShown> = emptyMap()): List<ChatRowPlan> {
         val next = HashMap<String, Cached>()
         val plans = ArrayList<ChatRowPlan>()
         for (item in items) {
             val isCopied = copied == item.id
             val isOpened = item.id in opened
+            val shown = item.proposalIds.map { proposals[it] }
             val cached = cache[item.id]
-            val plan = if (cached != null && cached.item == item && cached.key == key && cached.copied == isCopied && cached.opened == isOpened) {
+            val plan = if (cached != null && cached.item == item && cached.key == key && cached.copied == isCopied && cached.opened == isOpened && cached.proposals == shown) {
                 cached.plan
             } else {
-                plan(item, key, isOpened)
+                plan(item, key, isOpened, proposals)
             }
-            next[item.id] = Cached(item, key, isCopied, isOpened, plan)
+            next[item.id] = Cached(item, key, isCopied, isOpened, shown, plan)
             if (plan.size.height > 0) plans += plan
         }
         cache = next
         return plans
     }
 
-    fun plan(item: StemCellChatItem, key: Key, opened: Boolean = false): ChatRowPlan {
+    fun plan(item: StemCellChatItem, key: Key, opened: Boolean = false, proposals: Map<String, StemCellProposalShown> = emptyMap()): ChatRowPlan {
         val role = item.role
         if (role is StemCellChatItem.Role.Collaborator) return collaborator(item, role.agentId, role.explanation, key, opened)
         if (item.pieces.isEmpty()) return ChatRowPlan(item.id, Size(key.width, 0.0), emptyList())
         val text = HappyReferences.plain(item.text, key.references::view)
         return when (role) {
             StemCellChatItem.Role.User -> user(item, text, key)
-            else -> agent(item, text, key)
+            else -> agent(item, text, key, proposals)
         }
     }
 
@@ -120,6 +123,7 @@ class StemCellChatPlanner(private val resources: Resources) {
         class Tree(val tree: StemCellChatMediaPlan.Tree) : Draft
         class Card(val card: StemCellChatMediaPlan.Card) : Draft
         class Story(val id: String) : Draft
+        class Proposal(val id: String) : Draft
         /** Words the planner writes, read but not selectable. */
         class Line(val piece: MarkdownPiece) : Draft
     }
@@ -129,7 +133,7 @@ class StemCellChatPlanner(private val resources: Resources) {
      * blocks 8 apart, no copy button (a long press selects instead); its
      * pictures and recordings where they were presented.
      */
-    private fun agent(item: StemCellChatItem, text: String, key: Key): ChatRowPlan {
+    private fun agent(item: StemCellChatItem, text: String, key: Key, proposals: Map<String, StemCellProposalShown>): ChatRowPlan {
         val env = key.env
         val parts = ArrayList<StemCellMessageLayout.Part>()
         val drafts = ArrayList<Draft>()
@@ -165,12 +169,17 @@ class StemCellChatPlanner(private val resources: Resources) {
                     parts += StemCellMessageLayout.Part.Story
                 }
                 is Piece.SidebarProposal -> {
-                    // The proposal's own card is not drawn here yet: its line says it is on its way.
-                    val line = resources.getString(R.string.stem_proposal_loading)
-                    val markdown = markdown(line, StemCellsPalette.stemCellsCardDetail, item.id, env, selectable = false)
-                    drafts += Draft.Line(markdown)
-                    parts += StemCellMessageLayout.Part.Markdown(markdown.blocks)
-                    spoken += line
+                    val shown = proposals[piece.artifactId]
+                    if (shown != null && shown.status != StemCellProposalShown.Status.Loading && shown.status != StemCellProposalShown.Status.Missing) {
+                        drafts += Draft.Proposal(piece.artifactId)
+                        parts += StemCellMessageLayout.Part.Proposal(StemCellSidebarProposalView.input(shown, resources, env))
+                    } else {
+                        val line = resources.getString(if (shown?.status == StemCellProposalShown.Status.Missing) R.string.stem_proposal_missing else R.string.stem_proposal_loading)
+                        val markdown = markdown(line, StemCellsPalette.stemCellsCardDetail, item.id, env, selectable = false)
+                        drafts += Draft.Line(markdown)
+                        parts += StemCellMessageLayout.Part.Markdown(markdown.blocks)
+                        spoken += line
+                    }
                 }
                 is Piece.Picture -> Unit
             }
@@ -178,6 +187,7 @@ class StemCellChatPlanner(private val resources: Resources) {
         val layout = StemCellMessageLayout.agent(key.width, key.maxContentWidth, parts)
         val items = ArrayList<ChatDrawItem>()
         val hits = ArrayList<ChatHit>()
+        val cards = ArrayList<ChatProposal>()
         fun media(one: StemCellMedia, frame: Rect) {
             items += ChatDrawItem.Media(ChatMedia(one.key, one.isVideo, one.item.thumbhash, mediaLabel(one)), frame)
             hits.add(0, ChatHit(frame, ChatRowAction.OpenMedia(one.key)))
@@ -215,10 +225,11 @@ class StemCellChatPlanner(private val resources: Resources) {
                 }
                 placed is StemCellMessageLayout.Placed.Card && draft is Draft.Card -> card(draft.card, placed.frame)
                 placed is StemCellMessageLayout.Placed.Story && draft is Draft.Story -> items += ChatDrawItem.Story(draft.id, placed.frame)
+                placed is StemCellMessageLayout.Placed.Proposal && draft is Draft.Proposal -> cards += ChatProposal(draft.id, placed.layout, placed.frame)
                 else -> Unit
             }
         }
-        return ChatRowPlan(item.id, layout.size, items, hits, accessibilityLabel = spoken.joinToString("\n\n"))
+        return ChatRowPlan(item.id, layout.size, items, hits, accessibilityLabel = spoken.joinToString("\n\n"), proposals = cards)
     }
 
     /**

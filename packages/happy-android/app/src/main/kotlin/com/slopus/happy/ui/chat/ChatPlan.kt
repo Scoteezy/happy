@@ -108,6 +108,9 @@ sealed interface ChatRowAction {
 
 class ChatHit(val frame: Rect, val action: ChatRowAction, val hold: Boolean = false)
 
+/** A live proposal hosted by the owning Direct conversation, as on iOS. */
+data class ChatProposal(val artifactId: String, val layout: com.slopus.happy.layout.stemcells.StemCellSidebarProposalLayout, val frame: Rect)
+
 class ChatRowPlan(
     val id: String,
     val size: Size,
@@ -115,6 +118,7 @@ class ChatRowPlan(
     val hits: List<ChatHit> = emptyList(),
     val alpha: Double = 1.0,
     val accessibilityLabel: String? = null,
+    val proposals: List<ChatProposal> = emptyList(),
 )
 
 /** Part of a row: its size at a width, and once a layout has placed it, what to draw there. */
