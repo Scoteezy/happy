@@ -47,6 +47,8 @@ sealed interface ChatDrawItem {
     class Attachment(val attachment: ChatAttachment, val frame: Rect) : ChatDrawItem
     /** A Stem Cells conversation's picture or recording, loaded once it is on screen ([ChatMediaView]). */
     class Media(val media: ChatMedia, val frame: Rect) : ChatDrawItem
+    /** A live story artifact, drawn by its computer's [com.slopus.happy.ui.stories.StoryInlineView]. */
+    class Story(val id: String, val frame: Rect) : ChatDrawItem
 }
 
 /** A picture or recording by [key] in the conversation's [ChatMediaSource]; [label] is what TalkBack reads. */

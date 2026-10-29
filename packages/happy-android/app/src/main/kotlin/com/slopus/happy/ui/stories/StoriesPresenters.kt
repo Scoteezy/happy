@@ -290,10 +290,11 @@ object StoriesViewerTransition {
  * over its black; back closes what is over it first, then it.
  */
 object StoriesEditorPresenter {
-    private val shown = HashSet<StoryEditorView>()
+    private class Presented(val root: ViewGroup, val back: OnBackPressedCallback?, val bars: WindowInsetsControllerCompat?, val wasLight: Boolean?, val lifecycle: DefaultLifecycleObserver?)
+    private val shown = HashMap<StoryEditorView, Presented>()
 
     /** The editor up over [root], if any. */
-    fun presented(root: View): StoryEditorView? = shown.firstOrNull { it.rootView === root.rootView }
+    fun presented(root: View): StoryEditorView? = shown.keys.firstOrNull { it.rootView === root.rootView }
 
     fun present(session: StoriesSession, draft: Story, host: View, done: ((Story?) -> Unit)? = null): StoryEditorView? =
         open(StoryEditorView(host.context, session, StoryDraft(editing = draft)), host, done)
@@ -312,8 +313,8 @@ object StoriesEditorPresenter {
     }
 
     private fun open(editor: StoryEditorView, host: View, done: ((Story?) -> Unit)?): StoryEditorView? {
-        val root = host.rootView as? ViewGroup ?: return null
-        if (shown.any { it.rootView === root }) return null
+        val root = host.rootView as? ViewGroup ?: run { editor.done(); return null }
+        if (shown.keys.any { it.rootView === root }) { editor.done(); return null }
         val activity = host.context as? ComponentActivity
         val back = activity?.let {
             object : OnBackPressedCallback(true) {
@@ -323,7 +324,12 @@ object StoriesEditorPresenter {
         val bars = activity?.window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         val wasLight = bars?.isAppearanceLightStatusBars
         bars?.isAppearanceLightStatusBars = false
-        shown += editor
+        val lifecycle = activity?.let {
+            object : DefaultLifecycleObserver {
+                override fun onDestroy(owner: LifecycleOwner) = dismiss(editor, animated = false)
+            }.also { observer -> it.lifecycle.addObserver(observer) }
+        }
+        shown[editor] = Presented(root, back, bars, wasLight, lifecycle)
         root.addView(editor, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val insets = ViewCompat.getRootWindowInsets(root)
         val top = insets?.getInsets(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout())?.top ?: 0
@@ -333,18 +339,26 @@ object StoriesEditorPresenter {
         editor.measure(View.MeasureSpec.makeMeasureSpec(root.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(root.height, View.MeasureSpec.EXACTLY))
         editor.layout(0, 0, root.width, root.height)
         editor.onFinish = done
-        editor.onDismiss = {
-            back?.isEnabled = false
-            slide(editor, root, up = false) {
-                back?.remove()
-                if (wasLight != null) bars.isAppearanceLightStatusBars = wasLight
-                root.removeView(editor)
-                shown.remove(editor)
-                editor.done()
-            }
-        }
+        editor.onDismiss = { dismiss(editor, animated = true) }
         slide(editor, root, up = true) {}
         return editor
+    }
+
+    /** The owning account/screen can remove an editor even while it is opening. */
+    fun dismiss(editor: StoryEditorView, animated: Boolean = false) {
+        val presentation = shown[editor] ?: return
+        presentation.back?.isEnabled = false
+        editor.animate().withEndAction(null).cancel()
+        val remove = {
+            shown.remove(editor)
+            presentation.back?.remove()
+            presentation.lifecycle?.let { (editor.context as? ComponentActivity)?.lifecycle?.removeObserver(it) }
+            presentation.wasLight?.let { presentation.bars?.isAppearanceLightStatusBars = it }
+            presentation.root.removeView(editor)
+            editor.onDismiss = null
+            editor.done()
+        }
+        if (animated) slide(editor, presentation.root, up = false, end = remove) else remove()
     }
 
     /** UIKit's cover-vertical: up from the foot, and back down. */

@@ -48,6 +48,15 @@ import kotlin.math.min
  */
 interface StoriesProviding {
     val stories: StoriesSession?
+
+    /** The conversation owns presentations even if its source row is replanned. */
+    fun presentStory(story: Story, host: View, origin: View) {
+        stories?.let { StoriesViewerPresenter.present(it, story, host, origin) }
+    }
+
+    fun editStory(story: Story, host: View) {
+        stories?.let { StoriesEditorPresenter.present(it, story, host) }
+    }
 }
 
 /**
@@ -177,11 +186,22 @@ class StoryInlineView(context: Context) : ManualLayout(context), ThemeAware {
         super.onDetachedFromWindow()
         watch?.cancel()
         watch = null
+        canvas.stop()
+        session = null
+    }
+
+    /** The row was discarded, not just detached for a navigation transition. */
+    fun close() {
+        watch?.cancel()
+        watch = null
+        session = null
+        canvas.release()
+        scope.cancel()
     }
 
     private fun attach() {
         if (watch != null || !isAttachedToWindow || storyId == null) return
-        val session = provider() ?: return
+        val session = provider()?.stories ?: return
         this.session = session
         asked = false
         watch = session.watch { render(it) }
@@ -204,15 +224,15 @@ class StoryInlineView(context: Context) : ManualLayout(context), ThemeAware {
         session.store.want(storyId)
     }
 
-    private fun provider(): StoriesSession? {
+    private fun provider(): StoriesProviding? {
         var view: View? = this
         while (view != null) {
-            if (view is StoriesProviding) return view.stories
+            if (view is StoriesProviding) return view
             view = view.parent as? View
         }
         var context: Context? = context
         while (context != null) {
-            if (context is StoriesProviding) return context.stories
+            if (context is StoriesProviding) return context
             context = (context as? ContextWrapper)?.baseContext
         }
         return null
@@ -317,9 +337,8 @@ class StoryInlineView(context: Context) : ManualLayout(context), ThemeAware {
 
     private fun canvasTapped() {
         val story = story ?: return
-        val session = session ?: return
         when (story.status) {
-            StoryStatus.Posted -> StoriesViewerPresenter.present(session, story, this, canvas)
+            StoryStatus.Posted -> provider()?.presentStory(story, this, canvas)
             StoryStatus.Draft -> if (isAuthor) editTapped()
             StoryStatus.Deleted -> {}
         }
@@ -355,9 +374,8 @@ class StoryInlineView(context: Context) : ManualLayout(context), ThemeAware {
 
     private fun editTapped() {
         val story = story ?: return
-        val session = session ?: return
         if (story.status != StoryStatus.Draft || !isAuthor || posting) return
-        StoriesEditorPresenter.present(session, story, this)
+        provider()?.editStory(story, this)
     }
 
     // Marks

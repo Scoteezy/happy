@@ -214,7 +214,7 @@ class StemCellChatPlanner(private val resources: Resources) {
                     }
                 }
                 placed is StemCellMessageLayout.Placed.Card && draft is Draft.Card -> card(draft.card, placed.frame)
-                // A story's card is drawn by the stories port; its room is kept.
+                placed is StemCellMessageLayout.Placed.Story && draft is Draft.Story -> items += ChatDrawItem.Story(draft.id, placed.frame)
                 else -> Unit
             }
         }

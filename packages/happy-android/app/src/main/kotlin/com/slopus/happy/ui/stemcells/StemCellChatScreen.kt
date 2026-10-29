@@ -32,6 +32,12 @@ import com.slopus.happy.ui.chat.ChatRowAction
 import com.slopus.happy.ui.chat.ChatRowPlan
 import com.slopus.happy.ui.chat.ChatRowView
 import com.slopus.happy.ui.chat.TextSelectionScreen
+import com.slopus.happy.ui.stories.StoriesProviding
+import com.slopus.happy.ui.stories.StoriesViewerPresenter
+import com.slopus.happy.ui.stories.StoriesEditorPresenter
+import com.slopus.happy.ui.stories.StoryViewerController
+import com.slopus.happy.ui.stories.StoryEditorView
+import com.slopus.happy.stories.Story
 import com.slopus.happy.ui.composer.AgentInputAttachmentPreview
 import com.slopus.happy.ui.composer.AgentInputCardView
 import com.slopus.happy.ui.composer.ComposerImagePicker
@@ -248,7 +254,24 @@ class StemCellChatScreen(
         }
     }
 
-    private inner class Root(context: Context) : ManualLayout(context), ThemeAware {
+    private var storyViewer: StoryViewerController? = null
+    private var storyEditor: StoryEditorView? = null
+
+    private fun closeStoryPresentations() {
+        storyViewer?.dismissViewer(animated = false)
+        storyViewer = null
+        storyEditor?.let { StoriesEditorPresenter.dismiss(it, animated = false) }
+        storyEditor = null
+    }
+
+    private inner class Root(context: Context) : ManualLayout(context), ThemeAware, StoriesProviding {
+        override val stories get() = session.stories
+        override fun presentStory(story: Story, host: View, origin: View) {
+            if (!previewing) StoriesViewerPresenter.present(stories, story, host, origin)?.let { storyViewer = it }
+        }
+        override fun editStory(story: Story, host: View) {
+            if (!previewing) StoriesEditorPresenter.present(stories, story, host)?.let { storyEditor = it }
+        }
         // Clearing the only focusable editor otherwise immediately focuses it again.
         init { isFocusableInTouchMode = true }
         override fun layoutSubviews(width: Double, height: Double) = layoutScreen(width, height)
@@ -374,6 +397,7 @@ class StemCellChatScreen(
     }
 
     override fun onDisappear() {
+        closeStoryPresentations()
         if (previewing) return
         conversation.setVisible(false)
         conversation.flushDraft()
@@ -420,7 +444,9 @@ class StemCellChatScreen(
     }
 
     override fun onDestroy() {
+        closeStoryPresentations()
         putAwayIfEmpty()
+        rowViews.values.forEach { it.closeStories() }
         unwatch?.invoke()
         unwatchModels?.invoke()
         picker?.close(animated = false)
@@ -759,6 +785,7 @@ class StemCellChatScreen(
         for (id in rowViews.keys.toList()) {
             if (id in seen) continue
             val row = rowViews.remove(id) ?: continue
+            row.closeStories()
             scroll.content.frames.remove(row)
             scroll.content.removeView(row)
         }

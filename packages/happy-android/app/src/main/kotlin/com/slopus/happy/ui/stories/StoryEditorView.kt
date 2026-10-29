@@ -1182,18 +1182,23 @@ class StoryEditorView(
         if (finished) return
         finished = true
         canvas.stop()
-        val files = files.toList()
-        MainScope().launch(Dispatchers.IO) { for (file in files) file.delete() }
         result = story
         onDismiss?.invoke() ?: done()
     }
 
     private var result: Story? = null
+    private var disposed = false
 
     /** The presenter has taken it away. */
     fun done() {
+        if (disposed) return
+        disposed = true
+        finished = true
         canvas.release()
         scope.cancel()
+        val files = files.toList()
+        this.files.clear()
+        MainScope().launch(Dispatchers.IO) { for (file in files) file.delete() }
         onFinish?.invoke(result)
         onFinish = null
     }
