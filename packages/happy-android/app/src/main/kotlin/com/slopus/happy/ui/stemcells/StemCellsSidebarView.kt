@@ -150,9 +150,10 @@ class StemCellsSidebarView(context: Context) : ManualLayout(context), ThemeAware
     private fun layoutRows(rows: List<StemCellsRow>) = layoutRows(rows, onAdd != null)
 
     override fun layoutSubviews(width: Double, height: Double) {
-        list.setFrame(Rect(0.0, 0.0, width, height))
         val input = layoutRows(rows)
         if (laidOut?.first != width || laidOut?.second != input || layoutResult?.frames?.size != rows.size) place(width, input)
+        // After the rows are placed: the list lays its content out at their height in this pass.
+        list.setFrame(Rect(0.0, 0.0, width, height))
     }
 
     /** Lays the rows out and moves each to its place. */

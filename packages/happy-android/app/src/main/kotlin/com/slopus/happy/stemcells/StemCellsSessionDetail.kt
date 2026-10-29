@@ -1,6 +1,12 @@
 package com.slopus.happy.stemcells
 
+import com.slopus.happy.direct.DirectAgentClient
 import com.slopus.happy.direct.Wire
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -135,6 +141,37 @@ data class StemCellsSessionDetail(
                 terminals = detail.processes.orEmpty().filter { it.status == "running" }.map { Terminal(it.id, it.command, it.startedAt) },
                 completed = children.filter { !it.running },
             )
+        }
+    }
+}
+
+/**
+ * A conversation's detail, read now and again as its events come (happy-ios
+ * `StemCellsSessionDetailFeed`): a burst waits 400 ms, and events during a
+ * read ask for one more 2 s after it.
+ */
+class StemCellsSessionDetailFeed(private val client: DirectAgentClient, private val store: StemCellsStore, private val agentId: String) {
+    /** Calls `onDetail` in `scope` with each detail read until the job is cancelled. */
+    fun follow(scope: CoroutineScope, onDetail: (StemCellsSessionDetail) -> Unit): Job = scope.launch {
+        var reading: Job? = null
+        var stale = false
+        fun read(wait: Long) {
+            stale = false
+            reading = launch {
+                if (wait > 0) delay(wait)
+                try {
+                    onDetail(StemCellsSessionDetail.of(client.sessionDetail(agentId)))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+                reading = null
+                if (stale) read(2_000)
+            }
+        }
+        read(0)
+        store.conversationEvents(agentId).collect {
+            if (reading != null) stale = true else read(400)
         }
     }
 }

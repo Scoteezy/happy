@@ -147,4 +147,37 @@
     <string name="stem_permission_workspace_write_detail">Changes files in its workspace only.</string>
     <string name="stem_permission_auto_detail">Anything past its workspace is reviewed first.</string>
     <string name="stem_permission_full_access_detail">Acts on the whole computer without asking.</string>
+    <!-- A conversation's detail, opened from its header (happy-ios StemCellsDetail.swift). -->
+    <string name="stem_details_hint">Opens its details</string>
+    <string name="stem_rename">Rename</string>
+    <string name="stem_started">Started</string>
+    <string name="stem_media">Media</string>
+    <string name="stem_links">Links</string>
+    <string name="stem_show_more">Show more</string>
+    <string name="stem_family">Family</string>
+    <string name="stem_activity">Activity</string>
+    <string name="stem_completed">Completed</string>
+    <string name="stem_expanded">Expanded</string>
+    <string name="stem_collapsed">Collapsed</string>
+    <string name="stem_bot">Bot</string>
+    <string name="stem_task">Task</string>
+    <string name="stem_subtask">Subtask</string>
+    <string name="stem_conversation">Conversation</string>
+    <string name="stem_none">—</string>
+    <string name="stem_untitled_session">Untitled</string>
+    <string name="stem_started_today">Today, %1$s</string>
+    <string name="stem_started_yesterday">Yesterday, %1$s</string>
+    <string name="stem_detail_just_now">Just now</string>
+    <string name="stem_detail_minutes">%1$d min</string>
+    <plurals name="stem_detail_hours"><item quantity="one">1 hour</item><item quantity="other">%1$d hours</item></plurals>
+    <plurals name="stem_detail_days"><item quantity="one">1 day</item><item quantity="other">%1$d days</item></plurals>
+    <plurals name="stem_detail_months"><item quantity="one">1 month</item><item quantity="other">%1$d months</item></plurals>
+    <plurals name="stem_detail_years"><item quantity="one">1 year</item><item quantity="other">%1$d years</item></plurals>
+    <string name="stem_activity_closed">closed</string>
+    <string name="stem_activity_done">done</string>
+    <string name="stem_activity_thinking">thinking</string>
+    <string name="stem_activity_running_tools">running tools</string>
+    <string name="stem_activity_working">working</string>
+    <string name="stem_terminal_running">running</string>
+    <string name="stem_token_count">%1$s tokens</string>
 </resources>

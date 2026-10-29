@@ -104,8 +104,10 @@ class StemCellChatScreen(
     private var creating = creation != null
     /** The keyboard new work opens with, not yet asked for. */
     private var focusPending = creation != null
+    /** Pictures in the viewer, recordings in the player, files in an app for them. */
+    private val opener = StemCellMediaOpener(context, media, scope, cover = { cover(it) }, uncovered = { stack?.backStateChanged() })
     /** The picture viewer or the player while one is up. */
-    private var viewer: android.view.View? = null
+    private val viewer: android.view.View? get() = opener.shown
     /** The "+" sheet asked for as the screen opens. */
     private var attachPending = attaching
     /** The "+" sheet while it is up. */
@@ -187,7 +189,7 @@ class StemCellChatScreen(
             "follows=${if (followsNewest) 1 else 0} jump=${if (jumpShown) 1 else 0} lift=${if (lift != null) 1 else 0} " +
             "model=${card.configuration.model?.label?.replace(' ', '_') ?: "none"} effort=${card.configuration.effort?.label ?: "none"} " +
             "picker=${picker?.probe?.ifEmpty { null } ?: "none"} " +
-            "viewer=${(viewer as? StemCellPictureViewer)?.probe ?: if (viewer is StemCellVideoPlayer) "video" else "none"}"
+            "viewer=${opener.probe}"
 
     private data class Planned(
         val items: List<com.slopus.happy.stemcells.StemCellChatItem>,
@@ -327,10 +329,7 @@ class StemCellChatScreen(
     override val interceptsBack: Boolean get() = picker != null || attachSheet != null || viewer != null
 
     override fun onBackPressed(): Boolean {
-        when (val shown = viewer) {
-            is StemCellPictureViewer -> return true.also { shown.dismiss() }
-            is StemCellVideoPlayer -> return true.also { shown.dismiss() }
-        }
+        if (opener.dismiss()) return true
         attachSheet?.let {
             it.dismiss()
             return true
@@ -463,60 +462,13 @@ class StemCellChatScreen(
      */
     private fun openMedia(key: String) {
         onOpenMedia?.invoke(key)
-        if (viewer != null) return
-        val file = media.media(key)
-        if (file != null && !file.isVisual) return openFile(file)
-        if (file != null && file.isVideo) return playVideo(file)
-        var pictures = StemCellPicture.all(chat.items, context.getString(R.string.stem_picture))
-        if (pictures.none { it.key == key }) pictures = listOf(StemCellPicture(key, file?.item?.thumbhash, file?.item?.name ?: context.getString(R.string.stem_picture)))
-        val index = pictures.indexOfFirst { it.key == key }.coerceAtLeast(0)
-        val shown = StemCellPictureViewer(context, media, pictures, index, scope)
-        shown.safeArea = safeArea
-        cover(shown)
-        shown.onClose = { uncover(shown) }
-        shown.present()
+        opener.open(key, StemCellPicture.all(chat.items, context.getString(R.string.stem_picture)))
     }
-
-    /** The bytes of what a conversation presented, kept where another app or the player may read them. */
-    private suspend fun keep(file: com.slopus.happy.stemcells.StemCellMedia): java.io.File? {
-        val data = media.data(file) ?: return null
-        return kotlinx.coroutines.withContext(Dispatchers.IO) {
-            val folder = java.io.File(context.cacheDir, "media").apply { mkdirs() }
-            val name = file.item.name.replace('/', '_').ifEmpty { file.key.replace('/', '_') }
-            java.io.File(folder, name).apply { writeBytes(data) }
-        }
-    }
-
-    private fun openFile(file: com.slopus.happy.stemcells.StemCellMedia) {
-        scope.launch {
-            val kept = keep(file) ?: return@launch fileUnavailable()
-            val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", kept)
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                .setDataAndType(uri, file.item.mimeType.ifEmpty { "application/octet-stream" })
-                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            runCatching { context.startActivity(android.content.Intent.createChooser(intent, file.item.name)) }.onFailure { fileUnavailable() }
-        }
-    }
-
-    private fun playVideo(file: com.slopus.happy.stemcells.StemCellMedia) {
-        scope.launch {
-            val kept = keep(file) ?: return@launch fileUnavailable()
-            if (viewer != null) return@launch
-            val player = StemCellVideoPlayer(context, kept)
-            player.safeArea = safeArea
-            cover(player)
-            player.onClose = { uncover(player) }
-            player.present()
-        }
-    }
-
-    private fun fileUnavailable() = com.slopus.happy.ui.components.Alerts.show(context, context.getString(R.string.stem_file_unavailable))
 
     /** A viewer over everything, the keyboard down under it. */
     private fun cover(view: android.view.View) {
         card.blur()
         picker?.close(animated = false)
-        viewer = view
         raise(view)
         root.addView(view)
         view.setFrame(Rect(0.0, 0.0, px(root.width), px(root.height)))
@@ -526,11 +478,6 @@ class StemCellChatScreen(
     /** Over everything the conversation lifts on a shadow, the jump button and the header among them. */
     private fun raise(view: View) {
         view.translationZ = 64 * context.resources.displayMetrics.density
-    }
-
-    private fun uncover(view: android.view.View) {
-        if (viewer === view) viewer = null
-        stack?.backStateChanged()
     }
 
     // Attach
@@ -757,11 +704,8 @@ class StemCellChatScreen(
             it.safeBottom = safeArea.bottom
             it.setFrame(Rect(0.0, 0.0, width, height))
         }
-        viewer?.let {
-            (it as? StemCellPictureViewer)?.safeArea = safeArea
-            (it as? StemCellVideoPlayer)?.safeArea = safeArea
-            it.setFrame(Rect(0.0, 0.0, width, height))
-        }
+        opener.safeArea = safeArea
+        opener.place(Rect(0.0, 0.0, width, height))
     }
 
     private fun layoutTranscript() {
@@ -1035,5 +979,15 @@ class StemCellChatScreen(
     private fun wire() {
         openRow = { row -> forRow(context, session, row)?.let { push(it) } }
         onOpenArtifact = { push(StemCellArtifactScreen(context, session, it)) }
+        onOpenDetail = { id ->
+            val detail = StemCellSessionDetailScreen(context, session, id, title, spaceId, conversation.updates)
+            detail.onRenamed = { kept = true }
+            detail.openConversation = { agentId, title, spaceId, row ->
+                val screen = row?.let { forRow(context, session, it) }
+                    ?: StemCellChatScreen(context, session, agentId, title, spaceId, null).also { it.wire() }
+                detail.push(screen)
+            }
+            push(detail)
+        }
     }
 }
