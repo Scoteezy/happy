@@ -67,6 +67,13 @@ val Palette.sessionStatusAttention get() = ColorToken("#FF9500")
 val Palette.sessionStatusThinking get() = ColorToken("#007AFF")
 val Palette.sessionStatusOnline get() = ColorToken("#34C759")
 
+/**
+ * WorktreeTabStrip's open tab: a translucent chip, so it doesn't punch a
+ * hole in the glass, rgba(0,0,0,0.07) in light and rgba(255,255,255,0.14)
+ * in dark.
+ */
+val Palette.worktreeTabSelected get() = ColorToken(RGBA(0.0, 0.0, 0.0, 0.07), RGBA(1.0, 1.0, 1.0, 0.14))
+
 /** The chat's text styles, by the component they come from. */
 object ChatTextStyles {
     // MarkdownView.tsx
@@ -202,6 +209,10 @@ object ChatTextStyles {
     // PendingChatPlaceholder.tsx; its folder line is emptyPath's 14
     val pendingQueued = TextStyle(FontFace.Regular, 15, 21)
     val pendingChatTitle = TextStyle(FontFace.SemiBold, 18)
+
+    // WorktreeTabStrip.tsx: the open tab's name is semibold.
+    val worktreeTab = TextStyle(FontFace.Regular, 14, 18)
+    val worktreeTabSelected = TextStyle(FontFace.SemiBold, 14, 18)
 }
 
 // AgentInput.tsx and MultiTextInput.tsx (happy-ios TextStyles extension).

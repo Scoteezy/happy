@@ -26,6 +26,19 @@ import com.slopus.happy.chat.ChatEmptyState
 import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatOlderPaging
 import com.slopus.happy.chat.ChatSnapshot
+import com.slopus.happy.layout.chat.WorktreeTabStripLayout
+import com.slopus.happy.model.ProjectWorktree
+import com.slopus.happy.model.SessionState
+import com.slopus.happy.model.PendingChat
+import com.slopus.happy.model.PendingChatStatus
+import com.slopus.happy.model.isPendingChatId
+import com.slopus.happy.model.newSessionLikeSession
+import com.slopus.happy.model.pendingChatsBeside
+import com.slopus.happy.model.resolveWorktreeTabs
+import com.slopus.happy.chat.ChatActions
+import com.slopus.happy.chat.PendingChatDetail
+import com.slopus.happy.model.neighbouringTabId
+import com.slopus.happy.ui.home.HomeSessionActions
 import com.slopus.happy.chat.ChatMessagesSource
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.ChatState
@@ -118,7 +131,11 @@ import kotlinx.coroutines.withContext
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatScreen(context: Context, private val graph: AppGraph, override val sessionId: String) : Screen(context), SessionRoute {
-    private val actions = SyncChatActions { graph.account.value }
+    /** A chat opened from the strip's `+` before the machine has answered: it stands in for itself under this id. */
+    private val standIn = isPendingChatId(sessionId)
+    /** A stand-in's composer queues on its record; a real chat's sends. */
+    private val actions: ChatActions = (if (standIn) HomeServices.of(graph).pendingChatsIfMade?.actions(sessionId) else null)
+        ?: SyncChatActions { graph.account.value }
     private val messages: ChatMessagesSource
         get() = graph.account.value?.let { SyncChatMessagesSource(it.messages, it.sender) } ?: StoreChatMessagesSource(graph.store)
 
@@ -128,6 +145,11 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     private val composer = ChatComposerView(context, sessionId, actions, scope)
     private val scrollButton = ScrollButton(context)
     private val placeholder = ChatPlaceholderView(context)
+    private val tabStrip = ChatWorktreeTabStrip(context)
+    /** The Session alert a tab's long press opens. */
+    private val sessionActions = HomeSessionActions(this, graph, scope).also { actions ->
+        actions.onBeforeArchive = ::tabArchiving
+    }
     private val inactiveHint = ChatInactiveHintView(context, scope)
     private val goalBar = ChatGoalBarView(context)
     private val questionBanner = ChatQuestionBannerView(context)
@@ -174,6 +196,22 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     private var plansRequested = 0
     private var plansShown = 0
     private var shown = false
+    /** Grouped by project, every chat's checkout with its chats as tabs; empty while the list is flat. */
+    private var worktrees: Map<String, ProjectWorktree> = emptyMap()
+    /** The checkout the header speaks for; null when the list is flat or the chat is in none. */
+    private val checkout: ProjectWorktree? get() = worktrees[headerSessionId]
+    /** The chats being opened from the strip, by stand-in id. */
+    private var pendingChats: Map<String, PendingChat> = emptyMap()
+    /** This stand-in's record. */
+    private var pendingChat: PendingChat? = null
+    /** The record named a session, or gave up, while another screen was on top: acted on when this one is back. */
+    private var pendingMove = false
+    /** Where the strip of the screen this one took over from was scrolled to. */
+    private var inheritedStripOffset: Double? = null
+    /** The screen this one took over from was being typed into: the keyboard stays with the composer. */
+    private var inheritedFocus = false
+    /** A stand-in's text and caret as it became this chat, ahead of its draft reaching the session. */
+    private var inheritedText: Pair<String, Int>? = null
     private val planRequests = MutableStateFlow<PlanRequest?>(null)
     /** The plans made so far, by row id, with what each was made from; touched only on [planner]. */
     private val plans = HashMap<String, Pair<PlanKey, ChatRowPlan>>()
@@ -219,6 +257,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     override fun createView(): View = root
 
     override fun viewCreated(view: View) {
+        inheritedText?.let { (text, cursor) -> composer.card.setText(text, cursor) }
+        inheritedText = null
         // The session's pictures, for the attachments in the list, kept with the account's.
         val attachments = AttachmentServices.of(graph)
         attachments.pictures?.let { pictures ->
@@ -248,6 +288,10 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         scrollButton.setOnClickListener { list.scrollToNewest(animated = true) }
         scrollButton.alpha = 0f
         scrollButton.visibility = View.GONE
+        tabStrip.onSelect = ::selectTab
+        tabStrip.onAdd = ::newTab
+        tabStrip.showsAdd = true
+        tabStrip.onLongPress = sessionActions::present
         questionBanner.onOpen = ::openQuestionSheet
         questionBanner.onDismiss = ::dismissUnsupportedRequest
         inactiveHint.onResume = ::resume
@@ -277,6 +321,22 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             git.statuses.collect { statuses ->
                 gitStatuses = statuses
                 updateHeader()
+            }
+        }
+        scope.launch {
+            // useProjectWorktreeSummary: the checkout from home's grouped list, empty while it is flat.
+            HomeServices.of(graph).list.state.map { it?.worktrees.orEmpty() }.distinctUntilChanged().collect { next ->
+                worktrees = next
+                updateHeader()
+                updateTabStrip()
+            }
+        }
+        scope.launch {
+            HomeServices.of(graph).pendingChatRecords.collect { chats ->
+                pendingChats = chats
+                if (standIn) pendingChatChanged(chats[sessionId])
+                updateHeader()
+                updateTabStrip()
             }
         }
         scope.launch {
@@ -337,12 +397,15 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
                 )
                 else -> ChatPlaceholderView.Content.Loading
             }
+            // The composer stays: it is the one thing on this screen that survives the chat's arrival.
+            standIn -> pendingChat?.let { ChatPlaceholderView.Content.PendingChat(PendingChatDetail.of(it.queued, anchorMetadata)) }
+                ?: ChatPlaceholderView.Content.Loading
             state.sessionLoaded -> ChatPlaceholderView.Content.Deleted
             else -> ChatPlaceholderView.Content.Loading
         }
         content?.let(placeholder::show)
         placeholder.visibility = if (content == null) View.GONE else View.VISIBLE
-        val fullScreen = record == null
+        val fullScreen = record == null && !standIn
         list.visibility = if (fullScreen) View.INVISIBLE else View.VISIBLE
         val dock = if (fullScreen) View.GONE else View.VISIBLE
         if (composer.visibility != dock) {
@@ -559,11 +622,22 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         val session = state.session
         val title = when {
             !state.sessionLoaded -> ""
+            // A stand-in is "New chat" for as long as it stands.
+            session == null && standIn -> context.getString(R.string.session_new_chat)
             session == null -> context.getString(R.string.errors_session_deleted)
             else -> session.title ?: context.getString(R.string.session_new_chat)
         }
-        val metadata = session?.metadata
+        // A chat that doesn't exist yet can't speak for its checkout: the header reads the chat it was started beside.
+        val metadata = session?.metadata ?: if (standIn) anchorMetadata else null
         val git = resolveChatHeaderGit(metadata, gitStatusKey(metadata?.machineId, metadata?.path)?.let(gitStatuses::get))
+        var headerTitle = title
+        var subtitle = git.subtitle
+        // Grouped by project the header names the checkout, and says how many tabs the strip under it holds.
+        checkout?.let { checkout ->
+            headerTitle = checkout.workspaceName ?: git.subtitle ?: checkout.projectName
+            val count = stripTabs(checkout).size
+            subtitle = context.resources.getQuantityString(R.plurals.sessions_filter_worktree_tabs, count, count)
+        }
         val avatar = session?.let {
             val metadata = it.metadata
             AvatarView.Content(
@@ -574,7 +648,136 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
                 harness = if (settings.showHarnessIconInSessionHeader) resolveAvatarHarness(metadata?.flavor, metadata?.client?.id) else null,
             )
         }
-        header.update(title, git.subtitle, git.changes, avatar)
+        header.update(headerTitle, subtitle, git.changes, avatar)
+    }
+
+    // Worktree tabs
+
+    /** The chat the header speaks for: this one once it exists, the one a stand-in was started beside until then. */
+    private val headerSessionId: String
+        get() = if (state.session != null) sessionId else pendingChat?.anchorSessionId ?: sessionId
+
+    /** The chip that stands for the open chat: the stand-in while the chat is unnamed, its session from the moment it is not. */
+    private val selectedTabId: String get() = pendingChat?.sessionId ?: sessionId
+
+    private val anchorMetadata get() = pendingChat?.anchorSessionId?.let { HomeServices.of(graph).session(it)?.metadata }
+
+    /** `resolveWorktreeTabs`: the checkout's chats, then the ones still being opened beside them, each chat once. */
+    private fun resolvedTabs(checkout: ProjectWorktree) =
+        resolveWorktreeTabs(checkout.tabs, pendingChatsBeside(pendingChats.values, checkout.tabs.map { it.id }))
+
+    private fun stripTabs(checkout: ProjectWorktree): List<ChatWorktreeTabStrip.Item> {
+        val resolved = resolvedTabs(checkout)
+        val newChat = context.getString(R.string.session_new_chat)
+        return resolved.tabs.map { tab ->
+            ChatWorktreeTabStrip.Item(
+                id = tab.id,
+                title = tab.name ?: newChat,
+                shimmers = tab.state == SessionState.Thinking,
+                blocked = tab.state == SessionState.PermissionRequired || tab.state == SessionState.InputRequired,
+                unread = tab.hasUnread,
+                pending = false,
+            )
+        } + resolved.pending.map { chat ->
+            ChatWorktreeTabStrip.Item(id = chat.id, title = newChat, shimmers = true, blocked = false, unread = false, pending = true)
+        }
+    }
+
+    /**
+     * The strip's `+`: a sibling chat, started where the open one runs and
+     * configured like it. Its tab and screen are the person's on the press;
+     * the start runs underneath, behind any other.
+     */
+    private fun newTab() {
+        val checkout = checkout ?: return
+        val openId = if (state.session != null) sessionId else pendingChat?.anchorSessionId ?: return
+        val anchor = HomeServices.of(graph).session(openId) ?: return
+        val starts = HomeServices.of(graph).pendingChats(context) ?: return
+        val picks = if (openId == sessionId) mirror else graph.account.value?.composer?.mirrors?.value?.get(openId)
+        val chat = starts.open(context, openId, checkout.tabs.map { it.id }, newSessionLikeSession(anchor, picks))
+        switchChat(chat.id)
+    }
+
+    /**
+     * The stand-in's record changed. Once it names its session the screen
+     * becomes that chat: the handover has written the session's draft, and
+     * the chat's screen takes this one's place with it. A start that isn't
+     * coming has said why, and the writing went back to the chat this was
+     * opened beside, which is where the screen goes.
+     */
+    private fun pendingChatChanged(chat: PendingChat?) {
+        if (chat == pendingChat && !pendingMove) return
+        pendingChat = chat
+        updatePlaceholder()
+        val target = when {
+            chat?.sessionId != null -> chat.sessionId
+            chat?.status == PendingChatStatus.Failed -> chat.anchorSessionId
+            else -> null
+        } ?: return
+        if (stack?.top !== this) {
+            pendingMove = true
+            return
+        }
+        pendingMove = false
+        switchChat(target)
+    }
+
+    /** SessionView's `showTabStrip`. */
+    private fun updateTabStrip() {
+        val checkout = checkout
+        val shown = checkout != null
+        if (checkout != null) {
+            if (tabStrip.visibility != View.VISIBLE) {
+                tabStrip.restore(inheritedStripOffset ?: stripOffsets()[checkout.id] ?: 0.0)
+                inheritedStripOffset = null
+            }
+            tabStrip.update(stripTabs(checkout), selectedTabId)
+        }
+        val visibility = if (shown) View.VISIBLE else View.GONE
+        if (tabStrip.visibility == visibility) return
+        tabStrip.visibility = visibility
+        root.requestLayout()
+    }
+
+    /** Switching swaps the chat in place rather than pushing a screen, so back still returns to the list. */
+    private fun selectTab(id: String) {
+        if (id == sessionId || id == selectedTabId) return
+        switchChat(id)
+    }
+
+    private fun switchChat(id: String) {
+        val stack = stack ?: return
+        keepStripOffset()
+        val next = ChatScreen(context, graph, id)
+        next.inheritedStripOffset = if (tabStrip.visibility == View.VISIBLE) tabStrip.offset else null
+        // A stand-in becoming its chat keeps the person typing, as iOS retargets the one composer.
+        next.inheritedFocus = standIn && composer.card.isTextFocused
+        if (standIn && composer.card.text.isNotEmpty()) next.inheritedText = composer.card.text to composer.card.selection.end
+        stack.replaceTop(next, animated = false)
+    }
+
+    /**
+     * Archiving the open tab moves the screen to its neighbour first, the
+     * tab to its left, so the chat is never seen coming apart; with no tab
+     * left the screen goes back.
+     */
+    private fun tabArchiving(archivedId: String) {
+        val checkout = checkout ?: return
+        if (archivedId != selectedTabId) return
+        val neighbour = neighbouringTabId(resolvedTabs(checkout).tabs, archivedId)
+        if (neighbour != null) switchChat(neighbour) else pop()
+    }
+
+    /** Where each checkout's strip was last scrolled to, for this account. */
+    private fun stripOffsets(): MutableMap<String, Double> {
+        val account = graph.account.value ?: return HashMap()
+        return synchronized(STRIP_OFFSETS) { STRIP_OFFSETS.getOrPut(account) { HashMap() } }
+    }
+
+    private fun keepStripOffset() {
+        val checkout = checkout ?: return
+        if (tabStrip.visibility != View.VISIBLE) return
+        stripOffsets()[checkout.id] = tabStrip.offset
     }
 
     private fun style(): ChatRowStyle {
@@ -830,6 +1033,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     private fun applyTabletBranch() {
         header.tablet = !branches.chatHeaderGlass
         header.headerMaxWidth = ContentWidth.headerMaxWidth(context)
+        tabStrip.glass = branches.worktreeStripGlass
         composer.zenMode = isZenMode
         if (branches.isTablet && !dockDetailsVisible) {
             dockDetailsVisible = true
@@ -852,11 +1056,24 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         VoiceCoordinator.of(graph).focus(sessionId)
         shown = true
         checkPaging()
+        if (pendingMove) pendingChatChanged(pendingChat)
+        if (inheritedFocus) {
+            inheritedFocus = false
+            composer.card.focus()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // The screen standing on a record that has settled or failed retires it on the way out.
+        val chat = pendingChat ?: return
+        if (chat.sessionId != null || chat.status == PendingChatStatus.Failed) HomeServices.of(graph).pendingChatsIfMade?.dismiss(chat.id)
     }
 
     override fun onDisappear() {
         super.onDisappear()
         shown = false
+        keepStripOffset()
         composer.card.blur()
     }
 
@@ -866,6 +1083,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             addView(placeholder)
             addView(scrim)
             addView(header)
+            addView(tabStrip)
             for (bar in dockBarViews) addView(bar)
             addView(composer)
             addView(scrollButton)
@@ -894,8 +1112,13 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
                     // TabletBranches: chatFloatingDock and chatInputPaddingH.
                     docked = branches.isTablet,
                     accessoryPaddingH = branches.chatInputPaddingH,
+                    headerAccessory = if (tabStrip.visibility == View.VISIBLE) WorktreeTabStripLayout.Metrics.height else 0.0,
                 ),
             )
+            layout.headerAccessory?.takeIf { tabStrip.visibility == View.VISIBLE }?.let { frame ->
+                tabStrip.maxWidth = ContentWidth.headerMaxWidth(context)
+                tabStrip.setFrame(frame)
+            }
             // Insets first, so the list lays out with them in this pass.
             list.setEdgeInsets(layout.newestEdgeInset, layout.oldestEdgeInset)
             list.setFrame(layout.list)
@@ -995,6 +1218,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     private companion object {
         /** USER_MESSAGE_BUBBLE_COLORS, in [BubblePalette.All]'s order. */
         val BUBBLE_KEYS = listOf("gray", "blue", "green", "purple", "rose", "sand")
+        /** Where each checkout's strip was last scrolled to, per account, so a screen on the same checkout comes back where the finger left it. */
+        val STRIP_OFFSETS = java.util.WeakHashMap<com.slopus.happy.sync.AccountSync, MutableMap<String, Double>>()
         const val COPIED_MS = 2000L
         const val DETAILS_FADE_MS = 200L
         const val FORM_KIND = "form"

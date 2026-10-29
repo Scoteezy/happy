@@ -171,6 +171,9 @@ class HomeSessionActions(
         }
     }
 
+    /** Before an archive starts: the chat screen moves off the tab that is going. */
+    var onBeforeArchive: ((String) -> Unit)? = null
+
     /**
      * The row leaves at once ([com.slopus.happy.home.SessionArchiver.archiving])
      * and comes back only if the machine and the server both refuse; that
@@ -178,6 +181,7 @@ class HomeSessionActions(
      * nothing is shown once another account is open.
      */
     fun archive(sessionId: String) {
+        onBeforeArchive?.invoke(sessionId)
         val account = graph.account.value ?: return
         val appContext = context
         detached.launch {

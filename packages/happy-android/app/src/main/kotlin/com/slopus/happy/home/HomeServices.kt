@@ -5,6 +5,7 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.NewSessionLabels
+import com.slopus.happy.model.PendingChat
 import com.slopus.happy.model.Session
 import com.slopus.happy.projects.GitStatusServices
 import com.slopus.happy.projects.ProjectServices
@@ -15,6 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -103,17 +106,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
     private fun makeNewSession(context: Context): NewSessionServices {
         val drafts = NewSessionDraftStore(context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE))
         val machineActions = LiveMachineActions { graph.account.value?.machineOps }
-        val starter = SessionStarter(
-            machines = { snapshots.value?.machines.orEmpty() },
-            sessions = { snapshots.value?.sessions.orEmpty() },
-            settings = { graph.settings.settings.value },
-            drafts = drafts,
-            machineActions = machineActions,
-            sessionActions = sessionActions,
-            sender = LiveFirstMessageSender({ graph.account.value }),
-            awaitSession = { id -> graph.account.value?.sender?.ensureSessionReady(id) ?: false },
-            scope = scope,
-        )
+        val starter = makeStarter(drafts, machineActions)
         val labels = NewSessionLabels(
             selectMachine = context.getString(R.string.home_dock_select_machine),
             project = context.getString(R.string.home_dock_picker_project),
@@ -128,6 +121,46 @@ class HomeServices private constructor(private val graph: AppGraph) {
         )
         return NewSessionServices(drafts, snapshots, graph.settings.settings, machineActions, starter, labels, context::getString, scope)
     }
+
+    private fun makeStarter(drafts: NewSessionDraftStore, machineActions: MachineActions) = SessionStarter(
+        machines = { snapshots.value?.machines.orEmpty() },
+        sessions = { snapshots.value?.sessions.orEmpty() },
+        settings = { graph.settings.settings.value },
+        drafts = drafts,
+        machineActions = machineActions,
+        sessionActions = sessionActions,
+        sender = LiveFirstMessageSender({ graph.account.value }),
+        awaitSession = { id -> graph.account.value?.sender?.ensureSessionReady(id) ?: false },
+        scope = scope,
+    )
+
+    private var pendingChatStarts: Pair<AccountSync, ChatPendingStarts>? = null
+
+    /**
+     * The worktree strip's starts for the open account (happy-ios
+     * `ChatPendingStarts.of`), made on first use; another account closes
+     * the last one's and starts over. Null when signed out.
+     */
+    fun pendingChats(context: Context): ChatPendingStarts? = synchronized(this) {
+        val account = graph.account.value ?: return null
+        pendingChatStarts?.takeIf { it.first === account }?.let { return it.second }
+        pendingChatStarts?.second?.close()
+        val drafts = NewSessionDraftStore(context.applicationContext.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE))
+        val starts = ChatPendingStarts(account, graph.store, makeStarter(drafts, LiveMachineActions { graph.account.value?.machineOps }))
+        pendingChatStarts = account to starts
+        startsState.value = starts
+        starts
+    }
+
+    private val startsState = MutableStateFlow<ChatPendingStarts?>(null)
+
+    /** The open account's chats being opened from the strip, by stand-in id; empty until `+` is first pressed. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val pendingChatRecords: Flow<Map<String, PendingChat>> = startsState.flatMapLatest { it?.chats ?: flowOf(emptyMap()) }
+
+    /** The open account's strip starts if any were made; nothing is made here. */
+    val pendingChatsIfMade: ChatPendingStarts?
+        get() = synchronized(this) { pendingChatStarts?.takeIf { it.first === graph.account.value }?.second }
 
     fun session(id: String): Session? = snapshots.value?.sessions?.find { it.id == id }
 

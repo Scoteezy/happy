@@ -71,6 +71,8 @@ class ChatListView(context: Context) : RecyclerView(context), ThemeAware {
         layoutManager = manager
         setAdapter(adapter)
         clipToPadding = false
+        // No grey wash over the whole list when it takes focus from a key press (iOS draws no focus ring there).
+        defaultFocusHighlightEnabled = false
         // No scroll indicator, as Telegram's chat list draws none.
         isVerticalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS

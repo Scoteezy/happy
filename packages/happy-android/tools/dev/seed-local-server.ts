@@ -466,7 +466,8 @@ async function main() {
         console.error('machine rpc', method, JSON.stringify(params))
         let answer: object
         if (method === 'spawn-happy-session') {
-            await new Promise((resolve) => setTimeout(resolve, 1200))
+            // SEED_SPAWN_DELAY_MS: a slower machine, to see what a chat looks like before it starts.
+            await new Promise((resolve) => setTimeout(resolve, Number(process.env.SEED_SPAWN_DELAY_MS ?? 1200)))
             answer = { type: 'success', sessionId: await spawn(String(params.directory ?? home), String(params.agent ?? 'claude')) }
         } else if (method === 'resume-happy-session') {
             // The agent comes back under the same session, which goes online again.
