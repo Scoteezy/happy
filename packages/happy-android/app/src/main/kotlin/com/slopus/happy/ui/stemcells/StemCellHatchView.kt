@@ -50,9 +50,7 @@ class StemCellHatchView(context: Context) : View(context) {
         val size = px(minOf(width, height))
         if (size <= 0 || !canPlay(this)) { finish(); return }
         image = picture
-        val sample = Bitmap.createScaledBitmap(picture, 1, 1, true)
-        tint = sample.getPixel(0, 0).let { if (Color.alpha(it) == 0) Theme.color(StemCellsPalette.stemCellMembrane) else ColorUtils.setAlphaComponent(it, 255) }
-        if (sample !== picture) sample.recycle()
+        tint = averageColor(picture) ?: Theme.color(StemCellsPalette.stemCellMembrane)
         val count = (StemCellHatch.TOTAL * 60).toInt() + 1
         val frames = StemCellHatch.frames(List(count) { it.toDouble() / (count - 1) * StemCellHatch.TOTAL }, size, seed)
         fun path(frame: StemCellHatch.Frame, scale: Double) = Path().apply {
@@ -125,6 +123,26 @@ class StemCellHatchView(context: Context) : View(context) {
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); if (!hasWindowFocus) finish(inLifecycle = true) }
 
     companion object {
+        /** Opacity-weighted whole-icon colour, not bilinear sampling of its centre. */
+        internal fun averageColor(picture: Bitmap): Int? {
+            // Bundled clay images are 64×64. getPixels returns unpremultiplied colours.
+            val pixels = IntArray(picture.width * picture.height)
+            picture.getPixels(pixels, 0, picture.width, 0, 0, picture.width, picture.height)
+            var alpha = 0L
+            var red = 0L
+            var green = 0L
+            var blue = 0L
+            for (pixel in pixels) {
+                val weight = Color.alpha(pixel).toLong()
+                alpha += weight
+                red += Color.red(pixel) * weight
+                green += Color.green(pixel) * weight
+                blue += Color.blue(pixel) * weight
+            }
+            if (alpha == 0L) return null
+            return Color.rgb((red.toDouble() / alpha).roundToInt(), (green.toDouble() / alpha).roundToInt(), (blue.toDouble() / alpha).roundToInt())
+        }
+
         fun canPlay(view: View): Boolean {
             if (!ValueAnimator.areAnimatorsEnabled() || !view.isAttachedToWindow || !view.hasWindowFocus() || !view.isShown) return false
             var current: View? = view

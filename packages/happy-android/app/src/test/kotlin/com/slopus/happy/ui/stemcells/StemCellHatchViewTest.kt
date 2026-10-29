@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.os.Looper
 import android.view.View
 import android.widget.FrameLayout
@@ -34,6 +35,20 @@ class StemCellHatchViewTest {
         root.layout(0, 0, 1080, 2400)
         activity.windowFocusChanged(true)
         try { body(root) } finally { activity.pause().stop().destroy(); motion(1f) }
+    }
+
+    @Test fun iconTintAveragesTheWholePictureWeightedByOpacity() {
+        val image = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        image.eraseColor(Color.RED)
+        for (x in 1..2) for (y in 1..2) image.setPixel(x, y, Color.WHITE)
+        assertEquals(Color.rgb(255, 64, 64), StemCellHatchView.averageColor(image))
+        image.eraseColor(Color.TRANSPARENT)
+        assertNull(StemCellHatchView.averageColor(image))
+        image.setPixel(0, 0, Color.RED)
+        image.setPixel(3, 3, Color.argb(85, 0, 0, 255))
+        assertEquals(Color.rgb(191, 0, 64), StemCellHatchView.averageColor(image))
+        assertFalse(image.isRecycled)
+        image.recycle()
     }
 
     @Test fun normalCompletionDetachAndWindowLossRestoreThePictureExactlyOnce() = visible { root ->
