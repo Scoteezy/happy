@@ -752,6 +752,33 @@ interface (200 until reported, capped at 600). Where there is no WebView
 MarkdownView's code block shows instead; layout tests see the code block
 unless they provide `true`.
 
+## Direct and Stem Cells
+
+Development and preview builds (happy-ios `Direct`, `StemCells`). The
+core is in `direct/` and `stemcells/`, plain Kotlin with iOS's tests; no
+views yet.
+
+- A paired computer is reached through `DirectTransport`. `DirectAccounts`
+  owns the paired computers, their identity loops and one
+  `DirectSyncEngine` each; the engine owns the account's SQLite
+  (`DirectSyncStorage`, `direct.sqlite` in the account's directory), the
+  desktop bootstrap, the event stream, and the settings and message
+  outboxes, and feeds its `StemCellsStore` (`startExternal`,
+  `externalResync`, `externalEvent`). It is the conversations'
+  `StemCellPersistence`.
+- Stores and engines take a `CoroutineScope` that runs one coroutine at a
+  time; it plays the Swift actor. Public calls hop onto it with
+  `withContext(confined)`. Blocking I/O goes to an `io` context the
+  caller can replace: tests pass `EmptyCoroutineContext` so virtual time
+  never waits on a real thread.
+- Credentials never touch disk in the clear: `SecureStoreDirectCredentialStore`
+  keeps them in the secure store, `direct-accounts.json` only names them.
+- `StemCellsHarnessTransport` (debug) is a fake computer over
+  `assets/harness/stem-cells-computer.json`, written from happy-agent's
+  API.md, which the iOS reference host in `.context/` reads too. It serves
+  the desktop bootstrap, settings, identity and the Stem Cells routes, and
+  answers a send with a scripted, streamed reply.
+
 ## Stories
 
 Development and preview builds, over a Direct computer (happy-ios
