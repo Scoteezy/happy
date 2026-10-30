@@ -9,7 +9,6 @@ import android.view.Gravity
 import android.view.View
 import android.widget.PopupMenu
 import android.widget.ProgressBar
-import android.widget.ScrollView
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
@@ -50,10 +49,17 @@ import kotlinx.coroutines.withContext
  * Chat/MessageDetail/MessageDetailViewController.swift.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class MessageDetailScreen(context: Context, private val graph: AppGraph, override val sessionId: String, private val messageId: String) : BarScreen(context), SessionRoute {
+class MessageDetailScreen internal constructor(
+    context: Context,
+    private val graph: AppGraph,
+    override val sessionId: String,
+    private val messageId: String,
+    /** Optional preparation boundary for deterministic async/lifecycle tests. */
+    private val preparePlan: ((MessageDetailInput, Double) -> ChatRowPlan)? = null,
+) : BarScreen(context), SessionRoute {
     private val renderer = MessageDetailRenderer(context.resources, ChatRowRenderer(context.resources))
-    private val scroll = ScrollView(context)
-    private val canvas = ChatRowView(context)
+    private val scroll = MessageDetailScrollView(context)
+    private val canvas get() = scroll.canvas
     private val spinner = ProgressBar(context)
     private val content = Content(context)
 
@@ -73,9 +79,6 @@ class MessageDetailScreen(context: Context, private val graph: AppGraph, overrid
         bar.plainTitle = true
         bar.titleEllipsize = TextUtils.TruncateAt.MIDDLE
         bar.title = context.getString(R.string.common_message)
-        scroll.isFillViewport = false
-        scroll.clipToPadding = false
-        scroll.addView(canvas)
         scroll.visibility = View.GONE
         canvas.onAction = ::perform
         content.addView(scroll)
@@ -148,9 +151,9 @@ class MessageDetailScreen(context: Context, private val graph: AppGraph, overrid
         if (lastInput == input to width) return
         lastInput = input to width
         scope.launch {
-            val plan = withContext(Dispatchers.Default) { renderer.plan(input, width) }
-            if (lastInput != input to width) return@launch
-            canvas.bind(plan)
+            val plan = withContext(Dispatchers.Default) { preparePlan?.invoke(input, width) ?: renderer.plan(input, width) }
+            if (lastInput != input to width || input.env != TextLayouts.Env(Theme.density, Theme.textScale)) return@launch
+            scroll.show(plan, input.env)
             updateState()
         }
     }

@@ -29,7 +29,7 @@ import kotlinx.serialization.json.*
 import java.io.File
 
 /** Only the isolated APK can instantiate this; no production graph/transport hooks. */
-class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false) {
+class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false, messageReading: Boolean = false) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val scenario: TaskRelayScenario
     private val unrelatedServer: FakeHappyServer?
@@ -43,6 +43,7 @@ class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, 
         // MockWebServer's bind is explicitly 127.0.0.1:0 and completes before
         // constructing the unchanged real transport/account graph.
         scenario = runBlocking(Dispatchers.IO) { TaskRelayScenario(fixture.getValue("machine").jsonObject, botFaces, failFirstAvatar, pictures = dockPictures).start() }
+        if (messageReading) runBlocking(Dispatchers.IO) { MessageReadingCapture.seed(scenario.server) }
         unrelatedServer = if (importServer) runBlocking(Dispatchers.IO) {
             FakeHappyServer(secret = ByteArray(32) { 31 }, accountId = "unrelated-import-account").start()
         } else null
@@ -206,7 +207,7 @@ class TaskRelayHarnessActivity : ComponentActivity() {
         }
         val importServer = intent.getBooleanExtra("importServer", false)
         app.enableTaskRelay(intent.getBooleanExtra("botFaces", false), intent.getBooleanExtra("failFirstAvatar", false),
-            intent.getBooleanExtra("dockPictures", false), importServer)
+            intent.getBooleanExtra("dockPictures", false), importServer, intent.getBooleanExtra("messageReading", false))
         val graph = app.graph
         lifecycleScope.launch {
             withTimeout(30_000) {

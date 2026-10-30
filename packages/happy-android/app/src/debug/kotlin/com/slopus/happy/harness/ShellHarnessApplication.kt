@@ -20,15 +20,16 @@ import kotlinx.coroutines.sync.withLock
 class ShellHarnessApplication : HappyApplication() {
     private var relayNamespace: String? = null
     private var relay: TaskRelayRuntime? = null
+    private var messageReadingCapture: MessageReadingCapture? = null
     private var graphCreated = false
     private val relayCloseLock = Mutex()
 
-    fun enableTaskRelay(botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false) {
+    fun enableTaskRelay(botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false, messageReading: Boolean = false) {
         check(packageName == "com.slopus.happy.dev.shellharness")
         check(!graphCreated) { "Force-stop the isolated harness before changing fixture modes" }
         super.getSharedPreferences("task-relay-mode", MODE_PRIVATE).edit().putBoolean("enabled", true)
             .putBoolean("botFaces", botFaces).putBoolean("failFirstAvatar", failFirstAvatar).putBoolean("dockPictures", dockPictures)
-            .putBoolean("importServer", importServer).commit()
+            .putBoolean("importServer", importServer).putBoolean("messageReading", messageReading).commit()
     }
 
     fun useOfflineShellFixture() {
@@ -51,7 +52,10 @@ class ShellHarnessApplication : HappyApplication() {
 
     suspend fun closeTaskRelay() = withContext(NonCancellable) {
         android.util.Log.i("TaskRelayFixture", "close requested relayPresent=${relay != null}")
-        relayCloseLock.withLock { relay?.close(); relay = null }
+        relayCloseLock.withLock {
+            messageReadingCapture?.close(); messageReadingCapture = null
+            relay?.close(); relay = null
+        }
     }
 
     override fun onTerminate() {
@@ -68,7 +72,10 @@ class ShellHarnessApplication : HappyApplication() {
             relayNamespace = "task-relay-${java.util.UUID.randomUUID()}"
             val mode = super.getSharedPreferences("task-relay-mode", MODE_PRIVATE)
             return TaskRelayRuntime(this, mode.getBoolean("botFaces", false), mode.getBoolean("failFirstAvatar", false),
-                mode.getBoolean("dockPictures", false), mode.getBoolean("importServer", false)).also { relay = it }.graph
+                mode.getBoolean("dockPictures", false), mode.getBoolean("importServer", false), mode.getBoolean("messageReading", false))
+                .also { relay = it }.graph.also { graph ->
+                    if (mode.getBoolean("messageReading", false)) messageReadingCapture = MessageReadingCapture(this, graph)
+                }
         }
         val fixtureScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
         val fixture = assets.open("harness/stem-cells-computer.json").bufferedReader().use { it.readText() }
