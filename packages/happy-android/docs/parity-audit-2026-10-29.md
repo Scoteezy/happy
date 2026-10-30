@@ -289,6 +289,78 @@ device jobs remained sequential and bounded. No production install, signing,
 publication or store validation occurred. Dock attachments and bot faces are
 not covered by this text-creation milestone.
 
+## Relay troubleshooting: device-verified implementation
+
+Source checkpoint: `874fd38f6540bcd46a4b2c2cb7f8b208892eef25`.
+
+Both Home entry points now open the native-style guide, grouped computers,
+machine details and Copy AI prompt. The screen captures its opening account,
+observes only while visible, rejects stale-account actions, retains the last
+valid content on read failure and resets “Copied” after two seconds. Its
+guide uses the frozen native layout metrics and off-main text measurement.
+
+The account owns one shared off-main feed. SQLite projects only the machine
+grouping/log fields and the newest known-machine, non-side-chat session;
+unrelated message/outbox changes do not trigger it. Android SQLite builds
+without JSON1 use a streaming metadata fallback, tested against the narrow
+query with sorting ties, strict JSON types, deletions and 1,000 sessions.
+That is compatibility unit coverage, not an Android 8 device test.
+
+Current focused results: **15 app tests / 3 suites**, plus **4 exact-frame
+layout tests**, no failures/errors/skips. The isolated required-Tailcat APK
+assembled successfully. Baseline Android capture is
+`.context/evidence/relay-troubleshoot/android/troubleshoot-flow.mp4`
+(69.311744s): offline banner and empty-home checklist entry, guide, Copied/
+reset, machine details and return. Native comparison under `native/` passed
+one UI test in 9.334s, recording 20.316667s. The native scratch host opens the
+real troubleshooting controller with the same fictional offline machine;
+the frozen iOS tree is unchanged. Guide stills were personally compared.
+These checks do not establish live connectivity or machine repair.
+
+Terminal selection is now device verified under `android-selection3/`.
+Its complete replay passed (75.268878s recording); all 12 XML hierarchies
+parse, and owned happy36 PID 8991 exited before the full regression build.
+The initial replay was a capture-tool false negative: Android deliberately
+filters selectable-text click flags, and its non-focused floating toolbar is
+absent from uiautomator's active-window XML. A personally inspected screenshot
+showed the native Copy/Share/Select all toolbar and handles selecting `happy`,
+not `$ `. The corrected fixed-emulator check taps that visible toolbar;
+`command-copy-proof.log` records selection `2:7` and `commandCopied=true`.
+The OS clipboard preview also visibly contains exactly `happy`. No production
+touch fix was needed. The opt-in, isolated-only probe logs a fixed boolean
+clipboard assertion, never clipboard contents.
+
+Preserved `app-shellharness-capture461.apk`: 113,467,138 bytes, SHA-256
+`5022d29bebe988345cec8331384df9d00aa64233aee30b1b76f7f754d5723bde`.
+It was built immediately before the source commit and records `12918614f`
+build metadata; its runtime source matches the checkpoint. Baseline capture
+predates the final same-account cached-prompt re-enable-on-return guard and
+the diagnostic probe; the corrected replay includes both.
+
+At exact source `874fd38f6`, the full fresh ordinary-debug/no-harness run
+passed in **2m30s**: app **1328/188**, layout **595/108**, crypto **36/5**,
+icons **6/2**, vendor ElevenLabs **4/1** tests/suites — **1969 tests / 304
+suites**, zero failures/errors/skips. All five test tasks actually executed
+with `--rerun`; required-Tailcat ordinary debug assembly passed. Gradle:
+26 executed, 14 from cache, 61 up-to-date. Owned PIDs 13357/13460 exited.
+Log: `full-ordinary-debug.log`; XML preserved under `full-test-results/`.
+Ordinary APK manifest/DEX/assets checks confirm fixture exclusion, correct
+`com.slopus.happy.dev` package, both JNI ABIs and 16KB ZIP alignment. Preserved
+`app-ordinary-debug-874fd38f6.apk`: 112,845,436 bytes, SHA-256
+`0b369652e30e0f3b7aed794fe9e479ea4e899f0e1c8309a5c76926de4209cf20`.
+Genuine no-harness `:app:compileReleaseKotlin :app:assembleRelease
+-Phappy.requireTailcat=true` passed at that source in **4m26s**, including R8,
+lint and release keep checks (17 executed, 80 up-to-date). Owned PIDs
+15929/15961 exited. `production-release.log` and `production-*` preserve the
+checks. Actual release manifest, DEX, entries and R8 mapping exclude all
+fixture/testing/mockwebserver/probe code, routes, assets and permissive
+network policy. The correct `com.ex3ndr.happy` APK is non-debuggable and
+unsigned, includes both Tailcat JNI ABIs and passes 16KB ZIP alignment.
+Preserved `app-release-874fd38f6-unsigned.apk`: **96,400,176 bytes**, SHA-256
+`2ef8d71f89e1dbde1487dfce8bf2518f75ef516dddd1bbc522ff47c6c438b255`.
+All device/build jobs were sequential and bounded; no signing, production
+install, publication or store validation occurred.
+
 ## Confirmed missing behavior
 
 | Area | Native reference | Android gap |
@@ -296,8 +368,8 @@ not covered by this text-creation milestone.
 | Relay Home task rows | `HappyCore/Home/ProjectHomeList.swift:119,256`, `HappyCore/Home/SessionList.swift:312`, `HappyStore/SessionState.swift:72` | Closed for row rendering: classification, ordering, retired exclusion, name/folder/glyph and grouped/flat rows pass focused/full tests and isolated Android/native comparison. Dock creation remains separate below. |
 | Relay Home task actions | `HappyCore/Home/SessionQuickActions.swift:100`, `HappyUI/Screens/SessionListScreens.swift:714`, `HappyUI/Screens/HomeSessionActions.swift:225` | Implemented and focused/device verified above: capability Leave/swipe, ownership Archive, machine-only routes, optimistic restoration and account isolation. Successful live machine operations remain unverified. |
 | Home dock Task mode | `HappyCore/Home/HomeDockKind.swift`, `HappyUI/Screens/HomeDockScreens.swift:596` | Text creation is implemented and verified above, including real-shell encrypted fake RPC/message flow, navigation and reset. Pictures remain separate below; no successful live machine claim. |
-| Dock bot face picker and pictures | Native `HomeDockScreens.swift:463,732` | Android has Bot naming/creation but no face picker in `HomeDockFocusView`; dock attachments need wiring. Do not equate generic chat attachment support with the dock. |
-| Relay troubleshooting | Native `HappyUI/Screens/HomeScreens.swift:650` | `ui/home/HomeScreen.kt:216,343` still routes to `notPorted`. This remains an unfinished required action. |
+| Dock bot face picker and pictures | Native `HomeDockScreens.swift:463,732`, `Home/SessionStarter.swift:470` | Android has Bot naming/creation but no face picker or painter/wearer injection: `SessionStarter` defaults to `Painting / No faces here`, and `HomeDockController` discards `faceFailure` instead of offering retry. The seed resolver and `SessionOps.setAvatar` exist but are not connected. Dock attachments also need wiring; generic chat attachment support does not complete the dock. |
+| Relay troubleshooting | Native `HappyUI/Screens/HomeScreens.swift:650` | Closed for the guide, account-owned feed, both Home routes, AI copy, machine navigation and terminal selection: focused/full tests, native comparison, isolated device replay and ordinary/unsigned-production isolation checks pass above. No live connectivity/repair claim. |
 | Imported-account server confirmation | Native `HappyUI/Screens/AccountServerScreens.swift`, `Navigation/AppCoordinator.swift:282` | No equivalent confirmation route found in Android auth/coordinator. |
 | Message-detail reading position | Native `HappyUI/Chat/MessageDetail/MessageDetailViewController.swift:294` | Android's pure `MessageDetailReadingPlace` exists but is not wired to the message screen's text-size changes. |
 

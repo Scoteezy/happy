@@ -211,6 +211,44 @@ item once it exists.
   audit. Dock Task creation and successful live-machine operations remain
   separate from this verified action milestone.
 
+## Relay troubleshooting verification (2026-10-30)
+
+- Source `874fd38f6540bcd46a4b2c2cb7f8b208892eef25` replaces both Home
+  placeholders with the native three-check guide, grouped machine links and
+  AI prompt copy/two-second feedback. It captures account identity, observes
+  only while visible, rejects stale actions and retains last valid content
+  across a read failure. Its shared account-owned feed reads a narrow SQLite
+  projection off main; a tested streaming fallback supports SQLite without
+  JSON1 without a schema change. Actual Android 8 device coverage is not claimed.
+- Exact-frame tests port the native guide/copy layout. Guide text is planned
+  off main; terminal lines use Android selection with `$ ` excluded. Initial
+  selection replay failures were XML-tool false negatives: the floating
+  toolbar was visible but absent from the active-window hierarchy. Corrected
+  replay verifies selection `2:7`, a fixed boolean clipboard assertion and
+  the visible clipboard preview containing exactly `happy`.
+- Evidence: `.context/evidence/relay-troubleshoot/`. Baseline Android movie
+  **69.311744s**; final `android-selection3/troubleshoot-flow.mp4`
+  **75.268878s**, both Home entry points, guide, terminal copy, AI feedback,
+  machine details/back, all **12 XML** files valid. Owned emulator PID 8991
+  exited. Native comparison passed **1 UI test / 9.334s**, movie **20.316667s**;
+  dedicated simulator shut down. Native guide was personally compared with
+  Android; no frozen iOS source changed. Fixtures are fictional/offline,
+  not evidence of live connectivity or successful machine repair.
+- At exact source, fresh **ordinary-debug/no-harness** verification passed
+  **1969 tests / 304 suites**, zero failures/errors/skips (app 1328/188,
+  layout 595/108, crypto 36/5, icons 6/2, vendor 4/1). All five test tasks
+  actually ran; required-Tailcat debug assembly passed in **2m30s**.
+  Owned PIDs 13357/13460 exited.
+- Unsigned no-harness production Kotlin compilation/assembly passed in
+  **4m26s**, including R8/lint/keep checks; owned PIDs 15929/15961 exited.
+  Actual ordinary/release manifest, DEX/assets and release mapping checks
+  exclude fixtures and probes. Correct package IDs, both JNI ABIs and 16KB
+  ZIP alignment pass; production is non-debuggable and unsigned. Preserved
+  APK hashes, sizes and logs are in the audit. No production install,
+  signing, publication or store validation occurred. The older Home
+  checklist's terminal block remains display-only; this slice verifies
+  selection in the new troubleshooting guide.
+
 ## Relay Task dock text-creation verification (2026-10-29)
 
 - Source `0f3e74eea870e1438dbc08b516cb684080bcd2d2` adds strict Task capability,
@@ -672,7 +710,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [x] Create account (against the local `happy-server standalone:dev`; `onboarding/onboarding-flow.mp4`, `09-signed-in-home.png`)
 - [~] Restore with QR (shows the code, `06-restore-qr.png`), restore with the secret key (`07-restore-key.png`, bad key `08-restore-invalid.png`). Approval from a second device not exercised yet
 - [x] Custom server screen (`onboarding/03-server.png`, confirm `04-server-confirm.png`, custom `05-server-custom.png`, in `onboarding-flow.mp4`); onboarding settings: server, Direct connection toggle, "Log out and start over" with its confirmation (`home/03-onboarding-settings.png`)
-- [~] Link Your Computer (`home/02-link.png`: checklist ticks kept in local settings, Scan enabled once both are ticked, paste link, approve the terminal, busy until the computer arrives or 10 s, inline failure line). Offline checklist built (title per computer count, terminal block, Troubleshoot, Link another, Show archived) but not yet seen on the emulator; troubleshoot screen to do. Terminal lines are not selectable yet
+- [~] Link Your Computer (`home/02-link.png`: checklist ticks kept in local settings, Scan enabled once both are ticked, paste link, approve the terminal, busy until the computer arrives or 10 s, inline failure line). Offline checklist now seen on the emulator; both it and the list banner open the implemented troubleshooting guide, machine links and AI copy. See the troubleshooting verification section above for focused/full/native/device evidence and its limits. Terminal selection in the new guide is device verified (Copy excludes `$ `); the older checklist's terminal lines remain display-only.
 - [~] Connect a terminal by QR or URL; `happy://terminal` deep links (the links are done, see Deep links; scanning needs Play services' code scanner, not checked on the emulator)
 - [ ] Server confirmation for imported accounts
 
