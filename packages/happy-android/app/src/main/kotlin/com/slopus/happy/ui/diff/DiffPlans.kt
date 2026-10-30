@@ -158,6 +158,8 @@ data class DiffViewOptions(
      * fetch a wider diff (`onExpandContext`) say yes.
      */
     val canExpandContext: Boolean = false,
+    /** Long press offers the platform Copy menu for a code line, off in chat tool diffs. */
+    val selectable: Boolean = false,
 )
 
 /** One run of a code line: where it sits in the row (px from the text's start) and how it is coloured. */
@@ -221,6 +223,13 @@ class DiffFilePlan(
     }
 
     val height: Double get() = layout.height
+
+    /** Native DiffRow.selectableText: whole displayed line, not its gutter or visible slice. */
+    fun selectableText(y: Double): String? {
+        if (!options.selectable) return null
+        val index = layout.rowIndex(y - layout.canvas.minY) ?: return null
+        return (rows[index] as? DiffRowDraw.Line)?.text?.ifEmpty { " " }
+    }
 
     private fun draw(row: DiffRow, paint: TextPaint): DiffRowDraw = when (row) {
         is DiffRow.Line -> {

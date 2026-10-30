@@ -1,6 +1,8 @@
 package com.slopus.happy.ui.diff
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.text.TextPaint
@@ -9,6 +11,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
+import android.widget.PopupMenu
+import com.slopus.happy.R
 import com.slopus.happy.diff.DiffLineType
 import com.slopus.happy.layout.DiffPalette
 import com.slopus.happy.layout.DiffTextStyles
@@ -75,7 +79,12 @@ class DiffChunkView(context: Context) : ViewGroup(context), ThemeAware {
         fileViews.zip(plan.layout.frames).forEach { (view, frame) -> view.setFrame(frame) }
     }
 
-    override fun applyTheme() = Theme.applyTree(this)
+    override fun applyTheme() {
+        // Theme.applyTree calls ThemeAware.applyTheme on its root. Re-entering
+        // it with this view would recurse forever during a font/theme change.
+        fileViews.forEach { Theme.applyTree(it) }
+        invalidate()
+    }
 }
 
 /**
@@ -104,6 +113,7 @@ class DiffFileView(context: Context) : ViewGroup(context) {
     private var scrollable = false
     private val gutter = DiffGutterView(context)
     private val showMore = DiffShowMoreBar(context).apply { setOnClickListener { onShowMore?.invoke() } }
+    private var copyMenu: PopupMenu? = null
 
     init {
         addView(scroll)
@@ -111,6 +121,31 @@ class DiffFileView(context: Context) : ViewGroup(context) {
         addView(showMore)
         setWillNotDraw(false)
         code.onTap = { y -> canvasTapped(y) }
+        code.onHold = ::copyLine
+    }
+
+    private fun copyLine(x: Float, y: Float) {
+        val owner = plan ?: return
+        val text = owner.selectableText(px(y)) ?: return
+        copyMenu?.dismiss()
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        val anchor = View(context)
+        addView(anchor)
+        anchor.setFrame(Rect(px(scroll.left + x - scroll.scrollX), px(scroll.top + y), 1.0, 1.0))
+        val menu = PopupMenu(context, anchor)
+        menu.menu.add(context.getString(R.string.common_copy))
+        menu.setOnMenuItemClickListener {
+            if (plan !== owner) return@setOnMenuItemClickListener false
+            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                .setPrimaryClip(ClipData.newPlainText(null, text))
+            true
+        }
+        menu.setOnDismissListener {
+            removeView(anchor)
+            if (copyMenu === menu) copyMenu = null
+        }
+        copyMenu = menu
+        menu.show()
     }
 
     private fun canvasTapped(y: Float): Boolean {
@@ -125,6 +160,7 @@ class DiffFileView(context: Context) : ViewGroup(context) {
 
     fun apply(plan: DiffFilePlan) {
         if (plan === this.plan) return
+        copyMenu?.dismiss()
         val keepOffset = this.plan?.file?.path == plan.file.path
         this.plan = plan
         code.plan = plan
@@ -150,6 +186,7 @@ class DiffFileView(context: Context) : ViewGroup(context) {
     }
 
     override fun onDetachedFromWindow() {
+        copyMenu?.dismiss()
         viewTreeObserver.removeOnScrollChangedListener(scrolled)
         super.onDetachedFromWindow()
     }
@@ -253,9 +290,11 @@ private class DiffCodeView(context: Context) : View(context) {
 
     /** A tap at y px in the view; true when it was used. */
     var onTap: ((Float) -> Boolean)? = null
+    var onHold: ((Float, Float) -> Unit)? = null
     private val taps = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
-        override fun onDown(e: MotionEvent) = plan?.options?.canExpandContext == true
+        override fun onDown(e: MotionEvent) = plan?.options?.canExpandContext == true || plan?.selectableText(px(e.y)) != null
         override fun onSingleTapUp(e: MotionEvent) = onTap?.invoke(e.y) ?: false
+        override fun onLongPress(e: MotionEvent) { if (plan?.selectableText(px(e.y)) != null) onHold?.invoke(e.x, e.y) }
     })
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")

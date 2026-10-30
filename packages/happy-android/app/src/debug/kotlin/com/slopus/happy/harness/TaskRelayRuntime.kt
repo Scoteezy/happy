@@ -29,12 +29,13 @@ import kotlinx.serialization.json.*
 import java.io.File
 
 /** Only the isolated APK can instantiate this; no production graph/transport hooks. */
-class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false, messageReading: Boolean = false, patchScenario: String? = null) {
+class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false, messageReading: Boolean = false, patchScenario: String? = null, diffPermission: Boolean = false) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val scenario: TaskRelayScenario
     private val unrelatedServer: FakeHappyServer?
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     val graph: AppGraph
+    val permissionAnswers: List<JsonObject>
     @Volatile private var expectedFacePng: ByteArray? = null
 
     init {
@@ -45,6 +46,7 @@ class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, 
         scenario = runBlocking(Dispatchers.IO) { TaskRelayScenario(fixture.getValue("machine").jsonObject, botFaces, failFirstAvatar, pictures = dockPictures).start() }
         if (messageReading) runBlocking(Dispatchers.IO) { MessageReadingCapture.seed(scenario.server) }
         if (patchScenario != null) runBlocking(Dispatchers.IO) { CodexPatchCapture.seed(scenario.server, patchScenario) }
+        permissionAnswers = if (diffPermission) runBlocking(Dispatchers.IO) { DiffPermissionCapture.seed(scenario.server) } else emptyList()
         unrelatedServer = if (importServer) runBlocking(Dispatchers.IO) {
             FakeHappyServer(secret = ByteArray(32) { 31 }, accountId = "unrelated-import-account").start()
         } else null
@@ -208,7 +210,7 @@ class TaskRelayHarnessActivity : ComponentActivity() {
         }
         val importServer = intent.getBooleanExtra("importServer", false)
         app.enableTaskRelay(intent.getBooleanExtra("botFaces", false), intent.getBooleanExtra("failFirstAvatar", false),
-            intent.getBooleanExtra("dockPictures", false), importServer, intent.getBooleanExtra("messageReading", false), intent.getStringExtra("patchScenario"))
+            intent.getBooleanExtra("dockPictures", false), importServer, intent.getBooleanExtra("messageReading", false), intent.getStringExtra("patchScenario"), intent.getBooleanExtra("diffPermission", false))
         val graph = app.graph
         lifecycleScope.launch {
             withTimeout(30_000) {

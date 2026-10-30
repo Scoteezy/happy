@@ -29,8 +29,8 @@ sealed interface ChatDrawItem {
     class Text(val layout: StaticLayout, val frame: Rect, val alpha: Double = 1.0) : ChatDrawItem
     class Box(val box: ChatBox) : ChatDrawItem
     class Glyph(val icon: Icon, val size: Double, val frame: Rect, val tint: ColorToken) : ChatDrawItem
-    /** Content wider than the row that scrolls sideways in [frame] (a code block, a table). */
-    class Scroller(val plan: ChatRowPlan, val frame: Rect, val radius: Double = 0.0) : ChatDrawItem
+    /** Sideways code/table content, or a capped vertical permission list. */
+    class Scroller(val plan: ChatRowPlan, val frame: Rect, val radius: Double = 0.0, val vertical: Boolean = false) : ChatDrawItem
     /** A running tool's spinner. */
     class Spinner(val frame: Rect, val tint: ColorToken) : ChatDrawItem
     /** A running tool's timer, counting from [since] (ms). */

@@ -14,7 +14,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.widget.HorizontalScrollView
+import android.widget.FrameLayout
 import android.widget.ProgressBar
+import androidx.core.widget.NestedScrollView
 import com.slopus.happy.icons.IconCatalog
 import com.slopus.happy.layout.ChatTextStyles
 import com.slopus.happy.layout.Palette
@@ -131,6 +133,20 @@ internal class ChatPlanPainter {
     }
 }
 
+/** The outer RecyclerView must not intercept a drag begun inside the capped list. */
+private class PermissionScrollView(context: Context) : NestedScrollView(context) {
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && (canScrollVertically(-1) || canScrollVertically(1))) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
+        val handled = super.dispatchTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        return handled
+    }
+}
+
 /** Draws a plan that scrolls sideways (a code block's strip, a table's grid). */
 internal class ChatPlanView(context: Context) : View(context) {
     private val painter = ChatPlanPainter()
@@ -160,7 +176,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     /** A tap or a long press on something with an action; the frame is the hit's, in the row. */
     var onAction: ((ChatRowAction, Rect, Boolean) -> Unit)? = null
 
-    private val scrollers = ArrayList<Pair<HorizontalScrollView, ChatDrawItem.Scroller>>()
+    private val scrollers = ArrayList<Pair<FrameLayout, ChatDrawItem.Scroller>>()
     private val spinners = ArrayList<Pair<ProgressBar, ChatDrawItem.Spinner>>()
     private val diffs = ArrayList<Pair<DiffChunkView, ChatDrawItem.Diff>>()
     private val diffHeaders = ArrayList<Pair<com.slopus.happy.ui.diff.DiffFileHeaderView, ChatDrawItem.DiffHeader>>()
@@ -203,10 +219,11 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
 
     fun bind(plan: ChatRowPlan) {
         if (this.plan === plan) return
+        val previousId = this.plan?.id
         this.plan = plan
         alpha = plan.alpha.toFloat()
         contentDescription = plan.accessibilityLabel
-        for ((view, _) in scrollers) removeView(view)
+        val previousScrollers = scrollers.toList()
         scrollers.clear()
         for ((view, _) in spinners) removeView(view)
         spinners.clear()
@@ -229,21 +246,39 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         for (item in plan.items) {
             when (item) {
                 is ChatDrawItem.Scroller -> {
-                    val content = ChatPlanView(context).apply { this.plan = item.plan }
-                    val scroll = HorizontalScrollView(context).apply {
-                        isHorizontalScrollBarEnabled = false
-                        overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
-                        addView(content)
-                        if (item.radius > 0) {
-                            outlineProvider = object : ViewOutlineProvider() {
-                                override fun getOutline(view: View, outline: Outline) {
-                                    outline.setRoundRect(0, 0, view.width, view.height, dp(item.radius))
-                                }
-                            }
-                            clipToOutline = true
+                    // A permission update keeps the same list's scroll, but a recycled
+                    // chat row must never inherit another tool's position or actions.
+                    val kept = previousScrollers.getOrNull(scrollers.size)?.takeIf {
+                        previousId == plan.id && item.vertical && it.second.vertical
+                    }?.first
+                    val scroll = kept ?: if (item.vertical) {
+                        PermissionScrollView(context).apply {
+                            isFillViewport = false
+                            addView(ChatRowView(context))
+                        }
+                    } else {
+                        HorizontalScrollView(context).apply {
+                            isHorizontalScrollBarEnabled = false
+                            addView(ChatPlanView(context))
                         }
                     }
-                    addView(scroll)
+                    when (val content = scroll.getChildAt(0)) {
+                        is ChatRowView -> {
+                            content.onAction = { action, frame, hold ->
+                                onAction?.invoke(action, frame.offsetBy(item.frame.minX - px(scroll.scrollX), item.frame.minY - px(scroll.scrollY)), hold)
+                            }
+                            content.bind(item.plan)
+                        }
+                        is ChatPlanView -> content.plan = item.plan
+                    }
+                    scroll.overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
+                    scroll.clipToOutline = item.radius > 0
+                    if (item.radius > 0) scroll.outlineProvider = object : ViewOutlineProvider() {
+                        override fun getOutline(view: View, outline: Outline) {
+                            outline.setRoundRect(0, 0, view.width, view.height, dp(item.radius))
+                        }
+                    }
+                    if (scroll.parent == null) addView(scroll)
                     scrollers += scroll to item
                 }
                 is ChatDrawItem.Spinner -> {
@@ -307,6 +342,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
             }
         }
         pulsing = painter.hasPulse(plan.items)
+        for ((view, _) in previousScrollers) if (scrollers.none { it.first === view }) removeView(view)
         for (view in spareDiffs) removeView(view)
         for (view in spareMermaids) removeView(view)
         for (view in spareImages) removeView(view)

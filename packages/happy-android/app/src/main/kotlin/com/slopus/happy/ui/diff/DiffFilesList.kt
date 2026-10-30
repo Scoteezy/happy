@@ -28,6 +28,8 @@ import com.slopus.happy.layout.ColorToken
 import com.slopus.happy.layout.DiffPalette
 import com.slopus.happy.layout.DiffTextStyles
 import com.slopus.happy.layout.LayoutInsets
+import com.slopus.happy.layout.KeptPlace
+import com.slopus.happy.layout.ScrollPlace
 import com.slopus.happy.layout.Measurable
 import com.slopus.happy.layout.Palette
 import com.slopus.happy.layout.Rect
@@ -37,6 +39,7 @@ import com.slopus.happy.layout.diff.DiffFileHeaderLayout
 import com.slopus.happy.layout.diff.DiffFilesListLayout
 import com.slopus.happy.layout.diff.DiffImageLayout
 import com.slopus.happy.layout.diff.DiffSectionLayout
+import com.slopus.happy.layout.diff.DiffReadingPlace
 import com.slopus.happy.layout.diff.DiffTextBox
 import com.slopus.happy.ui.components.FileIconView
 import com.slopus.happy.ui.components.IconView
@@ -45,6 +48,7 @@ import com.slopus.happy.ui.text.TextLayouts
 import com.slopus.happy.ui.theme.Theme
 import com.slopus.happy.ui.theme.ThemeAware
 import com.slopus.happy.ui.view.dp
+import com.slopus.happy.ui.view.px
 import com.slopus.happy.ui.view.setFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -192,6 +196,8 @@ class DiffSectionPlan(
     val layout: DiffSectionLayout
 
     val id: String get() = input.item.id
+    val readingSection: DiffReadingPlace.Section
+        get() = DiffReadingPlace.Section(layout, (body as? Body.Files)?.plans?.map { it.layout }.orEmpty())
 
     init {
         val item = input.item
@@ -229,7 +235,7 @@ class DiffSectionPlan(
                     }
                 }
                 is DiffFileItem.Body.Files -> {
-                    val options = DiffViewOptions(collapseAfter = COLLAPSE_AFTER, canExpandContext = input.canExpandContext)
+                    val options = DiffViewOptions(collapseAfter = COLLAPSE_AFTER, canExpandContext = input.canExpandContext, selectable = true)
                     val plans = shown.files.mapIndexed { index, file ->
                         DiffFilePlan(file, width, env, words, options, index in input.expandedFiles, syntaxDeadlineNanos)
                     }
@@ -549,7 +555,12 @@ class DiffSectionView(context: Context) : ViewGroup(context), ThemeAware {
  * off the main thread ([DiffSectionMeasurer]); a file's diff is built only
  * once it is open.
  */
-class DiffFilesListView(context: Context, private val scope: CoroutineScope) : FrameLayout(context), ThemeAware {
+class DiffFilesListView internal constructor(
+    context: Context,
+    private val scope: CoroutineScope,
+    /** Preparation boundary for deterministic in-flight font/reset regressions. */
+    private val preparePlans: (suspend (List<DiffSectionInput>, List<String>, String, Double, TextLayouts.Env) -> Pair<List<DiffSectionPlan>, DiffListChrome>)? = null,
+) : FrameLayout(context), ThemeAware {
     /** Asks for the body of an opened file that has none yet. */
     var onRequestContent: ((String) -> Unit)? = null
     /** An "N unchanged" separator was tapped in this file. */
@@ -572,12 +583,17 @@ class DiffFilesListView(context: Context, private val scope: CoroutineScope) : F
     /** Paths whose body was asked for during this opening. */
     private val requested = HashSet<String>()
 
-    private var plans: List<DiffSectionPlan> = emptyList()
+    internal var plans: List<DiffSectionPlan> = emptyList()
+        private set
     private var model = DiffFilesListLayout(0.0, null, emptyList(), Size(0.0, 0.0))
     private var noticeFrames: List<Rect> = emptyList()
     private var emptyFrame = Rect.Zero
     private var measuredWidth = -1.0
     private var measuredEnv: TextLayouts.Env? = null
+    private var appliedEnv: TextLayouts.Env? = null
+    private var appliedWidth = -1.0
+    private var frameDensity = Theme.density
+    private val keptPlace = KeptPlace<DiffReadingPlace>()
     private var generation = 0
     private var measureJob: Job? = null
 
@@ -621,15 +637,21 @@ class DiffFilesListView(context: Context, private val scope: CoroutineScope) : F
         requested.clear()
         plans = emptyList()
         generation++
+        measureJob?.cancel()
+        keptPlace.forget()
+        appliedEnv = null
+        appliedWidth = -1.0
         model = DiffFilesListLayout(maxOf(0.0, measuredWidth), null, emptyList(), Size(0.0, 0.0))
         emptyFrame = Rect.Zero
         adapter.notifyDataSetChanged()
         recycler.scrollToPosition(0)
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        if (com.slopus.happy.ui.view.px(w) != measuredWidth) post { remeasure() }
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        super.onLayout(changed, l, t, r, b)
+        frameDensity = Theme.density
+        // A font change requests layout without changing this view's bounds.
+        if (px(width) != measuredWidth || TextLayouts.Env(Theme.density, Theme.textScale) != measuredEnv) remeasure()
     }
 
     private fun collapsed(item: DiffFileItem) = DiffFilesCollapse.isCollapsed(item, overrides[item.path], defaultCollapsed)
@@ -666,21 +688,63 @@ class DiffFilesListView(context: Context, private val scope: CoroutineScope) : F
         }
         val notices = notices
         val empty = emptyText
+        measureJob?.cancel()
         measureJob = scope.launch {
-            val (plans, chrome) = measurer.measure(inputs, notices, empty, width, env)
-            if (current != generation) return@launch
-            apply(plans, width, chrome)
+            val (plans, chrome) = preparePlans?.invoke(inputs, notices, empty, width, env)
+                ?: measurer.measure(inputs, notices, empty, width, env)
+            if (current != generation || env != TextLayouts.Env(Theme.density, Theme.textScale)) return@launch
+            apply(plans, width, env, chrome)
         }
     }
 
-    private fun apply(plans: List<DiffSectionPlan>, width: Double, chrome: DiffListChrome) {
+    private fun apply(plans: List<DiffSectionPlan>, width: Double, env: TextLayouts.Env, chrome: DiffListChrome) {
         // The same files in the same order update in place, so open sections keep their views.
-        val inPlace = plans.isNotEmpty() && plans.map { it.id } == this.plans.map { it.id } && (chrome.notices != null) == (model.header != null)
+        val inPlace = plans.isNotEmpty() && plans.map { it.id } == this.plans.map { it.id } &&
+            (chrome.notices != null) == (model.header != null) && width == appliedWidth
+        // Read where the user is NOW, not where they were when asynchronous work started.
+        val top = readingTop
+        val place = if (inPlace && env != appliedEnv) keptPlace.place(top) {
+            DiffReadingPlace.at(it, model, this.plans.map { plan -> plan.readingSection })
+        } else null
+        keptPlace.forget()
         this.plans = plans
+        appliedEnv = env
+        appliedWidth = width
         noticeFrames = chrome.notices?.first.orEmpty()
         model = DiffFilesListLayout(width, chrome.notices?.second, plans.map { it.layout.height }, chrome.emptySize)
         model.empty?.let { emptyFrame = it.offsetBy(0.0, -(it.minY - DiffFilesListLayout.Metrics.emptyPadding)) }
         if (inPlace) adapter.notifyItemRangeChanged(0, adapter.itemCount) else adapter.notifyDataSetChanged()
+        val restored = place?.y(model, plans.map { it.readingSection })
+        restoreTop(restored ?: top)
+        if (place != null && restored != null) keptPlace.put(place, readingTop)
+    }
+
+    /** Content under the visible top, independent of RecyclerView's item/pixel scroll units. */
+    internal val readingTop: Double
+        get() {
+            val manager = recycler.layoutManager as LinearLayoutManager
+            val position = manager.findFirstVisibleItemPosition()
+            val child = manager.findViewByPosition(position) ?: return 0.0
+            return rowTop(position) + (recycler.paddingTop - child.top) / frameDensity.toDouble()
+        }
+
+    private fun rowTop(position: Int): Double = when {
+        hasHeader && position == 0 -> 0.0
+        plans.isNotEmpty() -> model.sections.getOrNull(position - if (hasHeader) 1 else 0)?.minY ?: 0.0
+        else -> model.header?.maxY ?: 0.0
+    }
+
+    private fun restoreTop(top: Double) {
+        if (adapter.itemCount == 0) return
+        val insetTop = px(recycler.paddingTop)
+        val y = ScrollPlace.offset(top, insetTop, insets.bottom, px(recycler.height), model.contentHeight, Theme.density.toDouble()) + insetTop
+        val section = model.sections.indexOfLast { it.minY <= y }
+        val position = if (section < 0) 0 else section + if (hasHeader) 1 else 0
+        (recycler.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(position, dp(rowTop(position) - y).roundToInt())
+        // Apply the new item heights before reading back the pixel-rounded anchor.
+        // No delayed restoration can overwrite a later drag, reset or measurement.
+        recycler.setFrame(Rect(0.0, 0.0, px(this.width), px(height)))
+        frameDensity = Theme.density
     }
 
     private fun toggle(path: String) {

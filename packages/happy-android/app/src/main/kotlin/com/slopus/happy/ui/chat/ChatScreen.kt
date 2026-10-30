@@ -28,6 +28,7 @@ import com.slopus.happy.chat.ChatOlderPaging
 import com.slopus.happy.chat.ChatSnapshot
 import com.slopus.happy.layout.chat.CliWarningPillLayout
 import com.slopus.happy.layout.chat.WorktreeTabStripLayout
+import com.slopus.happy.layout.chat.PermissionFooterLayout
 import com.slopus.happy.model.CliVersionWarning
 import com.slopus.happy.model.ProjectWorktree
 import com.slopus.happy.model.SessionState
@@ -185,6 +186,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
     /** The work groups on screen, by id, for a header's tap. */
     private var shownGroups = mapOf<String, AgentWorkGroup>()
     private var listWidth = 0.0
+    private var listEnv: TextLayouts.Env? = null
+    private var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
     /** The chat's paging past its newest page (happy-ios `ChatHistoryPager` over [ChatOlderPaging]). */
     private val paging = ChatOlderPaging()
     /** EmptyMessages pages on its own; the list after it starts over. */
@@ -256,6 +259,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         val groups: Map<String, AgentWorkGroup>,
         val boundary: String?,
         val number: Int,
+        val env: TextLayouts.Env,
     )
 
     override fun createView(): View = root
@@ -356,6 +360,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
                 .map { request -> plan(request) }
                 .flowOn(planner)
                 .collect { planned ->
+                    if (planned.env != TextLayouts.Env(Theme.density, Theme.textScale)) return@collect
                     shownGroups = planned.groups
                     list.submit(planned.footer, planned.rows, planned.pinning) {
                         oldestBoundary = planned.boundary
@@ -815,6 +820,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             flavor = state.session?.metadata?.flavor,
             env = TextLayouts.Env(Theme.density, Theme.textScale),
             tablet = isTabletLayout,
+            permissionListMaxHeight = permissionListMaxHeight,
         )
     }
 
@@ -864,7 +870,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             }.also { plans[item.key] = key to it }
         }
         plans.keys.retainAll(seen)
-        return Planned(renderer.footer(request.width), rows, request.pinning, groups, ChatOlderPaging.boundary(items), request.number)
+        return Planned(renderer.footer(request.width), rows, request.pinning, groups, ChatOlderPaging.boundary(items), request.number, request.style.env)
     }
 
     // List
@@ -1157,8 +1163,12 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
             for ((bar, frame) in bars.zip(layout.accessories)) bar.first.setFrame(frame.offsetBy(layout.dock.minX, layout.dock.minY))
             scrollButton.setFrame(layout.scrollButton)
             placeholder.setFrame(if (composer.visibility == View.GONE) Rect(0.0, 0.0, width, height) else layout.placeholder)
-            if (layout.list.width != listWidth) {
+            val permissionCap = PermissionFooterLayout.maxListHeight(px(rootView.height).takeIf { it > 0 } ?: height)
+            val env = TextLayouts.Env(Theme.density, Theme.textScale)
+            if (layout.list.width != listWidth || permissionCap != permissionListMaxHeight || env != listEnv) {
                 listWidth = layout.list.width
+                listEnv = env
+                permissionListMaxHeight = permissionCap
                 requestPlans()
             }
         }

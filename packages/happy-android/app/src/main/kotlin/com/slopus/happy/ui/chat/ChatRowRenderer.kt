@@ -118,6 +118,8 @@ data class ChatRowStyle(
     val env: ChatTextEnv,
     /** `TabletBranches.permissionButtonsTrailing`: a tablet hugs each permission button to its label at the trailing edge. */
     val tablet: Boolean = false,
+    /** PermissionFooter's unscaled min(260, 35% of the window). */
+    val permissionListMaxHeight: Double = PermissionFooterLayout.Metrics.maxListHeight,
 )
 
 /** Everything one row is drawn from. Equal inputs at the same width give the same plan. */
@@ -770,15 +772,20 @@ class ChatRowRenderer(private val resources: Resources) {
             MeasuredText(ChatStrings.string(resources.getString(option.label), Palette.text), textStyle, style.env, maxLines = option.maxLines, alignment = Layout.Alignment.ALIGN_CENTER)
         }
         val measurables = labels.map { it.measurable }
-        val footer = { width: Double -> if (style.tablet) PermissionFooterLayout.tablet(width, measurables) else PermissionFooterLayout(width, measurables) }
+        val footer = { width: Double ->
+            if (style.tablet) PermissionFooterLayout.tablet(width, measurables, style.permissionListMaxHeight)
+            else PermissionFooterLayout(width, measurables, style.permissionListMaxHeight)
+        }
         return ChatPiece(Measurable { footer(it).size }) { frame ->
             val m = PermissionFooterLayout.Metrics
             val layout = footer(frame.width)
+            val x = if (layout.scrolls) -layout.list.minX else frame.minX
+            val y = if (layout.scrolls) -layout.list.minY else frame.minY
             val items = ArrayList<ChatDrawItem>()
             val hits = ArrayList<ChatHit>()
             options.forEachIndexed { index, option ->
-                val box = layout.buttons[index].offsetBy(frame.minX, frame.minY)
-                val labelFrame = layout.labels[index].offsetBy(frame.minX, frame.minY)
+                val box = layout.buttons[index].offsetBy(x, y)
+                val labelFrame = layout.labels[index].offsetBy(x, y)
                 val alpha = if (states[index] == PermissionOptionState.Inactive) m.inactiveOpacity else 1.0
                 val selected = states[index] == PermissionOptionState.Selected
                 items += ChatDrawItem.Box(ChatBox(box, if (selected) Palette.surfaceHighest else Palette.surface, Palette.divider, m.buttonBorder, m.buttonRadius, alpha = alpha))
@@ -788,7 +795,10 @@ class ChatRowRenderer(private val resources: Resources) {
                 }
                 if (pending && busy == null) hits += ChatHit(box, ChatRowAction.Permission(message.id, option.choice, option.answer, option.mode))
             }
-            items to hits
+            if (layout.scrolls) {
+                val content = ChatRowPlan("permissions", Size(layout.list.width, layout.listContentHeight), items, hits)
+                listOf(ChatDrawItem.Scroller(content, layout.list.offsetBy(frame.minX, frame.minY), vertical = true)) to emptyList()
+            } else items to hits
         }
     }
 
