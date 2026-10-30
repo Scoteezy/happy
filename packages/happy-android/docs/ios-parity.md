@@ -11,6 +11,42 @@ emulator. Evidence (screenshots, screen recordings) is kept out of git under
 `.context/evidence/<feature>/` at the repository root; the path is listed per
 item once it exists.
 
+## Home Session/Task picture verification (2026-10-30)
+
+- Source `ed23b11b1` wires Home-owned image staging into Session and Task:
+  system picker/paste, preview/remove, picture-only submission, first-send
+  notices, and clearing only after outbox acceptance. Focus dismissal and
+  Bot mode preserve Session pictures; Stop retains them and Home destruction
+  clears only its own staging. Tests cover same-Task retry and exact encrypted
+  upload retry after the original staging file has been deleted.
+- `.context/evidence/relay-dock-pictures/android-fourth/android-dock-pictures-final.mp4`
+  (**146.739800s**) records actual picker/import, preview, Bot/Session
+  retention, dismissal/reopening, removal/reselection, image-only Task
+  creation, the image in chat, Home row and empty next Session. Sanitized
+  evidence proves one Task spawn, decrypted JPEG before text, draft/kind
+  reset and relay/scope/account teardown. All 13 XML snapshots parse; the
+  owned emulator exited. This is loopback-fixture proof, not a live machine.
+- Native **one UI test / 1094.098s** passed: actual system picker, preview,
+  Bot hide/Session restore, Task retention and removal. Five screenshots were
+  exported and Session/Task previews personally compared. The final picker
+  tap derives from its observed image frame because XCTest exposes no image
+  hit point. `native/ios-dock-pictures-compact.mp4` (**57.333333s**) removes
+  runner waits; raw **1105.273333s** remains. No seeded fallback was used.
+  Final native animations and frozen source are unchanged; the owned
+  simulator shut down before Android builds. Native networking is offline.
+- Full fresh tests at that source passed **1998 tests / 310 suites**, zero
+  failures/errors/skips, in **2m50s**; all five test tasks reran. Ordinary debug
+  and genuine no-harness unsigned production (**4m44s**) builds passed.
+  Actual APKs and production R8 mapping exclude fixture/testing/probe code
+  and permissive network policy; production is unsigned/non-debuggable.
+  Both JNI ABIs, 16KB ZIP and 16KiB ELF LOAD alignment pass. Logs, XML, hashes,
+  earlier automation failures and fixture corrections are in the audit and
+  evidence directory. All owned workers/devices stopped; no release occurred.
+- The fixture now explicitly validates rig metadata v1. Earlier Task/Bot
+  captures did not establish v1-specific chat capability gating; their
+  separately asserted transport results still stand. Strict-v1 Bot regressions
+  pass. Off-main dock text-height preparation remains a separate gap.
+
 ## Home Bot face verification (2026-10-30)
 
 - Source `07d775002` connects the four native face choices, reroll, selected
@@ -28,8 +64,8 @@ item once it exists.
   PID 62124 exited. This is loopback-fixture proof, not live-machine creation.
 - Native scratch build and one UI test passed (**729.810s**), with four
   picker/selection/roll/name screenshots personally compared. The raw
-  740.230s movie includes XCTest's 60s idle waits for the offline header's
-  infinite pulse; `native/ios-bot-face-compact.mp4` (**54.883333s**) removes
+  740.230s movie includes XCTest's 60s animation-idle waits;
+  `native/ios-bot-face-compact.mp4` (**54.883333s**) removes
   those waits. Frozen iOS source and animations are unchanged; the dedicated
   simulator shut down before any Android build. Native networking is offline.
 - Full fresh ordinary-debug checks at that source passed **1990 tests / 309
@@ -45,8 +81,11 @@ item once it exists.
   and both Tailcat JNI ABIs pass 16KiB ELF LOAD alignment. Build/device work
   was sequential and bounded; all owned workers/devices stopped. No signing,
   production install, publication or store validation occurred.
-- Session/Task dock pictures and off-main dock text-height preparation remain
-  separate gaps. Successful live creation and spoken TalkBack are not claimed.
+- Session/Task dock pictures have the newer verified record above; off-main
+  dock text-height preparation remains. The picture comparison also found that
+  suppressing only the offline header pulse did not eliminate XCTest's waits,
+  so their earlier attribution solely to that pulse is not established.
+  Successful live creation and spoken TalkBack are not claimed.
 
 ## Direct shell verification (2026-10-29)
 
@@ -86,8 +125,8 @@ item once it exists.
   appearing on the first cold-start Settings open, without a carousel switch.
   No release was made.
 - Inline Stories and proposal cards now have their own verified integration
-  records below. The remaining checklist is still partial: in particular relay
-  dock pictures need separate work. Bot faces have the newer record above;
+  records below. The remaining checklist is still partial. Relay dock
+  pictures and Bot faces have newer verified records above;
   Relay Task rows, actions and text creation have later records below. A fresh audit
   must compare current iOS source, not assume every historical gap still exists.
 
@@ -159,9 +198,9 @@ item once it exists.
   its complete current flow will be verified separately, not replaced with
   a new header behavior absent from the reference.
 - Relay Home Task rendering/actions and dock text creation are verified by
-  tests and isolated Android/native comparison below. Dock pictures remain a gap.
-  Further inspection found Bot grouping and Session/Bot creation already
-  implemented in Android; bot face choices remain absent. Native
+  tests and isolated Android/native comparison below. Dock pictures and Bot
+  face choices have newer verified records above. Further inspection found
+  Bot grouping and Session/Bot creation already implemented in Android. Native
   `HomeRowDrawing.swift:190` and `HomeDockScreens.swift` are the reference.
   Direct's existing task/bot sidebar does not complete relay Task features.
 
@@ -320,7 +359,7 @@ item once it exists.
   ZIP alignment pass; production is non-debuggable and unsigned. Owned PIDs
   64407/64499 exited. No production install, signing or publication. Exact
   logs, artifact hash and checkpoint details are in the parity audit.
-- Task dock pictures and bot faces remain unfinished. Successful live machine
+- Task dock pictures and Bot faces have newer verified records above. Successful live machine
   creation/agent execution and spoken TalkBack are not claimed by this fixture.
 
 ## Real conversation inline Stories verification (2026-10-29)
@@ -762,10 +801,10 @@ Rules carried over from iOS (see `AGENTS.md`):
   Task classification, ordering, retired-task exclusion and glyph now have
   passing focused/full tests and isolated Android/native evidence. See the
   verification records above, including Task actions. Dock Task creation
-  has its own later verified text-creation record; dock pictures remain missing.
+  and dock pictures have their own later verified creation records above.
 - [~] Update banner and offline machines banner: offline plaque and What's new shown (`home/compare-offline-list.png`); What's new opens the changelog; the Play Store update check is to do
 - [~] Home dock: resting capsule with the placeholder and send button, its fade-in and the list scrim (`:layout` `HomeDockLayout`, focus layout, motion, fade and refusal with the iOS tests)
-- [~] Dock composer (`ui/home/HomeDockController.kt`, `HomeDockFocusView.kt`): opens over home with the dim and a faint blur (RenderEffect, Android 12+), the shell growing from the capsule and the rows and card revealing in turn (`HomeDockFocusMotion`), rides the IME, closes on the backdrop or Back. Machine, project (with Enter custom path), worktree and harness pickers and the permission, model and effort chips open `ChoiceMenu` (iOS's inline-section UIMenu as a popup window that keeps the keyboard up); Send runs `SessionStarter` with the progress line, the stop hint, Stop, refusal shakes and flash, then opens the chat. Project + and No Sessions' Start New Session open it too. Evidence: `dock/d12-open.png`, `d20-project-menu.png`, `d22-starting.png`, `d23-chat.png`, `dock-open-menus.mp4`, `dock-start-session.mp4` vs `ios-ref/41-dock-open.png` … `45-dock-harness-menu.png`. Session | Bot | Task kinds, text creation, Bot faces and picture retry have newer verified records above. Dock pictures remain to do; text heights are measured on the main thread
+- [~] Dock composer (`ui/home/HomeDockController.kt`, `HomeDockFocusView.kt`): opens over home with the dim and a faint blur (RenderEffect, Android 12+), the shell growing from the capsule and the rows and card revealing in turn (`HomeDockFocusMotion`), rides the IME, closes on the backdrop or Back. Machine, project (with Enter custom path), worktree and harness pickers and the permission, model and effort chips open `ChoiceMenu` (iOS's inline-section UIMenu as a popup window that keeps the keyboard up); Send runs `SessionStarter` with the progress line, the stop hint, Stop, refusal shakes and flash, then opens the chat. Project + and No Sessions' Start New Session open it too. Evidence: `dock/d12-open.png`, `d20-project-menu.png`, `d22-starting.png`, `d23-chat.png`, `dock-open-menus.mp4`, `dock-start-session.mp4` vs `ios-ref/41-dock-open.png` … `45-dock-harness-menu.png`. Session | Bot | Task kinds, text creation, Bot faces/picture retry and Session/Task dock pictures have newer verified records above. Text heights are still measured on the main thread
 - [x] Pending chats placeholder: iOS has it on the chat screen only (PendingChatPlaceholder for a chat opened from the worktree strip's `+`); see Chat › Worktree tab strip and pending chats
 
 ### Chat
