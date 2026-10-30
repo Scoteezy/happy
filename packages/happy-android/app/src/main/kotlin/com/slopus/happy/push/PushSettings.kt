@@ -2,7 +2,7 @@ package com.slopus.happy.push
 
 import android.util.Log
 import com.slopus.happy.AppGraph
-import com.slopus.happy.auth.AuthState
+import com.slopus.happy.net.AuthenticatedHttp
 import com.slopus.happy.model.settings.PushPermission
 import com.slopus.happy.model.settings.PushRegistration
 import com.slopus.happy.model.settings.PushTokenSync
@@ -23,7 +23,7 @@ class AppPushRegistration(
     private val supported: () -> Boolean,
     private val registrar: PushRegistrar,
     private val store: RegisteredPushTokenStore,
-    private val authToken: () -> String?,
+    private val account: () -> AuthenticatedHttp?,
 ) : PushRegistration {
     override suspend fun permission(): PushPermission = permission.info()
 
@@ -42,23 +42,23 @@ class AppPushRegistration(
     }
 
     override suspend fun syncCurrentToken(): PushTokenSync {
+        val selected = account() // Keep host and token together through permission and Expo awaits.
         var info = permission.info()
         if (!info.granted) {
             if (!info.canAskAgain) return PushTokenSync(registered = false, token = store.load(), permission = info)
             info = permission.request()
             if (!info.granted) return PushTokenSync(registered = false, token = store.load(), permission = info)
         }
-        val token = authToken()
-        if (token == null || !supported()) return PushTokenSync(registered = false, token = store.load(), permission = info)
-        return when (val result = withContext(Dispatchers.IO) { registrar.sync(token) }) {
+        if (selected == null || !supported()) return PushTokenSync(registered = false, token = store.load(), permission = info)
+        return when (val result = withContext(Dispatchers.IO) { registrar.sync(selected) }) {
             is PushSyncResult.Registered -> PushTokenSync(registered = true, token = result.token, permission = info)
             PushSyncResult.Unsupported -> PushTokenSync(registered = false, token = store.load(), permission = info)
         }
     }
 
     override suspend fun removeToken(token: String) {
-        val auth = checkNotNull(authToken()) { "Not signed in" }
-        registrar.remove(auth, token)
+        val selected = checkNotNull(account()) { "Not signed in" }
+        registrar.remove(selected, token)
     }
 }
 
@@ -70,6 +70,6 @@ fun pushRegistration(context: android.content.Context, graph: AppGraph, permissi
         supported = { services.fcm.supported },
         registrar = services.registrar,
         store = services.store,
-        authToken = { (graph.auth.state.value as? AuthState.SignedIn)?.credentials?.token },
+        account = graph::currentRequests,
     )
 }

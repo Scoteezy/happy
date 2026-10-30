@@ -24,7 +24,6 @@ class PushServices(context: Context, graph: AppGraph) {
         expo = ExpoPushTokenClient(
             OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build(),
         ),
-        api = PushApi(graph.http),
         store = store,
         installationId = InstallationId(context)::getOrCreate,
         applicationId = context.packageName,
@@ -37,8 +36,8 @@ class PushServices(context: Context, graph: AppGraph) {
         @Volatile private var instance: PushServices? = null
 
         /** AuthContext.tsx logout: [graph]'s logout drops this device's push token first. */
-        fun unregisterOnLogout(context: Context, graph: AppGraph) = graph.beforeLogout { authToken ->
-            get(context).registrar.unregisterOnLogout(authToken)
+        fun unregisterOnLogout(context: Context, graph: AppGraph) = graph.beforeLogout { account ->
+            get(context).registrar.unregisterOnLogout(account)
         }
 
         fun get(context: Context): PushServices = instance ?: synchronized(this) {
@@ -67,11 +66,12 @@ class HappyMessagingService : FirebaseMessagingService() {
         val services = PushServices.get(this)
         val graph = (applicationContext as HappyApplication).graph
         val account = graph.auth.state.value as? AuthState.SignedIn ?: return
+        val requests = graph.accountRequests(account)
         // syncCurrentPushToken registers nothing while notifications are off.
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return
         services.scope.launch {
             try {
-                services.registrar.sync(account.credentials.token)
+                services.registrar.sync(requests)
             } catch (e: Exception) {
                 Log.w("HappyMessagingService", "Re-registering the push token failed", e)
             }

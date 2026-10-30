@@ -43,13 +43,14 @@ class AccountsTest {
     @After
     fun tearDown() = server.close()
 
-    private fun repository() = AuthRepository(
+    private suspend fun repository() = AuthRepository(
         SecureStoreCredentialStore(ExpoSecureStore(prefs, keys)),
         AuthApi(HappyHttp(OkHttpClient(), serverUrl = { server.url }, clientId = "android/test")),
         io = Dispatchers.Unconfined,
         registryStore = registry,
         serverUrl = { serverUrl },
-    )
+        rnServerImport = { ImportedAccountServer.Confirmed(RNServerConfigImporter.DEFAULT_SERVER_URL) },
+    ).also { it.restoreStored() }
 
     private val AuthRepository.activeId get() = (state.value as? AuthState.SignedIn)?.encryption?.anonId
 
@@ -155,6 +156,15 @@ class AccountsTest {
         )
         store.save(value)
         assertEquals(value, store.load())
+
+        val pending = value.copy(entries = value.entries.map { it.copy(serverConfirmed = false) })
+        store.save(pending)
+        assertEquals(pending, store.load())
+        file.writeText(file.readText().replace("\"serverConfirmed\":false", "\"serverConfirmed\":null"))
+        assertNull(store.load())
+        // Missing is the old native registry format; malformed is not.
+        file.writeText("""{"entries":[{"id":"0123456789abcdef","serverUrl":"https://api.example.com","location":"shared","addedOrder":0}],"activeId":"0123456789abcdef"}""")
+        assertTrue(store.load()!!.active!!.serverConfirmed)
 
         file.writeText("""{"entries":[{"id":"nothex","serverUrl":"https://api.example.com","location":"own","addedOrder":0}]}""")
         assertNull(store.load())

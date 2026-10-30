@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.net.HappyHttp
+import com.slopus.happy.net.AuthenticatedHttp
 import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.runBlocking
@@ -37,6 +38,7 @@ class LogoutPushTest {
 
     private lateinit var store: RegisteredPushTokenStore
     private lateinit var registrar: PushRegistrar
+    private lateinit var account: AuthenticatedHttp
 
     @Before
     fun setUp() {
@@ -49,16 +51,17 @@ class LogoutPushTest {
         }
         server.start()
         val http = HappyHttp(OkHttpClient(), serverUrl = { server.url("/").toString().trimEnd('/') }, clientId = "android/test")
+        account = AuthenticatedHttp(http, "token-1")
         val context = ApplicationProvider.getApplicationContext<Context>()
         store = RegisteredPushTokenStore(context.getSharedPreferences(RegisteredPushTokenStore.PREFS_NAME, Context.MODE_PRIVATE))
         store.clear()
         registrar = PushRegistrar(
             deviceTokens = { null },
             expo = ExpoPushTokenClient(OkHttpClient(), url = server.url("/expo").toString()),
-            api = PushApi(http, retryDelay = { kotlinx.coroutines.delay(20) }),
             store = store,
             installationId = { "id" },
             applicationId = "com.slopus.happy.dev",
+            retryDelay = { kotlinx.coroutines.delay(20) },
         )
     }
 
@@ -68,7 +71,7 @@ class LogoutPushTest {
     @Test
     fun theRegisteredTokenIsDroppedWithTheAccountsToken() = runBlocking {
         store.save("ExponentPushToken[a]")
-        registrar.unregisterOnLogout("token-1")
+        registrar.unregisterOnLogout(account)
         assertEquals(listOf("DELETE /v1/push-tokens/ExponentPushToken%5Ba%5D"), requests.map { "${it.method} ${it.url.encodedPath}" })
         assertEquals("Bearer token-1", requests.single().headers["Authorization"])
         assertNull(store.load())
@@ -76,7 +79,7 @@ class LogoutPushTest {
 
     @Test
     fun withNothingRegisteredNothingIsSent() = runBlocking {
-        registrar.unregisterOnLogout("token-1")
+        registrar.unregisterOnLogout(account)
         assertTrue(requests.isEmpty())
     }
 
@@ -85,7 +88,7 @@ class LogoutPushTest {
         failing = true
         store.save("ExponentPushToken[a]")
         val started = System.nanoTime()
-        registrar.unregisterOnLogout("token-1", timeoutMs = 300)
+        registrar.unregisterOnLogout(account, timeoutMs = 300)
         val elapsedMs = (System.nanoTime() - started) / 1_000_000
         assertTrue("took $elapsedMs ms", elapsedMs < 3_000)
         assertTrue(requests.size > 1)
@@ -107,7 +110,7 @@ class LogoutPushTest {
             graph.auth.createAccount()
             val token = (graph.auth.state.value as AuthState.SignedIn).credentials.token
             val seen = mutableListOf<Pair<String, Boolean>>()
-            graph.beforeLogout { authToken -> seen += authToken to (graph.auth.state.value is AuthState.SignedIn) }
+            graph.beforeLogout { account -> seen += account.token to (graph.auth.state.value is AuthState.SignedIn) }
             graph.logout().join()
             assertEquals(listOf(token to true), seen)
             assertEquals(AuthState.SignedOut, graph.auth.state.value)

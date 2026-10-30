@@ -108,8 +108,15 @@ class AppGraph(
         .build()
     /** The active account's server while signed in; [serverConfig] is the one onboarding signs in to. */
     @Volatile private var activeServerUrl: String? = null
-    val http = HappyHttp(okHttp, serverUrl = { activeServerUrl ?: serverConfig.url.value }, clientId = clientId)
     val authApi = AuthApi(HappyHttp(okHttp, serverUrl = { serverConfig.url.value }, clientId = clientId))
+
+    /** Capture host and token from the same confirmed account, never from mutable global preferences. */
+    fun accountRequests(account: AuthState.SignedIn) = com.slopus.happy.net.AuthenticatedHttp(
+        HappyHttp(okHttp, serverUrl = { account.serverUrl }, clientId = clientId), account.credentials.token,
+    )
+
+    fun currentRequests(): com.slopus.happy.net.AuthenticatedHttp? =
+        (auth.state.value as? AuthState.SignedIn)?.let(::accountRequests)
     private val secureStore = ExpoSecureStore(
         prefs = context.getSharedPreferences(ExpoSecureStore.PREFS_NAME, Context.MODE_PRIVATE),
         keys = secureStoreKeys,
@@ -121,6 +128,7 @@ class AppGraph(
         registryStore = AccountRegistryFile(LocalCaches.registryFile(appContext)),
         serverUrl = { serverConfig.url.value },
         onSignedIn = { if (direct.state.value.activeId != null) direct.select(null) },
+        rnServerImport = { com.slopus.happy.auth.RNServerConfigImporter.read(java.io.File(appContext.filesDir, "mmkv")) },
     )
 
     private val databases = HashMap<String?, HappyDatabase>()
@@ -144,13 +152,6 @@ class AppGraph(
 
     private val activeAccountId: String? get() = (auth.state.value as? AuthState.SignedIn)?.encryption?.anonId
 
-    init {
-        // The account this device had before several could be signed in keeps its data.
-        auth.registry.value.entries.firstOrNull { it.location == CredentialLocation.Shared }?.let { shared ->
-            LocalCaches.adoptLegacyAccount(appContext, shared.id, databaseName, localPreferences(shared.id))
-        }
-    }
-
     val store = HappyStore(database(activeAccountId))
     val localSettings = LocalSettings(localPreferences(activeAccountId))
 
@@ -171,7 +172,10 @@ class AppGraph(
         .also { it.follow(settings.settings, scope) }
 
     /** Connected accounts (Settings › Claude Code, GitHub) for the signed-in account. */
-    val connect: ConnectApi = HttpConnectApi(http) { (auth.state.value as? AuthState.SignedIn)?.credentials?.token }
+    val connect: ConnectApi get() {
+        val requests = currentRequests() ?: throw com.slopus.happy.model.settings.ConnectException("Not signed in")
+        return HttpConnectApi(requests.http) { requests.token }
+    }
 
     /** The newest What's New entry the user has seen (changelog/storage.ts). */
     val changelog = ChangelogReadMarker(context.getSharedPreferences(ChangelogReadMarker.PREFS_NAME, Context.MODE_PRIVATE))
@@ -196,9 +200,15 @@ class AppGraph(
     /** The SDK is allocated only inside connect(), never while constructing the app graph. */
     val voice: VoiceEngine = VoiceEngine(
         scope = scope,
-        service = VoiceApi(okHttp, clientId, { serverConfig.url.value }, { serverConfig.voiceUrl }, BuildConfig.ELEVENLABS_AGENT_ID),
         transport = ElevenLabsTransport(appContext),
-        credentials = { (auth.state.value as? AuthState.SignedIn)?.credentials },
+        account = {
+            (auth.state.value as? AuthState.SignedIn)?.let { selected ->
+                // Default voice intentionally re-authenticates on Happy's service; custom voice stays on this account's host.
+                val voiceServer = if (serverConfig.useCustomServerForVoice) selected.serverUrl else serverConfig.defaultUrl
+                com.slopus.happy.voice.VoiceAccount(selected.credentials,
+                    VoiceApi(okHttp, clientId, { selected.serverUrl }, { voiceServer }, BuildConfig.ELEVENLABS_AGENT_ID))
+            }
+        },
         options = {
             val values = settings.settings.value
             val local = localSettings.values.value
@@ -252,8 +262,10 @@ class AppGraph(
         }
     }
 
-    private fun purchaseAccount(): PurchaseAccount? = (auth.state.value as? AuthState.SignedIn)?.publicId
-        ?.takeIf { it.isNotBlank() }?.let { PurchaseAccount(serverConfig.url.value, it) }
+    private fun purchaseAccount(): PurchaseAccount? {
+        val account = auth.state.value as? AuthState.SignedIn ?: return null
+        return account.publicId?.takeIf { it.isNotBlank() }?.let { PurchaseAccount(account.serverUrl, it) }
+    }
 
     /** Ask for a delta sync now (sign-in, app back in the foreground). No-op when signed out. */
     fun requestSync() {
@@ -293,10 +305,25 @@ class AppGraph(
     val shellAccount: StateFlow<ShellAccount?> = shellState.asStateFlow()
     private val restoreFailure = MutableStateFlow(false)
     val directRestoreFailed: StateFlow<Boolean> = restoreFailure.asStateFlow()
+    private val relayRestoreFailure = MutableStateFlow(false)
+    val accountRestoreFailed: StateFlow<Boolean> = relayRestoreFailure.asStateFlow()
     private val shellOperationLock = Mutex()
 
     init {
         scope.launch {
+            try {
+                auth.restoreStored()
+                withContext(Dispatchers.IO) {
+                    // Preserve legacy data only after the account registry was durably reconciled.
+                    auth.registry.value.entries.firstOrNull { it.location == CredentialLocation.Shared }?.let { shared ->
+                        LocalCaches.adoptLegacyAccount(appContext, shared.id, databaseName, localPreferences(shared.id))
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: java.io.IOException) {
+                relayRestoreFailure.value = true
+            }
             try {
                 direct.setForeground(foreground.value)
                 direct.restore()
@@ -355,14 +382,14 @@ class AppGraph(
         Unit
     }.await()
 
-    private val logoutHooks = CopyOnWriteArrayList<suspend (authToken: String) -> Unit>()
+    private val logoutHooks = CopyOnWriteArrayList<suspend (account: com.slopus.happy.net.AuthenticatedHttp) -> Unit>()
 
     /**
      * [hook] runs first on every logout, while the account's token still
      * works (AuthContext.tsx unregisters the push token there). It must be
      * bounded and must not throw.
      */
-    fun beforeLogout(hook: suspend (authToken: String) -> Unit) {
+    fun beforeLogout(hook: suspend (account: com.slopus.happy.net.AuthenticatedHttp) -> Unit) {
         logoutHooks += hook
     }
 
@@ -373,11 +400,13 @@ class AppGraph(
      * that asked is gone as soon as the account is.
      */
     fun logout(): Job = scope.launch {
+        auth.restoreStored()
         accountLock.withLock {
             val signedIn = auth.state.value as? AuthState.SignedIn ?: return@withLock
             val id = signedIn.encryption.anonId
             voice.stop()
-            logoutHooks.forEach { it(signedIn.credentials.token) }
+            val requests = accountRequests(signedIn)
+            logoutHooks.forEach { it(requests) }
             purchases.setAccount(null)
             stopAccount()
             withContext(Dispatchers.IO) {
@@ -405,8 +434,16 @@ class AppGraph(
     fun signOut(accountId: String): Job {
         if (accountId == activeAccountId) return logout()
         return scope.launch {
+            auth.restoreStored()
+            if (accountId == activeAccountId) {
+                logout().join()
+                return@launch
+            }
             accountLock.withLock {
-                auth.credentials(accountId)?.let { credentials -> logoutHooks.forEach { it(credentials.token) } }
+                auth.storedAccount(accountId)?.let { account ->
+                    val requests = accountRequests(account)
+                    logoutHooks.forEach { it(requests) }
+                }
                 withContext(Dispatchers.IO) {
                     HappyStore(database(accountId)).clearAll()
                     localPreferences(accountId).edit().clear().commit()
@@ -438,7 +475,10 @@ class AppGraph(
         shellOperationLock.withLock {
             auth.switchTo(accountId)
             if (direct.state.value.activeId != null) direct.select(null)
-            shellAccount.first { it?.directId == null && (it?.relay as? AuthState.SignedIn)?.encryption?.anonId == accountId }
+            shellAccount.first {
+                it?.directId == null && ((it?.relay as? AuthState.SignedIn)?.encryption?.anonId == accountId ||
+                    (it?.relay as? AuthState.PendingServer)?.accountId == accountId)
+            }
         }
         Unit
     }.await()
@@ -453,7 +493,7 @@ class AppGraph(
         val activeId = (storeAccount.value as? AuthState.SignedIn)?.encryption?.anonId
         if (activeId != null && store.session(sessionId) != null) return@withContext activeId
         auth.registry.value.ordered.firstOrNull { entry ->
-            entry.id != activeId && storedSessionExists(entry.id, sessionId)
+            entry.serverConfirmed && entry.id != activeId && storedSessionExists(entry.id, sessionId)
         }?.id
     }
 
@@ -485,7 +525,7 @@ class AppGraph(
         stopAccount()
         val id = (state as? AuthState.SignedIn)?.encryption?.anonId
         // The account's own database and preferences, its server for every request.
-        val server = id?.let { auth.registry.value.entry(it)?.serverUrl }
+        val server = (state as? AuthState.SignedIn)?.serverUrl
         activeServerUrl = server
         if (server != null && server != serverConfig.url.value) serverConfig.set(server)
         withContext(Dispatchers.IO) { database(id).writableDatabase }
@@ -493,9 +533,9 @@ class AppGraph(
         store.switchTo(database(id))
         storeAccountState.value = state
         if (state !is AuthState.SignedIn || id == null) return
-        val accountServer = server ?: serverConfig.url.value
+        val accountServer = state.serverUrl
         val account = AccountSync(
-            http = http,
+            http = accountRequests(state).http,
             okHttp = okHttp,
             serverUrl = { accountServer },
             clientId = clientId,

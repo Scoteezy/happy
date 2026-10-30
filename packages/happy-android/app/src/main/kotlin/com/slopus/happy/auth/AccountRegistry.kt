@@ -7,6 +7,7 @@ import com.slopus.happy.net.HappyJson
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
 
@@ -42,6 +43,8 @@ data class AccountRegistryEntry(
     val location: CredentialLocation,
     val addedOrder: Int,
     val display: AccountDisplay? = null,
+    /** False until an ambiguous RN import's host is explicitly confirmed. Old native entries remain confirmed. */
+    val serverConfirmed: Boolean = true,
 ) {
     internal val isValid: Boolean
         get() = id.length == 16 && id.all { it in "0123456789abcdef" } && addedOrder >= 0 &&
@@ -83,6 +86,8 @@ interface AccountRegistryStore {
  */
 class AccountRegistryFile(file: File) : AccountRegistryStore {
     private val atomic = AtomicFile(file)
+    // In particular, a corrupt/null confirmation bit must not coerce to the true legacy default.
+    private val json = Json(HappyJson) { coerceInputValues = false }
 
     override fun load(): AccountRegistry? {
         val text = try {
@@ -94,7 +99,7 @@ class AccountRegistryFile(file: File) : AccountRegistryStore {
             return null
         }
         val registry = try {
-            HappyJson.decodeFromString(AccountRegistry.serializer(), text)
+            json.decodeFromString(AccountRegistry.serializer(), text)
         } catch (_: SerializationException) {
             return null
         } catch (_: IllegalArgumentException) {

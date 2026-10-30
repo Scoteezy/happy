@@ -3,6 +3,7 @@ package com.slopus.happy.push
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.slopus.happy.net.AuthenticatedHttp
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailabilityLight
 import com.google.firebase.FirebaseApp
@@ -84,10 +85,10 @@ sealed interface PushSyncResult {
 class PushRegistrar(
     private val deviceTokens: DevicePushTokenSource,
     private val expo: ExpoPushTokenClient,
-    private val api: PushApi,
     private val store: RegisteredPushTokenStore,
     private val installationId: () -> String,
     private val applicationId: String,
+    private val retryDelay: suspend (Int) -> Unit = PushApi::backoffDelay,
 ) {
     /** getCurrentExpoPushToken, without the permission check. */
     suspend fun currentExpoToken(): String? {
@@ -95,15 +96,16 @@ class PushRegistrar(
         return expo.exchange(fcm, installationId(), applicationId)
     }
 
-    suspend fun sync(authToken: String): PushSyncResult {
+    suspend fun sync(account: AuthenticatedHttp): PushSyncResult {
+        val api = PushApi(account.http, retryDelay)
         val fcm = deviceTokens.token() ?: return PushSyncResult.Unsupported
         val current = expo.exchange(fcm, installationId(), applicationId)
         val previous = store.load()
-        api.register(authToken, current)
+        api.register(account.token, current)
         store.save(current)
         if (previous != null && previous != current) {
             try {
-                api.unregister(authToken, previous)
+                api.unregister(account.token, previous)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -114,8 +116,8 @@ class PushRegistrar(
     }
 
     /** removePushToken: Settings › Account's per-device remove. */
-    suspend fun remove(authToken: String, token: String) {
-        api.unregister(authToken, token)
+    suspend fun remove(account: AuthenticatedHttp, token: String) {
+        PushApi(account.http, retryDelay).unregister(account.token, token)
         if (store.load() == token) store.clear()
     }
 
@@ -128,10 +130,10 @@ class PushRegistrar(
      * here. [PushApi] retries forever and a logout must not hang, so it gets
      * [timeoutMs]; a token that couldn't be dropped is forgotten all the same.
      */
-    suspend fun unregisterOnLogout(authToken: String, timeoutMs: Long = LOGOUT_TIMEOUT_MS) {
+    suspend fun unregisterOnLogout(account: AuthenticatedHttp, timeoutMs: Long = LOGOUT_TIMEOUT_MS) {
         val token = store.load() ?: return
         try {
-            withTimeout(timeoutMs) { api.unregister(authToken, token) }
+            withTimeout(timeoutMs) { PushApi(account.http, retryDelay).unregister(account.token, token) }
         } catch (e: TimeoutCancellationException) {
             Log.w(TAG, "Unregistering the push token timed out during logout", e)
         } catch (e: CancellationException) {

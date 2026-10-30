@@ -20,6 +20,7 @@ import com.slopus.happy.ui.nav.Screen
 import com.slopus.happy.ui.nav.ScreenStack
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.settings.PairingFlow
+import com.slopus.happy.ui.server.AccountServerConfirmationScreen
 import com.slopus.happy.ui.stemcells.StemCellsLinkScreen
 import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.theme.Theme
@@ -85,6 +86,12 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
             graph.directRestoreFailed.filter { it }.collect {
                 graph.shellAccount.filterNotNull().first()
                 Alerts.show(activity, "Could not load paired computers", "Your saved data has not been removed. Restart Happy to try again.")
+            }
+        }
+        activity.lifecycleScope.launch {
+            graph.accountRestoreFailed.filter { it }.collect {
+                graph.shellAccount.filterNotNull().first()
+                Alerts.show(activity, activity.getString(R.string.common_error), activity.getString(R.string.errors_operation_failed))
             }
         }
         activity.lifecycleScope.launch {
@@ -223,7 +230,8 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
 
     private suspend fun show(account: AppGraph.ShellAccount) {
         val token = (account.relay as? AuthState.SignedIn)?.credentials?.token
-        val identity = account.directId ?: token
+        val pending = account.relay as? AuthState.PendingServer
+        val identity = account.directId ?: token ?: pending
         if (rootAccount != UNSET && rootAccount == identity) return
         val first = rootAccount == UNSET
         val direct = account.directId?.let { id ->
@@ -234,6 +242,7 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
                 home.openSettings = { home.push(StemCellsSettingsScreen(activity, settingsHost, direct.accountId)) }
             }
             token != null -> HomeScreen(activity, graph)
+            pending != null -> AccountServerConfirmationScreen(activity, graph, pending.accountId)
             graph.stemCells.isAvailable -> StemCellsLinkScreen(activity, graph)
             else -> WelcomeScreen(activity, graph)
         }

@@ -125,11 +125,12 @@ fun startPushRegistration(activity: ComponentActivity, graph: AppGraph, permissi
     val services = PushServices.get(activity)
     NotificationChannels.create(activity)
     activity.lifecycleScope.launch {
-        graph.auth.state.map { (it as? AuthState.SignedIn)?.credentials?.token }.distinctUntilChanged().collectLatest { authToken ->
-            if (authToken == null) {
+        graph.auth.state.map { it as? AuthState.SignedIn }.distinctUntilChanged().collectLatest { account ->
+            if (account == null) {
                 services.registrar.forget()
                 return@collectLatest
             }
+            val requests = graph.accountRequests(account)
             activity.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 if (!withContext(Dispatchers.IO) { services.fcm.supported }) return@repeatOnLifecycle
                 var info = permission.info()
@@ -139,7 +140,7 @@ fun startPushRegistration(activity: ComponentActivity, graph: AppGraph, permissi
                     if (!info.granted) return@repeatOnLifecycle
                 }
                 try {
-                    withContext(Dispatchers.IO) { services.registrar.sync(authToken) }
+                    withContext(Dispatchers.IO) { services.registrar.sync(requests) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

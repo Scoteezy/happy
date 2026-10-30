@@ -33,23 +33,20 @@ import java.util.concurrent.TimeUnit
  * the projects the stored sessions name change, and on every project
  * event the socket delivers.
  */
-class ProjectServices private constructor(graph: AppGraph) {
+class ProjectServices private constructor(private val graph: AppGraph) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val api = ProjectApi(
-        graph.http,
-        OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build(),
-        serverUrl = { graph.serverConfig.url.value },
-    )
+    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val projects: StateFlow<Map<String, Project>> = graph.account
         .flatMapLatest { account ->
-            val signedIn = graph.auth.state.value as? AuthState.SignedIn
+            val signedIn = graph.storeAccount.value as? AuthState.SignedIn
             if (account == null || signedIn == null) flowOf(emptyMap()) else follow(account, signedIn, graph.store)
         }
         .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
     private fun follow(account: AccountSync, signedIn: AuthState.SignedIn, store: HappyStore): Flow<Map<String, Project>> = channelFlow {
+        val api = ProjectApi(graph.accountRequests(signedIn).http, client, serverUrl = { signedIn.serverUrl })
         val catalog = ProjectCatalog(
             signedIn.encryption,
             fetch = { ids -> api.fetch(signedIn.credentials.token, ids) },

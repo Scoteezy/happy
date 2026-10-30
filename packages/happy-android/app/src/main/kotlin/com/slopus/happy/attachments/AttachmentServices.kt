@@ -17,8 +17,6 @@ class AttachmentServices private constructor(private val graph: AppGraph) {
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
-    val api = AttachmentApi(client, serverUrl = { graph.serverConfig.url.value })
-
     private class Account(val state: AuthState.SignedIn, val transfers: AttachmentTransfers, val pictures: AttachmentPictures)
 
     private var account: Account? = null
@@ -32,7 +30,9 @@ class AttachmentServices private constructor(private val graph: AppGraph) {
     @Synchronized
     private fun current(): Account? {
         val signedIn = graph.auth.state.value as? AuthState.SignedIn ?: return null.also { account = null }
+        if (graph.storeAccount.value != signedIn) return null.also { account = null }
         account?.let { if (it.state == signedIn) return it }
+        val api = AttachmentApi(client, serverUrl = { signedIn.serverUrl })
         val blobKeys = SessionBlobKeys(graph.store, signedIn.encryption)
         val transfers = AttachmentTransfers(api, blobKeys::blobKey, token = { signedIn.credentials.token })
         return Account(signedIn, transfers, AttachmentPictures()).also { account = it }

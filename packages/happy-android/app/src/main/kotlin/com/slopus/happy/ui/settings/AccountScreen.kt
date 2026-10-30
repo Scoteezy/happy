@@ -80,7 +80,10 @@ class AccountScreen(context: Context, private val graph: AppGraph) : BarScreen(c
     private var deletingToken: String? = null
     /** The account a switch is under way to. */
     private var busyAccount: String? = null
-    private val pushApi = PushTokensApi(graph.http) { signedIn?.credentials?.token }
+    private val pushApi: PushTokensApi get() {
+        val requests = checkNotNull(graph.currentRequests()) { "Not signed in" }
+        return PushTokensApi(requests.http) { requests.token }
+    }
     private val registration: PushRegistration? by lazy {
         activity()?.let { pushRegistration(context, graph, it.notificationPermission) }
     }

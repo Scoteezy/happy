@@ -140,17 +140,17 @@ class SessionAvatarServices private constructor(graph: AppGraph) {
     @OptIn(ExperimentalCoroutinesApi::class)
     val avatars: StateFlow<Map<String, ProjectAvatar>> = graph.account
         .flatMapLatest { account ->
-            val signedIn = graph.auth.state.value as? AuthState.SignedIn
+            val signedIn = graph.storeAccount.value as? AuthState.SignedIn
             if (account == null || signedIn == null) flowOf(emptyMap()) else follow(graph, signedIn)
         }
         .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
     private fun follow(graph: AppGraph, signedIn: AuthState.SignedIn): Flow<Map<String, ProjectAvatar>> = channelFlow {
         val store = graph.store
-        val http = graph.http
+        val http = graph.accountRequests(signedIn).http
         val token = signedIn.credentials.token
         val encryption = signedIn.encryption
-        val hydrator = SessionAvatarHydrator(this) { id, descriptor -> load(store, http, graph.serverConfig.url.value, token, encryption, id, descriptor) }
+        val hydrator = SessionAvatarHydrator(this) { id, descriptor -> load(store, http, signedIn.serverUrl, token, encryption, id, descriptor) }
         launch { hydrator.avatars.collect { send(it) } }
         launch {
             store.versions.map { it.sessions }.distinctUntilChanged().collect {

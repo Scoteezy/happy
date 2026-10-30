@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.net.HappyHttp
+import com.slopus.happy.net.AuthenticatedHttp
 import com.slopus.happy.model.settings.PushTokenSync
 import com.slopus.happy.net.HappyJson
 import kotlinx.coroutines.runBlocking
@@ -40,6 +41,7 @@ class PushRegistrationTest {
     private lateinit var api: PushApi
     private lateinit var store: RegisteredPushTokenStore
     private lateinit var registrar: PushRegistrar
+    private lateinit var account: AuthenticatedHttp
 
     private fun json(code: Int, body: String) = MockResponse.Builder().code(code).addHeader("Content-Type", "application/json").body(body).build()
 
@@ -60,15 +62,16 @@ class PushRegistrationTest {
         server.start()
         val http = HappyHttp(OkHttpClient(), serverUrl = { server.url("/").toString().trimEnd('/') }, clientId = "android/test")
         api = PushApi(http, retryDelay = { retries += it })
+        account = AuthenticatedHttp(http, "token-1")
         val context = ApplicationProvider.getApplicationContext<Context>()
         store = RegisteredPushTokenStore(context.getSharedPreferences(RegisteredPushTokenStore.PREFS_NAME, Context.MODE_PRIVATE))
         registrar = PushRegistrar(
             deviceTokens = { fcmToken },
             expo = ExpoPushTokenClient(OkHttpClient(), url = server.url(EXPO_PATH).toString()),
-            api = api,
             store = store,
             installationId = { "6f1c1a44-5e0b-4d9a-9c0b-2b1f6a0c9e71" },
             applicationId = "com.slopus.happy.dev",
+            retryDelay = { retries += it },
         )
     }
 
@@ -114,7 +117,7 @@ class PushRegistrationTest {
 
     @Test
     fun syncRegistersTheExpoTokenAndRemembersIt() = runBlocking {
-        assertEquals(PushSyncResult.Registered("ExponentPushToken[fcm-1]"), registrar.sync("token-1"))
+        assertEquals(PushSyncResult.Registered("ExponentPushToken[fcm-1]"), registrar.sync(account))
         assertEquals(listOf("POST $EXPO_PATH", "POST /v1/push-tokens"), requests.map(::summary))
         val expo = HappyJson.parseToJsonElement(requests[0].body!!.utf8()).jsonObject
         assertEquals("com.slopus.happy.dev", expo["appId"]!!.jsonPrimitive.content)
@@ -124,16 +127,16 @@ class PushRegistrationTest {
 
         // The same token again (every foreground): registered again, nothing dropped.
         requests.clear()
-        registrar.sync("token-1")
+        registrar.sync(account)
         assertEquals(listOf("POST /v1/push-tokens"), happyRequests.map(::summary))
     }
 
     @Test
     fun aRotatedTokenReplacesTheOldOne() = runBlocking {
-        registrar.sync("token-1")
+        registrar.sync(account)
         requests.clear()
         fcmToken = "fcm-2"
-        assertEquals(PushSyncResult.Registered("ExponentPushToken[fcm-2]"), registrar.sync("token-1"))
+        assertEquals(PushSyncResult.Registered("ExponentPushToken[fcm-2]"), registrar.sync(account))
         assertEquals(
             listOf("POST /v1/push-tokens", "DELETE /v1/push-tokens/ExponentPushToken%5Bfcm-1%5D"),
             happyRequests.map(::summary),
@@ -145,7 +148,7 @@ class PushRegistrationTest {
     @Test
     fun withoutAnFcmTokenPushIsUnsupported() = runBlocking {
         fcmToken = null
-        assertEquals(PushSyncResult.Unsupported, registrar.sync("token-1"))
+        assertEquals(PushSyncResult.Unsupported, registrar.sync(account))
         assertTrue(requests.isEmpty())
         assertNull(store.load())
         assertNull(registrar.currentExpoToken())
@@ -153,25 +156,25 @@ class PushRegistrationTest {
 
     @Test
     fun removingAndForgetting() = runBlocking {
-        registrar.sync("token-1")
+        registrar.sync(account)
         assertEquals("ExponentPushToken[fcm-1]", registrar.currentExpoToken())
 
         // Another device's token: this one stays registered.
         requests.clear()
-        registrar.remove("token-1", "ExponentPushToken[other]")
+        registrar.remove(account, "ExponentPushToken[other]")
         assertEquals(listOf("DELETE /v1/push-tokens/ExponentPushToken%5Bother%5D"), requests.map(::summary))
         assertEquals("ExponentPushToken[fcm-1]", store.load())
 
-        registrar.remove("token-1", "ExponentPushToken[fcm-1]")
+        registrar.remove(account, "ExponentPushToken[fcm-1]")
         assertNull(store.load())
 
-        registrar.sync("token-1")
+        registrar.sync(account)
         registrar.forget()
         assertNull(store.load())
     }
 
     private fun settingsRegistration(permission: NotificationPermission, supported: Boolean = true, signedIn: Boolean = true) =
-        AppPushRegistration(permission, supported = { supported }, registrar = registrar, store = store, authToken = { "token-1".takeIf { signedIn } })
+        AppPushRegistration(permission, supported = { supported }, registrar = registrar, store = store, account = { account.takeIf { signedIn } })
 
     @Test
     fun settingsSyncAsksFirstThenRegisters() = runBlocking {

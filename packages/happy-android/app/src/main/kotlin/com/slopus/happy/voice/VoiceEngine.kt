@@ -20,6 +20,9 @@ import kotlinx.coroutines.withContext
 
 data class VoiceOptions(val bypass: Boolean = false, val customAgentId: String? = null, val language: String? = null, val upsell: VoiceUpsell = VoiceUpsell.Control)
 
+/** Credentials and the already-bound voice endpoints from one account snapshot. */
+class VoiceAccount(val credentials: AuthCredentials, val service: VoiceService)
+
 interface VoiceSessionContext {
     suspend fun initial(sessionId: String): String
     fun connected(connection: VoiceConnection, mode: VoiceMode)
@@ -31,9 +34,8 @@ interface VoiceSessionContext {
 /** RealtimeSession.ts's gating and call lifecycle. All mutations run on [dispatcher]. */
 class VoiceEngine(
     private val scope: CoroutineScope,
-    private val service: VoiceService,
+    private val account: () -> VoiceAccount?,
     private val transport: VoiceTransport,
-    private val credentials: () -> AuthCredentials?,
     private val options: () -> VoiceOptions,
     private val paywall: VoicePaywall,
     private val preferences: VoicePreferences,
@@ -52,7 +54,10 @@ class VoiceEngine(
     private var silence: Job? = null
     private var agentSpeaking = false
 
-    override suspend fun start(sessionId: String, microphone: MicrophonePermission): VoiceStart = withContext(dispatcher) {
+    override suspend fun start(sessionId: String, microphone: MicrophonePermission): VoiceStart =
+        startForAccount(account(), sessionId, microphone) // Capture before dispatch or any permission/paywall/service suspension.
+
+    private suspend fun startForAccount(owner: VoiceAccount?, sessionId: String, microphone: MicrophonePermission): VoiceStart = withContext(dispatcher) {
         if (closing != null || state.value.status in listOf(VoiceStatus.Connecting, VoiceStatus.Connected)) return@withContext VoiceStart.Declined
         val epoch = ++generation
         starting = currentCoroutineContext()[Job]
@@ -71,8 +76,8 @@ class VoiceEngine(
             } else {
                 var bought = false
                 while (true) {
-                    val auth = credentials() ?: return@withContext fail(VoiceStart.NotSignedIn)
-                    when (val response = service.credentials(auth)) {
+                    val auth = owner ?: return@withContext fail(VoiceStart.NotSignedIn)
+                    when (val response = auth.service.credentials(auth.credentials)) {
                         is VoiceCredentials.Granted -> { grant = response; break }
                         is VoiceCredentials.Denied -> {
                             if (response.reason == "voice_conversation_limit_reached") return@withContext fail(VoiceStart.LimitReached)
@@ -186,7 +191,7 @@ class VoiceEngine(
     }
 
     override suspend fun usage(): VoiceUsage? = try {
-        credentials()?.let { service.usage(it) }
+        account()?.let { it.service.usage(it.credentials) }
     } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
 
     private fun events(epoch: Long) = object : VoiceEvents {

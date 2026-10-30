@@ -1,6 +1,7 @@
 package com.slopus.happy.auth
 
 import android.util.Log
+import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.crypto.AuthChallenge
 import com.slopus.happy.crypto.Base64Variant
@@ -15,15 +16,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import java.io.IOException
 
 sealed interface AuthState {
+    data object Restoring : AuthState
     data object SignedOut : AuthState
 
-    data class SignedIn(val credentials: AuthCredentials, val encryption: AccountEncryption) : AuthState {
+    /** Deliberately contains no credentials: no authenticated consumer can use this account yet. */
+    data class PendingServer(val accountId: String) : AuthState
+
+    data class SignedIn(val credentials: AuthCredentials, val encryption: AccountEncryption, val serverUrl: String) : AuthState {
         /** The account id, from the token (parseToken.ts); happy-app's `sync.serverID`. */
         val publicId: String? get() = tokenSubject(credentials.token)
 
@@ -59,10 +66,13 @@ class AuthRepository(
     private val serverUrl: () -> String = { "" },
     /** A successful sign-in, not startup restore or sign-out handover. */
     private val onSignedIn: suspend () -> Unit = {},
+    private val rnServerImport: () -> ImportedAccountServer = { ImportedAccountServer.NeedsConfirmation },
 ) {
     private val lock = Any()
-    private val registryState = MutableStateFlow(bootstrap())
-    private val mutableState = MutableStateFlow(activeState(registryState.value))
+    private val restoreLock = Mutex()
+    private var restored = false
+    private val registryState = MutableStateFlow(AccountRegistry())
+    private val mutableState = MutableStateFlow<AuthState>(AuthState.Restoring)
     private val adding = MutableStateFlow(false)
 
     /** The active account, or signed out when there is none. */
@@ -73,6 +83,25 @@ class AuthRepository(
 
     /** The sign-in screens are up over a signed-in account (Settings › Account › Add Account). */
     val isAddingAccount: StateFlow<Boolean> = adding.asStateFlow()
+
+    /** No disk, Keystore or MMKV work in the constructor/on the UI thread. Mutations await this boundary. */
+    suspend fun restoreStored() = restoreLock.withLock {
+        if (restored) return@withLock
+        try {
+            withContext(io) {
+                synchronized(lock) {
+                    val registry = bootstrap()
+                    registryState.value = registry
+                    publish(activeState(registry))
+                    restored = true
+                }
+            }
+        } catch (e: IOException) {
+            // Fail closed; a later operation may retry, but may not silently use an unsaved host.
+            mutableState.value = AuthState.SignedOut
+            throw e
+        }
+    }
 
     fun beginAddingAccount() {
         adding.value = true
@@ -103,6 +132,7 @@ class AuthRepository(
      * the signed-in ones, or is signed in again, and becomes active.
      */
     suspend fun signIn(token: String, secret: ByteArray) {
+        restoreStored()
         require(secret.size == 32) { "Invalid secret" }
         val credentials = AuthCredentials(token = token, secret = encodeBase64(secret, Base64Variant.Url))
         val signedIn = signedIn(credentials) as AuthState.SignedIn
@@ -112,6 +142,7 @@ class AuthRepository(
             synchronized(lock) {
                 val registry = registryState.value
                 val existing = registry.entry(id)
+                check(existing?.serverConfirmed != false) { "Confirm this account's server before signing in" }
                 val location = existing?.location
                     ?: if (registry.entries.none { it.location == CredentialLocation.Shared } && credentialStore.read() == null) {
                         CredentialLocation.Shared
@@ -121,35 +152,64 @@ class AuthRepository(
                 if (location == CredentialLocation.Shared) credentialStore.write(credentials) else credentialStore.write(id, credentials)
                 val entry = AccountRegistryEntry(id, server, location, existing?.addedOrder ?: registry.nextOrder, existing?.display)
                 save(AccountRegistry(registry.entries.filter { it.id != id } + entry, activeId = id))
+                publish(signedIn)
             }
         }
         adding.value = false
-        mutableState.value = signedIn
         onSignedIn()
     }
 
     private suspend fun login(secret: ByteArray) {
+        restoreStored()
+        val id = AccountEncryption.create(secret, random).anonId
+        check(registryState.value.entry(id)?.serverConfirmed != false) { "Confirm this account's server before signing in" }
         signIn(api.getToken(AuthChallenge.create(secret, random)), secret)
     }
 
     /** Makes [accountId] the active account. Throws when it isn't signed in here or its credentials can't be read. */
     suspend fun switchTo(accountId: String) {
+        restoreStored()
         if ((state.value as? AuthState.SignedIn)?.encryption?.anonId == accountId) return
-        val next = withContext(io) {
+        withContext(io) {
             synchronized(lock) {
                 val registry = registryState.value
                 val entry = registry.entry(accountId) ?: throw IllegalArgumentException("Unknown account")
-                val next = activeState(entry) as? AuthState.SignedIn ?: throw IllegalStateException("The account's credentials can't be read")
+                val next = activeState(entry)
+                check(next !is AuthState.SignedOut) { "The account's credentials can't be read" }
                 save(registry.copy(activeId = accountId))
-                next
+                publish(next)
             }
         }
-        mutableState.value = next
+    }
+
+    /** Native AccountController.confirmServer: validate and persist before creating/publishing a session. */
+    suspend fun confirmServer(accountId: String, input: String) {
+        require(ServerConfig.validate(input) == ServerConfig.Validation.Valid) { "Invalid server URL" }
+        val url = input.trim().trimEnd('/')
+        restoreStored()
+        withContext(io) {
+            synchronized(lock) {
+                val registry = registryState.value
+                val entry = registry.active
+                check(entry?.id == accountId && !entry.serverConfirmed &&
+                    state.value == AuthState.PendingServer(accountId)) { "This account is no longer awaiting confirmation" }
+                val confirmed = entry.copy(serverUrl = url, serverConfirmed = true)
+                val next = activeState(confirmed)
+                check(next is AuthState.SignedIn) { "The account's credentials can't be read" }
+                save(registry.copy(entries = registry.entries.map { if (it.id == accountId) confirmed else it }))
+                publish(next)
+            }
+        }
     }
 
     /** [accountId]'s stored credentials, for what must still reach the server as it signs out. */
-    suspend fun credentials(accountId: String): AuthCredentials? = withContext(io) {
-        registryState.value.entry(accountId)?.let(::credentials)
+    suspend fun credentials(accountId: String): AuthCredentials? = storedAccount(accountId)?.credentials
+
+    /** An inactive account's host and credentials captured together, for its logout work. */
+    suspend fun storedAccount(accountId: String): AuthState.SignedIn? = withContext(io) {
+        synchronized(lock) {
+            registryState.value.entry(accountId)?.takeIf { it.serverConfirmed }?.let(::activeState) as? AuthState.SignedIn
+        }
     }
 
     /**
@@ -158,7 +218,8 @@ class AuthRepository(
      * last. Clearing its local data is the caller's job (AppGraph.logout).
      */
     suspend fun signOut(accountId: String) {
-        val next = withContext(io) {
+        restoreStored()
+        withContext(io) {
             synchronized(lock) {
                 val registry = registryState.value
                 val entry = registry.entry(accountId) ?: return@synchronized null
@@ -170,10 +231,9 @@ class AuthRepository(
                 }
                 val following = AccountRegistry(rest).ordered.firstOrNull()
                 save(AccountRegistry(rest, activeId = following?.id))
-                following?.let(::activeState) ?: AuthState.SignedOut
+                publish(following?.let(::activeState) ?: AuthState.SignedOut)
             }
         }
-        if (next != null) mutableState.value = next
     }
 
     /** Signs out the active account. */
@@ -206,7 +266,21 @@ class AuthRepository(
 
     private fun activeState(registry: AccountRegistry): AuthState = registry.active?.let(::activeState) ?: AuthState.SignedOut
 
-    private fun activeState(entry: AccountRegistryEntry): AuthState = signedIn(credentials(entry))
+    private fun activeState(entry: AccountRegistryEntry): AuthState {
+        val value = signedIn(credentials(entry)) as? AuthState.SignedIn ?: return AuthState.SignedOut
+        if (value.encryption.anonId != entry.id) return AuthState.SignedOut
+        return if (entry.serverConfirmed) value.copy(serverUrl = entry.serverUrl) else AuthState.PendingServer(entry.id)
+    }
+
+    private fun publish(state: AuthState) {
+        if (state is AuthState.SignedIn) {
+            val entry = checkNotNull(registryState.value.entry(state.encryption.anonId))
+            check(entry.serverConfirmed)
+            mutableState.value = state.copy(serverUrl = entry.serverUrl)
+        } else {
+            mutableState.value = state
+        }
+    }
 
     /**
      * The registry as last saved, squared with happy-app's entry: an account
@@ -221,22 +295,22 @@ class AuthRepository(
         val shared = signedIn(credentialStore.read()) as? AuthState.SignedIn
         if (shared != null && sharedEntry?.id != shared.encryption.anonId) {
             val id = shared.encryption.anonId
+            val known = registry.entry(id)
+            val imported = if (known == null) rnServerImport() else null
             val others = registry.entries.filter { it.location != CredentialLocation.Shared && it.id != id }
             val entry = AccountRegistryEntry(
                 id,
-                sharedEntry?.serverUrl ?: serverUrl(),
+                known?.serverUrl ?: (imported as? ImportedAccountServer.Confirmed)?.url ?: RNServerConfigImporter.DEFAULT_SERVER_URL,
                 CredentialLocation.Shared,
-                sharedEntry?.addedOrder ?: AccountRegistry(others).nextOrder,
+                known?.addedOrder ?: AccountRegistry(others).nextOrder,
+                known?.display,
+                serverConfirmed = known?.serverConfirmed ?: (imported is ImportedAccountServer.Confirmed),
             )
             registry = AccountRegistry(others + entry, activeId = registry.activeId?.takeIf { active -> others.any { it.id == active } } ?: id)
         }
         if (registry.active == null) registry = registry.copy(activeId = registry.ordered.firstOrNull()?.id)
         if (registry != stored && (stored != null || registry.entries.isNotEmpty())) {
-            try {
-                registryStore.save(registry)
-            } catch (e: IOException) {
-                Log.w(TAG, "Could not save the account registry", e)
-            }
+            registryStore.save(registry)
         }
         return registry
     }
@@ -249,7 +323,8 @@ class AuthRepository(
             return AuthState.SignedOut
         }
         if (secret.size != 32) return AuthState.SignedOut
-        return AuthState.SignedIn(credentials, AccountEncryption.create(secret, random))
+        // This decoded value stays private until publish attaches the persisted host.
+        return AuthState.SignedIn(credentials, AccountEncryption.create(secret, random), "")
     }
 
     private companion object {

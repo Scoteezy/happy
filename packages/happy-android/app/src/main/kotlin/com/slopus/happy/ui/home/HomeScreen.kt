@@ -369,7 +369,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
     private suspend fun approve(link: String): String? {
         val signedIn = graph.auth.state.value as? AuthState.SignedIn ?: return context.getString(R.string.modals_failed_to_connect_terminal)
         return try {
-            approveTerminal(graph.authApi, signedIn.credentials, signedIn.encryption, link)
+            approveTerminal(com.slopus.happy.auth.AuthApi(graph.accountRequests(signedIn).http), signedIn.credentials, signedIn.encryption, link)
             null
         } catch (e: CancellationException) {
             throw e

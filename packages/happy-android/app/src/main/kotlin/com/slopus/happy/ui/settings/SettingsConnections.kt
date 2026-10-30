@@ -45,10 +45,11 @@ object PairingFlow {
         val link = text.trim()
         if (!link.startsWith(kind.prefix)) return Outcome.InvalidLink
         val signedIn = graph.auth.state.value as? AuthState.SignedIn ?: return Outcome.Failed
+        val api = com.slopus.happy.auth.AuthApi(graph.accountRequests(signedIn).http)
         return try {
             when (kind) {
-                Kind.Terminal -> approveTerminal(graph.authApi, signedIn.credentials, signedIn.encryption, link)
-                Kind.Account -> approveAccountLink(graph.authApi, signedIn.credentials, link)
+                Kind.Terminal -> approveTerminal(api, signedIn.credentials, signedIn.encryption, link)
+                Kind.Account -> approveAccountLink(api, signedIn.credentials, link)
             }
             Outcome.Approved
         } catch (e: CancellationException) {

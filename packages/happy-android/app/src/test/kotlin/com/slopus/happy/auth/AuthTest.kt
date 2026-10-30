@@ -41,8 +41,10 @@ class AuthTest {
 
     private fun http() = HappyHttp(OkHttpClient(), serverUrl = { server.url }, clientId = "android/test")
 
-    private fun repository() =
-        AuthRepository(SecureStoreCredentialStore(ExpoSecureStore(prefs, keys)), AuthApi(http()), io = Dispatchers.Unconfined)
+    private suspend fun repository() =
+        AuthRepository(SecureStoreCredentialStore(ExpoSecureStore(prefs, keys)), AuthApi(http()), io = Dispatchers.Unconfined,
+            rnServerImport = { ImportedAccountServer.Confirmed(RNServerConfigImporter.DEFAULT_SERVER_URL) })
+            .also { it.restoreStored() }
 
     @Test
     fun createAccountSignsInWithAFreshSecret() = runTest {

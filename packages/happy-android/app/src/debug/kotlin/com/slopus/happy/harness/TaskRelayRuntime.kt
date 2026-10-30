@@ -7,6 +7,12 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import com.slopus.happy.AppGraph
 import com.slopus.happy.MainActivity
+import com.slopus.happy.auth.AuthCredentials
+import com.slopus.happy.auth.AuthState
+import com.slopus.happy.auth.ExpoSecureStore
+import com.slopus.happy.auth.SecureStoreCredentialStore
+import com.slopus.happy.crypto.Base64Variant
+import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.home.HomeServices
 import com.slopus.happy.home.BotFacePainter
 import com.slopus.happy.model.StartPhase
@@ -15,6 +21,7 @@ import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.task
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.testing.TaskRelayScenario
+import com.slopus.happy.testing.FakeHappyServer
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -22,9 +29,10 @@ import kotlinx.serialization.json.*
 import java.io.File
 
 /** Only the isolated APK can instantiate this; no production graph/transport hooks. */
-class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false) {
+class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val scenario: TaskRelayScenario
+    private val unrelatedServer: FakeHappyServer?
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     val graph: AppGraph
     @Volatile private var expectedFacePng: ByteArray? = null
@@ -35,20 +43,64 @@ class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, 
         // MockWebServer's bind is explicitly 127.0.0.1:0 and completes before
         // constructing the unchanged real transport/account graph.
         scenario = runBlocking(Dispatchers.IO) { TaskRelayScenario(fixture.getValue("machine").jsonObject, botFaces, failFirstAvatar, pictures = dockPictures).start() }
+        unrelatedServer = if (importServer) runBlocking(Dispatchers.IO) {
+            FakeHappyServer(secret = ByteArray(32) { 31 }, accountId = "unrelated-import-account").start()
+        } else null
+        val keys = SoftwareKeys()
+        val importedFile = File(context.filesDir, "mmkv/server-config")
+        val importedBytes = "synthetic-torn-import".toByteArray()
         graph = try {
-            AppGraph(context, "android/task-relay-fixture", scenario.server.url,
-                secureStoreKeys = SoftwareKeys(), databaseName = null,
+            if (importServer) runBlocking(Dispatchers.IO) {
+                // Only this process's fresh isolated namespace and software keys.
+                SecureStoreCredentialStore(ExpoSecureStore(context.getSharedPreferences(ExpoSecureStore.PREFS_NAME, Context.MODE_PRIVATE), keys))
+                    .write(AuthCredentials(scenario.server.token, encodeBase64(scenario.server.secret, Base64Variant.Url)))
+                importedFile.parentFile!!.mkdirs()
+                importedFile.writeBytes(importedBytes)
+            }
+            AppGraph(context, "android/task-relay-fixture", unrelatedServer?.url ?: scenario.server.url,
+                secureStoreKeys = keys, databaseName = null,
                 directTransport = { error("Task relay fixture has no Direct computer") }).also { made ->
                 runBlocking(Dispatchers.IO) {
-                    check(made.auth.registry.value.entries.isEmpty()) { "Fixture namespace must be fresh" }
-                    check(made.serverConfig.url.value == scenario.server.url)
-                    made.auth.signIn(scenario.server.token, scenario.server.secret)
+                    made.auth.restoreStored()
+                    if (importServer) {
+                        check(made.auth.state.value is AuthState.PendingServer)
+                        check(made.serverConfig.url.value == unrelatedServer!!.url)
+                    } else {
+                        check(made.auth.registry.value.entries.isEmpty()) { "Fixture namespace must be fresh" }
+                        check(made.serverConfig.url.value == scenario.server.url)
+                        made.auth.signIn(scenario.server.token, scenario.server.secret)
+                    }
                 }
             }
         } catch (failure: Throwable) {
             scope.cancel()
             runBlocking(Dispatchers.IO) { scenario.close() }
+            unrelatedServer?.close()
             throw failure
+        }
+        if (importServer) scope.launch(Dispatchers.IO) {
+            val evidence = File(context.filesDir, "import-server-evidence.json")
+            while (isActive) {
+                val report = buildJsonObject {
+                    put("loopbackOnly", true)
+                    put("confirmationServer", scenario.server.url)
+                    put("pending", graph.auth.state.value is AuthState.PendingServer)
+                    put("signedIn", graph.auth.state.value is AuthState.SignedIn)
+                    put("serverConfirmed", graph.auth.registry.value.active?.serverConfirmed == true)
+                    put("selectedHostPersisted", graph.auth.registry.value.active?.let { it.serverConfirmed && it.serverUrl == scenario.server.url } == true)
+                    put("selectedRequests", scenario.server.requests.size)
+                    put("selectedAuthenticatedRequests", scenario.server.requests.count { it.headers["Authorization"] != null })
+                    put("selectedSocketAuthentications", scenario.server.socketAuths.size)
+                    put("selectedAuthProbes", scenario.server.requestsTo("/v1/auth").size)
+                    put("unrelatedRequests", unrelatedServer!!.requests.size)
+                    put("unrelatedSocketAuthentications", unrelatedServer.socketAuths.size)
+                    put("sourceUnchanged", importedFile.readBytes().contentEquals(importedBytes))
+                }
+                val temporary = File(context.filesDir, "import-server-evidence.tmp")
+                temporary.writeText(report.toString())
+                check(temporary.renameTo(evidence))
+                delay(100)
+            }
         }
         scope.launch {
             while (isActive) {
@@ -119,6 +171,7 @@ class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, 
         } finally {
             stage("closing-loopback-server")
             withContext(Dispatchers.IO + NonCancellable) { scenario.close() }
+            withContext(Dispatchers.IO + NonCancellable) { unrelatedServer?.close() }
         }
         stage("closed")
         withContext(Dispatchers.IO) {
@@ -151,10 +204,15 @@ class TaskRelayHarnessActivity : ComponentActivity() {
             lifecycleScope.launch { app.closeTaskRelay(); finishAndRemoveTask() }
             return
         }
-        app.enableTaskRelay(intent.getBooleanExtra("botFaces", false), intent.getBooleanExtra("failFirstAvatar", false), intent.getBooleanExtra("dockPictures", false))
+        val importServer = intent.getBooleanExtra("importServer", false)
+        app.enableTaskRelay(intent.getBooleanExtra("botFaces", false), intent.getBooleanExtra("failFirstAvatar", false),
+            intent.getBooleanExtra("dockPictures", false), importServer)
         val graph = app.graph
         lifecycleScope.launch {
-            withTimeout(30_000) { graph.account.filterNotNull().first() }
+            withTimeout(30_000) {
+                if (importServer) graph.shellAccount.first { it?.relay is AuthState.PendingServer }
+                else graph.account.filterNotNull().first()
+            }
             startActivity(Intent(this@TaskRelayHarnessActivity, MainActivity::class.java))
             finish()
         }

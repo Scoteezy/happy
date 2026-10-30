@@ -43,18 +43,19 @@ class VoiceEngineTest {
             override fun prompt(text: String) { log += text }
             override suspend fun mute(muted: Boolean) { log += "mute:$muted" }
         }
-        val engine = VoiceEngine(
-            scope = test.backgroundScope,
-            service = object : VoiceService {
+        private val service = object : VoiceService {
                 override suspend fun credentials(credentials: AuthCredentials): VoiceCredentials {
                     log += "credentials"; this@Fixture.credentials(); return response
                 }
                 override suspend fun usage(credentials: AuthCredentials) = VoiceUsage(1, 2, 3, 4)
-            },
+            }
+        val engine = VoiceEngine(
+            scope = test.backgroundScope,
+            account = { auth?.let { VoiceAccount(it, service) } },
             transport = VoiceTransport { config, events, _ ->
                 log += "connect"; this.config = config; this.events = events; connect(); connection
             },
-            credentials = { auth }, options = { options },
+            options = { options },
             paywall = object : VoicePaywall {
                 override fun hasPro() = pro
                 override suspend fun present(flow: String): Boolean {
