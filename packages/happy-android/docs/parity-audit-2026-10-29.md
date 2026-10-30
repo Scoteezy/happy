@@ -361,6 +361,81 @@ Preserved `app-release-874fd38f6-unsigned.apk`: **96,400,176 bytes**, SHA-256
 All device/build jobs were sequential and bounded; no signing, production
 install, publication or store validation occurred.
 
+## Home Bot faces: verified implementation and device flow (2026-10-30)
+
+Source checkpoint `07d77500204f27b89d3d5bca8e613d80d8c90d92` connects the
+native four-face picker, reroll, selected ring and artist link to Bot creation.
+The pure layout ports the frozen native 52pt faces, 2pt ring, 10pt gaps and
+40pt die; six exact-frame/token tests cover it and the dock integration.
+The existing Adventurer Neutral resolver feeds a cached Canvas painter off
+main. Its 256px PNG is encrypted with the original account's session blob
+key, uploaded, then passed to `setAvatar` with the plaintext size and MIME.
+
+Painting/upload/wearing failures keep the created Bot and offer Try again /
+Not now after the dock closes. Retry retains the original account, session
+and seed and never spawns another Bot. Stop/account changes cancel; refusing
+an upload because the app is backgrounded is a retryable picture failure,
+not a reason to kill the Bot. The prior Session prompt is preserved, and a
+successful creation resets the Bot name/kind. Tests cover rendering details,
+ownership at suspension boundaries, cancellation, encrypted transport,
+failure legs, retry and real picker accessibility/actions.
+
+Evidence is under `.context/evidence/relay-bot-face/`. The final complete
+Android replay `android-final/bot-face-flow.mp4` passed (**92.476022s**);
+all ten UI XML snapshots parse. Personally compared selected-fourth-name,
+retry alert and Home stills: the chosen face appears on the Home Bot row.
+Sanitized JSON proves one named Bot spawn, two avatar attempts (the first
+deliberately refused), one worn face, exact selected-PNG encrypted roundtrip,
+Home avatar loading, no first message, prompt retention and draft reset.
+There is one socket connection and no socket failures. Explicit relay,
+fixture-scope and account teardown all pass; owned happy36 PID 62124 exited.
+
+Earlier captures are retained: the first exposed a missing heartbeat in the
+fake relay, fixed with a fixture-owned heartbeat, not a production transport
+change. Two later captures passed the functional path but failed teardown:
+Android task reuse brought MainActivity forward instead of starting the
+shutdown harness. Fixed lifecycle tracing confirmed no shutdown entry;
+`--activity-multiple-task` made the shutdown-only and final full replay pass.
+
+The scratch native reference build and **one UI test / 729.810s** passed,
+covering initial picker, second selection, reroll and fourth selection/name.
+Initial and named stills were personally compared. Raw video is 740.230s
+because XCTest waits 60s around taps for the offline header's infinite pulse;
+`native/ios-bot-face-compact.mp4` is **54.883333s**, omitting those idle waits
+without modifying the frozen reference or its animations. The dedicated
+reference simulator shut down before Gradle. This is native visual proof and
+Android loopback-fixture protocol proof, not successful live-machine creation.
+
+Preserved fixture APK `app-shellharness-capture586.apk`: 113,737,768 bytes,
+SHA-256 `8422446c1560b2c6647401c69d4f237b98cbf7e9351fa6f554546208b3331d67`.
+It records pre-commit `bdc5a139a` build metadata; runtime source matches the
+checkpoint (only a subsequent method comment changed).
+
+At exact `07d775002`, full fresh ordinary-debug checks passed in **2m44s**:
+app **1343/192**, layout **601/109**, crypto **36/5**, icons **6/2**, vendor
+**4/1** tests/suites — **1990 tests / 309 suites**, no failures/errors/skips.
+All five test tasks actually executed with `--rerun`; required-Tailcat debug
+assembly passed (26 executed, 14 cached, 61 up-to-date). Owned Gradle/Kotlin
+PIDs 68288/68396 exited. XML is preserved under `full-test-results/`.
+Ordinary APK package/manifest/DEX/assets checks pass: no fixture components,
+code or permissive network policy, both JNI ABIs and 16KB ZIP alignment.
+`app-ordinary-debug-07d775002.apk`: 112,861,820 bytes, SHA-256
+`f3f1d0eded726c1ba39047bbe47701bb188069a27e739fa3d7307094db53dec8`.
+
+Genuine no-harness unsigned production compilation/assembly at the same
+source passed in **4m49s**, including R8, lint and release keep checks (16
+executed, 81 up-to-date). Owned PIDs 69043/69077 exited. Actual release
+manifest, DEX, assets and preserved R8 mapping exclude fixture/testing/
+mockwebserver classes, routes and network policy. The `com.ex3ndr.happy`
+APK is non-debuggable and unsigned. Both APKs pass 16KB ZIP alignment and
+both Tailcat JNI ABIs have four ELF LOAD segments aligned to 16KiB.
+`app-release-07d775002-unsigned.apk`: **96,417,256 bytes**, SHA-256
+`aa3b991128e3b3e4d5825ad4f7dfb5f20874aa40ccc63267f2c5ef5772cc8870`.
+Logs and inspection output are `full-ordinary-debug.log`,
+`production-release.log`, `ordinary-debug-*` and `production-*`. All builds
+and devices ran sequentially with bounded resources; no production install,
+signing, publication or store validation occurred.
+
 ## Confirmed missing behavior
 
 | Area | Native reference | Android gap |
@@ -368,7 +443,8 @@ install, publication or store validation occurred.
 | Relay Home task rows | `HappyCore/Home/ProjectHomeList.swift:119,256`, `HappyCore/Home/SessionList.swift:312`, `HappyStore/SessionState.swift:72` | Closed for row rendering: classification, ordering, retired exclusion, name/folder/glyph and grouped/flat rows pass focused/full tests and isolated Android/native comparison. Dock creation remains separate below. |
 | Relay Home task actions | `HappyCore/Home/SessionQuickActions.swift:100`, `HappyUI/Screens/SessionListScreens.swift:714`, `HappyUI/Screens/HomeSessionActions.swift:225` | Implemented and focused/device verified above: capability Leave/swipe, ownership Archive, machine-only routes, optimistic restoration and account isolation. Successful live machine operations remain unverified. |
 | Home dock Task mode | `HappyCore/Home/HomeDockKind.swift`, `HappyUI/Screens/HomeDockScreens.swift:596` | Text creation is implemented and verified above, including real-shell encrypted fake RPC/message flow, navigation and reset. Pictures remain separate below; no successful live machine claim. |
-| Dock bot face picker and pictures | Native `HomeDockScreens.swift:463,732`, `Home/SessionStarter.swift:470` | Android has Bot naming/creation but no face picker or painter/wearer injection: `SessionStarter` defaults to `Painting / No faces here`, and `HomeDockController` discards `faceFailure` instead of offering retry. The seed resolver and `SessionOps.setAvatar` exist but are not connected. Dock attachments also need wiring; generic chat attachment support does not complete the dock. |
+| Dock Bot faces | Native `HomeDockScreens.swift:463,732`, `Home/SessionStarter.swift:470` | Picker, off-main painter, encrypted upload, account-bound wearer and picture-only retry are connected and verified above. No live-machine claim. |
+| Dock pictures | Native `HomeDockScreens.swift:193,732,768` | Session/Task dock image selection, previews and first-send attachment wiring remain missing; generic chat attachment support does not complete the dock. |
 | Relay troubleshooting | Native `HappyUI/Screens/HomeScreens.swift:650` | Closed for the guide, account-owned feed, both Home routes, AI copy, machine navigation and terminal selection: focused/full tests, native comparison, isolated device replay and ordinary/unsigned-production isolation checks pass above. No live connectivity/repair claim. |
 | Imported-account server confirmation | Native `HappyUI/Screens/AccountServerScreens.swift`, `Navigation/AppCoordinator.swift:282` | No equivalent confirmation route found in Android auth/coordinator. |
 | Message-detail reading position | Native `HappyUI/Chat/MessageDetail/MessageDetailViewController.swift:294` | Android's pure `MessageDetailReadingPlace` exists but is not wired to the message screen's text-size changes. |

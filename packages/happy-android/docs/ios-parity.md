@@ -11,6 +11,43 @@ emulator. Evidence (screenshots, screen recordings) is kept out of git under
 `.context/evidence/<feature>/` at the repository root; the path is listed per
 item once it exists.
 
+## Home Bot face verification (2026-10-30)
+
+- Source `07d775002` connects the four native face choices, reroll, selected
+  ring and artist link to Bot creation. Layout/frame tests preserve native
+  metrics; the cached painter rasterizes and encodes a 256px PNG off main.
+  The original account owns encryption/upload/`setAvatar`. Picture failure
+  keeps the Bot and offers picture-only retry after the dock closes. Stop
+  and account changes cancel; background upload refusal is retryable.
+- `.context/evidence/relay-bot-face/android-final/bot-face-flow.mp4`
+  (**92.476022s**) verifies actual shell picker/roll/name, deliberate first
+  avatar refusal, retry and matching Home avatar. Sanitized evidence asserts
+  one spawn, two avatar attempts, selected PNG encrypted roundtrip, no first
+  message, preserved Session prompt, reset Bot name/kind and explicit
+  relay/scope/account teardown. Ten UI XML snapshots parse; owned emulator
+  PID 62124 exited. This is loopback-fixture proof, not live-machine creation.
+- Native scratch build and one UI test passed (**729.810s**), with four
+  picker/selection/roll/name screenshots personally compared. The raw
+  740.230s movie includes XCTest's 60s idle waits for the offline header's
+  infinite pulse; `native/ios-bot-face-compact.mp4` (**54.883333s**) removes
+  those waits. Frozen iOS source and animations are unchanged; the dedicated
+  simulator shut down before any Android build. Native networking is offline.
+- Full fresh ordinary-debug checks at that source passed **1990 tests / 309
+  suites**, no failures/errors/skips, plus required-Tailcat assembly. All five
+  test tasks reran. Ordinary APK manifest/DEX/assets exclude fixture code and
+  network policy; both JNI ABIs and 16KB ZIP alignment pass. Detailed counts,
+  earlier fixture-only capture failures, artifact hashes and build logs are
+  in `docs/parity-audit-2026-10-29.md` and the evidence directory.
+- Genuine no-harness unsigned production compilation/assembly passed at the
+  same source in **4m49s**, including R8/lint/keep checks. Actual APK and R8
+  mapping exclude fixture/testing/mockwebserver code and network policy;
+  production is non-debuggable and unsigned. Both APKs pass 16KB ZIP alignment
+  and both Tailcat JNI ABIs pass 16KiB ELF LOAD alignment. Build/device work
+  was sequential and bounded; all owned workers/devices stopped. No signing,
+  production install, publication or store validation occurred.
+- Session/Task dock pictures and off-main dock text-height preparation remain
+  separate gaps. Successful live creation and spoken TalkBack are not claimed.
+
 ## Direct shell verification (2026-10-29)
 
 - The actual `MainActivity` now runs Direct home, account switching, settings
@@ -50,8 +87,8 @@ item once it exists.
   No release was made.
 - Inline Stories and proposal cards now have their own verified integration
   records below. The remaining checklist is still partial: in particular relay
-  bot face choices and dock pictures need separate work. Relay Task rows,
-  actions and text creation have later verification records below. A fresh audit
+  dock pictures need separate work. Bot faces have the newer record above;
+  Relay Task rows, actions and text creation have later records below. A fresh audit
   must compare current iOS source, not assume every historical gap still exists.
 
 ## Real conversation sidebar proposal verification (2026-10-29)
@@ -725,10 +762,10 @@ Rules carried over from iOS (see `AGENTS.md`):
   Task classification, ordering, retired-task exclusion and glyph now have
   passing focused/full tests and isolated Android/native evidence. See the
   verification records above, including Task actions. Dock Task creation
-  remains a separate missing feature.
+  has its own later verified text-creation record; dock pictures remain missing.
 - [~] Update banner and offline machines banner: offline plaque and What's new shown (`home/compare-offline-list.png`); What's new opens the changelog; the Play Store update check is to do
 - [~] Home dock: resting capsule with the placeholder and send button, its fade-in and the list scrim (`:layout` `HomeDockLayout`, focus layout, motion, fade and refusal with the iOS tests)
-- [~] Dock composer (`ui/home/HomeDockController.kt`, `HomeDockFocusView.kt`): opens over home with the dim and a faint blur (RenderEffect, Android 12+), the shell growing from the capsule and the rows and card revealing in turn (`HomeDockFocusMotion`), rides the IME, closes on the backdrop or Back. Machine, project (with Enter custom path), worktree and harness pickers and the permission, model and effort chips open `ChoiceMenu` (iOS's inline-section UIMenu as a popup window that keeps the keyboard up); Send runs `SessionStarter` with the progress line, the stop hint, Stop, refusal shakes and flash, then opens the chat. Project + and No Sessions' Start New Session open it too. Evidence: `dock/d12-open.png`, `d20-project-menu.png`, `d22-starting.png`, `d23-chat.png`, `dock-open-menus.mp4`, `dock-start-session.mp4` vs `ios-ref/41-dock-open.png` … `45-dock-harness-menu.png`. Bots (Session | Bot, faces), tasks and pictures are to do; the text heights are measured on the main thread
+- [~] Dock composer (`ui/home/HomeDockController.kt`, `HomeDockFocusView.kt`): opens over home with the dim and a faint blur (RenderEffect, Android 12+), the shell growing from the capsule and the rows and card revealing in turn (`HomeDockFocusMotion`), rides the IME, closes on the backdrop or Back. Machine, project (with Enter custom path), worktree and harness pickers and the permission, model and effort chips open `ChoiceMenu` (iOS's inline-section UIMenu as a popup window that keeps the keyboard up); Send runs `SessionStarter` with the progress line, the stop hint, Stop, refusal shakes and flash, then opens the chat. Project + and No Sessions' Start New Session open it too. Evidence: `dock/d12-open.png`, `d20-project-menu.png`, `d22-starting.png`, `d23-chat.png`, `dock-open-menus.mp4`, `dock-start-session.mp4` vs `ios-ref/41-dock-open.png` … `45-dock-harness-menu.png`. Session | Bot | Task kinds, text creation, Bot faces and picture retry have newer verified records above. Dock pictures remain to do; text heights are measured on the main thread
 - [x] Pending chats placeholder: iOS has it on the chat screen only (PendingChatPlaceholder for a chat opened from the worktree strip's `+`); see Chat › Worktree tab strip and pending chats
 
 ### Chat
