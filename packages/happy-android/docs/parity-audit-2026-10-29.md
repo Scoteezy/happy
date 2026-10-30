@@ -10,8 +10,14 @@ old partial checklist item has received a fresh device test.
 
 ## Completion audit after reading-position milestone (2026-10-30)
 
-Current delivered checkpoint: `5edabd274` (implementation `55be0e4ed`), normal
-fast-forward pushed to `android-views-port`. Frozen iOS remains the tree above.
+Current focused-verified implementation: `dbb6542cf` (patch/diff slice below).
+Last broad-verified implementation: `55be0e4ed` (documentation `5edabd274`),
+with 2041 tests and unsigned production verification. Those broad results
+are reused history, **not** a new full-suite/production run for this slice.
+Following the user's lean-verification direction, focused regressions and one
+meaningful Android smoke cover each related feature group; the next full suite
+and genuine no-harness unsigned production gate belongs to the final batch.
+Frozen iOS remains the tree above.
 This is behavioral/native-platform parity, not Swift implementation identity.
 The ordinary Android debug APK builds with both Tailcat ABIs; the installed
 isolated APK exercises real screens against synthetic transports. Genuine
@@ -24,7 +30,6 @@ is established. The unsigned production APK is not a signed distribution.
 | Behavior | Current evidence / boundary |
 | --- | --- |
 | Changes/diff reading place and code selection | `ui/diff/DiffFilesList.kt:649` replans/rebinds without a line anchor; `DiffViews.kt` has taps for context expansion but no line-selection/copy path. Native `DiffFilesListView.swift:128,606` enables selection and restores `DiffReadingPlace`. Same-size font invalidation also needs a focused regression, not an assumption that existing measurements refresh. |
-| Codex patch/unified-diff presentation | `ui/chat/ChatRowRenderer.kt:464` explicitly falls back to raw Input. Native `ChatToolRenderer.swift:250` and `MessageDetailRenderer.swift:89` have dedicated patch/diff presentations. |
 | Permission overflow | `ChatRowRenderer.kt:772` uses the uncapped layout default and emits inline buttons; no vertical permission scroller. Native `ChatToolRenderer.swift:679` passes the window cap and wraps tall lists in a vertical scroller. Android's pure cap geometry exists but is not connected. |
 | Tablet grouped sidebar | `ui/tablet/TabletSidebarView.kt:162` explicitly substitutes flat rows. Native `TabletSidebarViewController.swift:302` mounts its grouped hierarchy. |
 | Guest invitation/chat | Android `connect/DeepLinks.kt:27` accepts Direct and account/terminal pairing only; no guest vault/client/UI is present. Frozen native `HappyApp/AppDelegate.swift:82` opens `HappyGuestUI` for validated HTTPS bot invitations. Local implementation/fixtures need no live account; real redemption would need separate authority. |
@@ -78,6 +83,60 @@ cache/queue is not completion work on its own. Native Views, Android dialogs,
 platform photo picker without library permission, and Android material in
 place of Liquid Glass are intentional platform adaptations, not missing
 features. These optional internals do not block a usable Android build.
+
+## Codex patch / unified-diff presentation (2026-10-30)
+
+Source `dbb6542cffc5f4305c89585a78e0c31d78677eb0` replaces raw-input rendering
+with native patch file headers, change counts/kinds, move destinations and
+diff bodies. Codex/Gemini/apply-patch full views retain the original file index
+when a header opens one file; missing focus shows all files. Named/headerless
+unified diffs, native card corners, empty-diff suppression, sorted map summaries
+and malformed-input/error fallback have focused coverage. List/envelope order
+is preserved. The real chat → message-detail route carries the file focus.
+
+Fresh focused verification: **69 tests / 12 app suites**, zero failures,
+errors or skips, plus isolated APK assembly in **58s**. This is not a fresh
+five-module run. Earlier failed test attempts corrected constructor argument
+compatibility and fixture schema/collapse assumptions, then passed. The
+capture APK is 113616015 bytes, SHA-256
+`9a367c35e147f4cd409e976ba9ab5674deaf4f5e1635a19d19a08375c8edd279`;
+its billing key is empty.
+
+Because the isolated fixture wiring changed, an ordinary no-harness debug
+assembly was also run (**1m36s**, normal cache reuse). Its package is
+`com.slopus.happy.dev`; manifest/dex inspection excludes harness, fake-server,
+mockwebserver and probe classes/components and permissive network flags.
+APK: 112894588 bytes, SHA-256
+`6d82ce0c45d0033cce79fe248e1c606bc3b54eba4783fe4f232eb2ed631a5ee9`.
+Owned Gradle/Kotlin PIDs 31519/31656 exited. No new unsigned production,
+five-module suite or repeated ABI/signature gate was run for this slice.
+
+`.context/evidence/codex-patches/android-first/` holds four actual-MainActivity
+captures (`files`, `unified`, `headerless`, `fallback`), screenshots, metrics
+and **14 parsed UI XMLs**. The multi-file flow opens only `b-long.kt`, keeps
+chunk **1**, expands hidden **80 → 0** / rendered rows **80 → 160**, and goes
+back to chat. All four fixture account/scope/server shutdown reports pass;
+owned emulator PID 23158 exited. These are synthetic records/transports,
+not a live session or spoken TalkBack test.
+
+The main Android movie is **21.820667s**, SHA-256
+`61b18a228c9aab5dc412748767c311022f10dbe691cf01a36fe3fde9e1b4cbe4`;
+named/headerless/fallback clips are 6.079922s / 5.897867s / 6.727400s.
+The main movie contact sheet and all four representative detail screenshots
+were personally inspected. Native's incomplete recording is 78.623333s,
+keeps the runner wait, and is diagnostic/partial evidence only.
+
+Frozen native source is the presentation reference. Additional native evidence
+is **partial**, not a passing four-case XCTest suite: `native-settled` reached
+the multi-file expansion, focused file, Show More and Back successfully, then
+stopped when its generic-body-center tap hit the diff's child scroll view.
+The expanded named unified diff was also captured. Earlier fixture-only
+corrections used the common outer `session` envelope and settled-scroll waits;
+XCTest-only synchronization hooks skipped perpetual-animation idle waits,
+without disabling native app motion. A final ignored probe rebuild succeeded
+but was not rerun after the user requested lean verification. No native source
+was changed; no full native suite success is claimed. Owned simulator shutdown
+and text-size restoration completed on every attempt.
 
 ## Relay Task Home rows: verified milestone
 
