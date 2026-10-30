@@ -11,6 +11,36 @@ emulator. Evidence (screenshots, screen recordings) is kept out of git under
 `.context/evidence/<feature>/` at the repository root; the path is listed per
 item once it exists.
 
+## Message-detail reading-position verification (2026-10-30)
+
+- Source `55be0e4ed` wires the existing native reading-place calculation to
+  the actual message screen. Font changes preserve the current text-piece
+  fraction; width-only changes keep the offset. Capture happens when a new
+  plan applies, so scrolling during measurement is respected. New child
+  bounds precede clamping; stale text environments and destroyed owners
+  cannot apply completed work.
+- `.context/evidence/message-reading/android-final/android-message-reading.mp4`
+  (**18.640933s**) records the real MainActivity message detail with 140
+  synthetic lines, real swipes and system font scale 1 → 1.35 → 1. The same
+  piece is retained within **0.137dp** on enlargement and **0.068dp** on
+  restoration. Four UI XML files parse; fixture/account/scope teardown,
+  original font setting and owned emulator exit are verified.
+- The frozen native controller passes **one UI test / 21.629s**, with four
+  screenshots and `native-first/ios-message-reading.mp4` (**39.543333s**).
+  Its own anchor is retained within **0.527pt / 0.074pt** over actual system
+  content-size changes. The platforms reach different scroll positions with
+  their swipes; this compares each reading anchor, not identical viewport
+  contents. Native detail is the fixture navigation root, so this is not
+  back-navigation evidence. Both movies and final screenshots were inspected;
+  videos keep original timing and runner waits. All networking is synthetic.
+- Focused coverage is **15 actual widget/screen tests + 5 pure layout tests**.
+  Fresh five-module verification passes **2041 tests / 315 suites**, zero
+  failures/errors/skips, in **2m55s**. Ordinary debug and genuine no-harness
+  unsigned production (**4m28s**, including R8/lint) pass fixture isolation,
+  both JNI ABIs and 16KB ZIP / 16KiB ELF LOAD alignment. Hashes and earlier
+  fixture-only corrections are in the audit. All owned workers/devices exited;
+  no signing, publication, live service or physical-device claim is made.
+
 ## Imported-account server verification (2026-10-30)
 
 - Source `38bc22c63` imports RN's Android MMKV server configuration read-only
@@ -86,7 +116,8 @@ item once it exists.
 - The fixture now explicitly validates rig metadata v1. Earlier Task/Bot
   captures did not establish v1-specific chat capability gating; their
   separately asserted transport results still stand. Strict-v1 Bot regressions
-  pass. Off-main dock text-height preparation remains a separate gap.
+  pass. Off-main dock text-height preparation is an implementation/performance
+  difference, not a demonstrated missing behavior; diagnosis precedes changes.
 
 ## Home Bot face verification (2026-10-30)
 
@@ -123,7 +154,8 @@ item once it exists.
   was sequential and bounded; all owned workers/devices stopped. No signing,
   production install, publication or store validation occurred.
 - Session/Task dock pictures have the newer verified record above; off-main
-  dock text-height preparation remains. The picture comparison also found that
+  dock text-height preparation remains an unproven performance difference.
+  The picture comparison also found that
   suppressing only the offline header pulse did not eliminate XCTest's waits,
   so their earlier attribution solely to that pulse is not established.
   Successful live creation and spoken TalkBack are not claimed.
@@ -861,7 +893,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [~] Permission prompts: the footer under a waiting tool (Yes / Yes, don't ask again for this tool / No, and provide feedback; the Codex, edit and plan sets), the tapped button pulsing while its answer is on its way with no other taking a tap, the answer through `SessionOps.allow`/`deny` and the mode switch after it, the answered button shaded and the rest faded; the status reads "permission required" and the primary turns to the black "!" (`ChatRowRenderer.permissionFooter`, `chat/tools/PermissionOptions.kt`). Evidence: `chat/b02-permission-*.png` vs `ios-ref/33-permission.png`, `chat/b07-answering.png`, `chat/b08-approved.png` vs `ios-ref/36-approved.png`, `chat/chat-permission-approve.mp4` (the seeded `perm-demo` session answers over RPC). A list taller than its cap does not scroll yet; on a tablet the buttons hug their labels at the trailing edge (`PermissionFooterLayout.tablet`)
 - [~] Agent questions: the inline form for AskUserQuestion (answered through the permission with the answers merged into the input) and request_user_input (through the communication): header chips, radio and checkbox options, Submit Answer outlined once every question has an answer, a spinner while it goes, the "Header: answer" summary after, the form back if sending fails (`chat/InlineQuestionForm.kt`, `ui/chat/ChatQuestionRenderer.kt`). Evidence: `chat/q01-question.png` vs `ios-ref/38-question.png`, `chat/q02-picked.png`, `chat/q03-submitting.png`, `chat/q04-answered.png`, `chat/chat-question-answer.mp4` (the seeded `ask-demo` session answers over RPC)
 - [x] Image and file messages: FileView (the picture at its own shape, at most 280x360, rounded 8, its name under it on one line), downloaded and decrypted with the session blob key, decoded at no more than it draws, kept per account (50 pictures / 48MB LRU, one load per picture, dropped on memory pressure), the thumbhash (`images/ThumbHash.kt` with iOS's vectors) under it, a 150ms fade in, an alert badge when it cannot be had (`ui/chat/ChatAttachmentView.kt`, `attachments/AttachmentPictures.kt`). Seeded as photo-demo (a real encrypted upload). Evidence: `attachments/a02-loaded.png`, `attachment-open.mp4` and offline `a03-offline-thumbhash-badge.png` (the thumbhash under the alert badge) vs `ios-ref/78-attachment.png`
-- [~] Message detail screen (session/[id]/message/[messageId].tsx with ToolFullView): titled by ToolHeader (the known title unless the provider named the call, a terminal tool's command, cut in the middle); a terminal tool's CommandView with all its output, bash and shell-session colours on the dark panel within the reveal deadline, "[Command completed with no output]", a shell control's typed input; TaskView; Edit/MultiEdit ("Edit N of M", the Replace All badge, rules between)/Write diffs edge to edge on a phone; otherwise Description, Input Parameters, Output, Error or "Tool completed successfully"; a specialized view's Output or error after it; Raw JSON in debug builds or dev mode, keys sorted as on iOS; a text message's whole text; long text in pieces (`TextChunks`); long press copies a command or its output; a message that's gone sends the reader back (`chat/tools/ToolFullPresentation.kt` and `:layout` `MessageDetailLayout.kt` with the iOS tests, `ui/chat/MessageDetailRenderer.kt`, `MessageDetailScreen.kt`). Evidence: `message-detail/pair-bash-android-ios.png` (vs `ios-ref/74-bash-detail.png`), `message-detail/a01-task.png`, `a03-mcp-generic.png`, `a04-edit-wide.png`, `a05-mcp-open.png` vs `ios-ref/75-mcp-open.png`, `message-detail/message-detail.mp4`. Codex patch and unified-diff calls fall back to the generic sections; Edit, MultiEdit and Write open the message here where iOS opens the file screen; the text keeps its place across text sizes only from the top (`MessageDetailReadingPlace` is ported but not wired)
+- [~] Message detail screen (session/[id]/message/[messageId].tsx with ToolFullView): titled by ToolHeader (the known title unless the provider named the call, a terminal tool's command, cut in the middle); a terminal tool's CommandView with all its output, bash and shell-session colours on the dark panel within the reveal deadline, "[Command completed with no output]", a shell control's typed input; TaskView; Edit/MultiEdit ("Edit N of M", the Replace All badge, rules between)/Write diffs edge to edge on a phone; otherwise Description, Input Parameters, Output, Error or "Tool completed successfully"; a specialized view's Output or error after it; Raw JSON in debug builds or dev mode, keys sorted as on iOS; a text message's whole text; long text in pieces (`TextChunks`); long press copies a command or its output; a message that's gone sends the reader back (`chat/tools/ToolFullPresentation.kt` and `:layout` `MessageDetailLayout.kt` with the iOS tests, `ui/chat/MessageDetailRenderer.kt`, `MessageDetailScreen.kt`). Evidence: `message-detail/pair-bash-android-ios.png` (vs `ios-ref/74-bash-detail.png`), `message-detail/a01-task.png`, `a03-mcp-generic.png`, `a04-edit-wide.png`, `a05-mcp-open.png` vs `ios-ref/75-mcp-open.png`, `message-detail/message-detail.mp4`. Codex patch and unified-diff calls fall back to the generic sections; Edit, MultiEdit and Write open the message here where iOS opens the file screen. Reading-place preservation is now wired and verified through actual system font changes, including concurrent-scroll/stale-plan/density regressions; see the message-reading milestone above. Other historical routing partials still require current-source re-audit.
 - [~] Question banner and answer sheet (AgentQuestionBanner, AgentQuestionModal): the first request the chat can't show inline sits above the composer; a form's card (link-coloured rim, chevron) opens the full-screen sheet, which rises as a modal (`Screen.isModal`): header chips with the orange required dot, checkbox options ringed while picked, the written answer growing with its text, Send answer greyed until every required question is answered and a spinner while it goes, an error under the questions if it fails, Cancel and back dismiss the request, an answer from elsewhere closes it. An unknown kind shows its notice and Dismiss (`ui/chat/ChatDockBarViews.kt`, `AgentQuestionSheetScreen.kt`, `:layout` `QuestionSheetLayout` with the iOS tests). Evidence: `chat-bars/a02h.png` vs `ios-ref/51-form-banner.png`, `chat-bars/a03h.png` vs `ios-ref/52-form-sheet.png`, `chat-bars/a04h.png` vs `ios-ref/53-form-picked.png`, `chat-bars/pair56.png` (sending, then the seed's answer) vs `ios-ref/55-form-answered.png`, `chat-bars/a21h.png` vs `ios-ref/56-unsupported-banner.png`, `chat-bars/question-banner-sheet.mp4` (seeded `form-demo` and `notice-demo`). The bars are measured on the main thread, not off it as on iOS, and a bar coming or going moves the composer without iOS's 0.25s animation
 - [~] Goal bar, inactive hint, rig activity bar: the current goal with Edit (a prompt), Stop and Clear, each spinning while its `goal-action` RPC runs; "This session is inactive." with Resume (the shared `SessionResumer`, a spinner, an error alert) or the terminal commands, which a tap copies with a tick for two seconds; Happy Agent's running counts full width; all fade while the reader is scrolled back (`chat/ChatDockBars.kt` with its tests, `ui/chat/ChatDockBarViews.kt`). Evidence: `chat-bars/a09h.png` vs `ios-ref/57-goal-bar.png`, `chat-bars/pair1112.png` (edit in flight, then edited), `chat-bars/a13h.png` (cleared), `chat-bars/pair1617.png` (commands; Resume), `chat-bars/pair1819.png` (resuming, then online again through the seed's `resume-happy-session`). No seeded session shows the rig activity bar yet
 - [~] Work group headers: with `groupToolCalls` on, a finished turn's work folds under "Worked 2m3s ›" where its oldest member was; a tap opens it, the rows in reading order and "Hide ⌃" under them, and the turn being watched stays open (`chat/WorkGroups.kt` with its tests, `ChatRowRenderer.workHeader`). Evidence: `chat-bars/work-groups.png` (folded, opened, Hide), the seed run with `--setting groupToolCalls=true`. The expansion does not yet fold when the app goes to the background (`WorkGroupExpansion.backgrounded`)

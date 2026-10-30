@@ -658,7 +658,90 @@ after builds and devices had stopped. Android movie SHA-256 is
 native movie SHA-256 is
 `1ba851feec2eb7720936376506d9f010c3e2e6454423ad38b5b72acf98b17791`.
 
-## Confirmed missing behavior
+## Message-detail reading position (2026-10-30)
+
+Implementation source is `55be0e4ed871c9e5763727731ce86646a5f26b9c`.
+Frozen iOS remains `9426578dd1e80b0eb92d75104c8d35a707d8fc93`.
+`MessageDetailScrollView` now owns the actual canvas and captures its current
+top-level text-piece/fraction when a new plan applies, rather than when the
+asynchronous render starts. It updates the child's bounds before restoring
+the scroll offset, so Android clamps against the new content height including
+bottom padding. It tracks the density of the shown canvas; width-only changes
+retain pixel offset. `MessageDetailScreen` rejects completed plans for an old
+text environment; owner cancellation prevents post-destroy application.
+
+Twelve actual Robolectric widget tests cover text fractions, gaps, start/end,
+missing text, padding clamps, width-only changes, scrolling while measuring,
+successive binds before parent layout, later user scroll, density changes
+before/after relayout and exclusion of nested scrollers. Three screen tests
+use the actual graph/store/feed/renderer with bounded completion gates for
+latest-scroll application, stale-environment rejection and destruction.
+Together with five existing pure layout cases, focused coverage is 20 tests.
+The screen fixture initially used a server record ID instead of the feed's
+reduced UI ID; that test-only setup error was corrected and all 15 app tests
+rerun, including the final isolated APK build at the source checkpoint.
+
+Evidence is under `.context/evidence/message-reading/`. The debug-only capture
+seeds 140 encrypted synthetic lines on a loopback server, awaits the actual
+MainActivity/Home stack and opens the real message screen using its reduced
+ID. Its read-only geometry observer is canceled/joined before fixture close.
+No production Activity hooks were added. `app-shellharness-final.apk` is
+113,568,094 bytes, SHA-256
+`f7661838356b882d273abe1c416b29d118d4411c6c42f19ab5670bb3ecab73a5`;
+the RevenueCat Google key is empty. Final Android recording
+`android-final/android-message-reading.mp4` is **18.640933s**, SHA-256
+`f5d96f3a06a11a793db8d815fe3714438dabdace88027c44f2f48e7add68cfd3`.
+After five real swipes, system font scale changes 1 → 1.35 → 1. Piece 1 is
+retained: enlargement expected 5208.517007dp / actual 5208.380952dp
+(error **0.136054dp**), restoration expected 2581.647059dp / actual
+2581.714286dp (error **0.067227dp**). Four UI XML files parse; `closed.json`
+confirms relay, fixture scope and account shutdown. Original font scale 1.0
+is restored; owned emulator PID 79999 exited.
+
+Earlier Android capture attempts are diagnostic, not final evidence. The
+first selected an old fixture namespace; the script now requires a fresh one.
+The second captured Android's old-window configuration-transition snapshot;
+screenshots now follow UI idle and a bounded post-change wait. Final enlarged
+and restored screenshots and actual movie contact sheets were inspected.
+These were fixture/capture corrections, not product fixes.
+
+The ignored native reference host uses the actual frozen
+`MessageDetailViewController`, the same 140 lines, an in-memory account/store
+and offline HTTP/socket implementations. One UI test passes in **21.629s**,
+with four screenshot attachments. Actual system content size changes
+large → extra-extra-extra-large → large (scale 1 → 1.353 → 1); piece 2 is
+retained. Enlargement expected 6764.473529pt / actual 6765pt
+(error **0.526471pt**); restoration expected 3341.259720pt / actual
+3341.333333pt (error **0.073613pt**). Native's swipes reach a different
+position; each platform's own reading anchor is the assertion. Native detail
+is its fixture navigation root, not a captured Home/back interaction.
+`native-first/ios-message-reading.mp4` is **39.543333s**, SHA-256
+`2bed49ba2330fa02a57268e594795b567ba777279b0ad6990570565d951c6146`.
+Native baseline/enlarged screenshots and actual movie frames were inspected.
+Both movies are untrimmed and preserve normal animation timing and runner
+waits. Original native content-size category was restored and the dedicated
+simulator shut down before Android builds.
+
+Fresh ordinary-debug verification reran all five modules: **2041 tests /
+315 suites**, zero failures/errors/skips, in **2m55s**. App 1394/198,
+layout 601/109, crypto 36/5, icons 6/2, ElevenLabs 4/1. XML is preserved in
+`full-test-results/`; owned Gradle/Kotlin PIDs 80624/80738 exited.
+`app-ordinary-debug-55be0e4ed.apk`: 112,878,204 bytes, SHA-256
+`431224f740b9757e035027e7c7001360a0d15ca869b088208e04bdeaa57279ed`.
+Genuine no-harness unsigned production assembly passes in **4m28s**, including
+R8/lint; owned PIDs 81332/81361 exited.
+`app-release-55be0e4ed-unsigned.apk`: 96,417,728 bytes, SHA-256
+`4b39572788c4ad0e4d915bcf6f4766e3162715b40ddf95c6b44c74c2af6e16f3`.
+Actual APK manifest/DEX/assets and production mapping exclude fixture/testing/
+probe/mockwebserver code, reading-fixture strings and permissive network
+policy. Production is non-debuggable and unsigned. Both APKs contain both
+Tailcat JNI ABIs and pass 16KB ZIP alignment; each ABI's four ELF LOAD segments
+align to 16KiB. Builds/devices/media were sequential and CPU-capped; contact
+extraction used two media threads after all owned workers/devices stopped.
+No real account, service, signing, publication or physical-device validation
+is implied.
+
+## Previously confirmed behavior gaps and closure status
 
 | Area | Native reference | Android gap |
 | --- | --- | --- |
@@ -669,14 +752,21 @@ native movie SHA-256 is
 | Dock pictures | Native `HomeDockScreens.swift:193,732,768` | Closed for Session/Task selection, previews, retention/removal, picture-only creation, encrypted first-send/outbox retry and owner cleanup: focused/full tests, actual Android picker-to-chat replay, native comparison and ordinary/unsigned-production isolation pass above. No live-machine claim. |
 | Relay troubleshooting | Native `HappyUI/Screens/HomeScreens.swift:650` | Closed for the guide, account-owned feed, both Home routes, AI copy, machine navigation and terminal selection: focused/full tests, native comparison, isolated device replay and ordinary/unsigned-production isolation checks pass above. No live connectivity/repair claim. |
 | Imported-account server confirmation | Native `HappyUI/Screens/AccountServerScreens.swift`, `Navigation/AppCoordinator.swift:282` | Closed for read-only import, pending gate, native form/confirmation, durable activation and immutable account routing: focused/full regressions, final Android/native evidence and ordinary/unsigned-production isolation pass above. Real RN upgrade remains unverified. |
-| Message-detail reading position | Native `HappyUI/Chat/MessageDetail/MessageDetailViewController.swift:294` | Android's pure `MessageDetailReadingPlace` exists but is not wired to the message screen's text-size changes. |
+| Message-detail reading position | Native `HappyUI/Chat/MessageDetail/MessageDetailViewController.swift:294` | Closed above: actual screen integration, stale/destroy/race tests, system font changes on Android/native, full tests and ordinary/unsigned-production isolation pass. |
 
 Other historical partials remain a **re-audit queue**, not newly confirmed
 missing features: diff selection/reading anchor, permission overflow,
 background work-group folding, interactive keyboard dismissal, guest links,
 update checks, account-header picture, tablet grouped presentation and
-remaining off-main measurement/motion. Keep their limitations in
+motion. Keep their limitations in
 `ios-parity.md`; inspect the actual current call sites before implementing.
+
+Synchronous Android composer/dock text measurement versus Swift's off-main
+height caches and warmup queues is an **implementation/performance difference**,
+not yet a demonstrated user-visible defect. A bounded long-draft/repeated
+layout/IME/width/font diagnosis must establish responsiveness, geometry or
+work-amplification impact before a shared-composer refactor. Matching every
+Swift cache/queue is not a parity requirement.
 
 ## Existing behavior awaiting additional verification
 
