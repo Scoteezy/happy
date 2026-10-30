@@ -129,6 +129,7 @@ class ShellHarnessActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (!packageName.endsWith(".shellharness")) { finish(); return }
         (application as ShellHarnessApplication).useOfflineShellFixture()
+        if (intent.getBooleanExtra("troubleshootProbe", false)) TroubleshootProbe.install(application)
         val graph = (application as HappyApplication).graph
         lifecycleScope.launch {
             graph.shellAccount.filterNotNull().first()
@@ -153,7 +154,8 @@ class ShellHarnessActivity : ComponentActivity() {
                 }
                 preferences.edit().putBoolean("seeded", true).apply()
             }
-            if (intent.getBooleanExtra("relayTasks", false)) RelayTasksShellFixture.seed(this@ShellHarnessActivity, graph)
+            if (intent.getBooleanExtra("relayTasks", false)) RelayTasksShellFixture.seed(this@ShellHarnessActivity, graph,
+                offline = intent.getBooleanExtra("relayTroubleshoot", false), withoutSessions = intent.getBooleanExtra("relayWithoutSessions", false))
             startActivity(Intent(this@ShellHarnessActivity, MainActivity::class.java))
             finish()
         }

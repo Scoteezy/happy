@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -500,6 +501,22 @@ class HappyStore(helper: SQLiteOpenHelper) {
         db.rawQuery("SELECT $MACHINE_COLUMNS FROM machines WHERE id = ?", arrayOf(id)).use { c ->
             if (c.moveToFirst()) c.toMachine() else null
         }
+
+    /**
+     * LocalStore+Troubleshooting: one narrow, consistent read for this screen.
+     * A machine deletion and the replacement recent project are seen together.
+     * Call off main. Read transactions publish no store changes.
+     */
+    fun troubleshootingSnapshot(): TroubleshootingSnapshot = transaction {
+        readTroubleshootingSnapshot(db)
+    }
+
+    /** No message bodies, settings or outbox-only changes wake this projection. */
+    fun troubleshootingSnapshots(): Flow<TroubleshootingSnapshot> = versions
+        .map { it.machines to it.sessions }
+        .distinctUntilChanged()
+        .map { troubleshootingSnapshot() }
+        .flowOn(kotlinx.coroutines.Dispatchers.IO)
 
     // Outbox
 

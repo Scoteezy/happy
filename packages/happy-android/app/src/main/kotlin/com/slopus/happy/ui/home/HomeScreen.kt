@@ -213,7 +213,7 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
             Kind.Loading -> LoadingView(context)
             Kind.Link -> LinkPane().view
             Kind.Offline -> OfflineChecklistView(context).also { view ->
-                view.troubleshoot.onTap = { notPorted(context.getString(R.string.onboarding_offline_troubleshoot)) }
+                view.troubleshoot.onTap = { openTroubleshoot() }
                 view.linkAnother.onTap = { scanTerminal(view.linkAnother) }
                 view.showArchived.onTap = { showArchive() }
             }
@@ -341,7 +341,10 @@ class HomeScreen(context: Context, private val graph: AppGraph) : Screen(context
         if (!dockController.openFocus()) push(NewSessionScreen(context, graph))
     }
 
-    override fun openTroubleshoot() = notPorted(context.getString(R.string.onboarding_offline_troubleshoot))
+    override fun openTroubleshoot() {
+        val account = graph.account.value ?: return
+        push(TroubleshootScreen(context, graph, account))
+    }
 
     override fun openWhatsNew() = push(ChangelogScreen(context, graph))
 

@@ -69,6 +69,11 @@ class AccountSync(
     val decoder = RecordDecoder(encryption)
     val presence = Presence(clock)
 
+    /** Shared only while troubleshooting is visible; stopped with this account. */
+    val troubleshooting by lazy {
+        com.slopus.happy.troubleshoot.TroubleshootingFeed(store.troubleshootingSnapshots(), presence.machines, scope, io)
+    }
+
     val messages = MessageSync(api, store, decoder, scope, io, onSessionGone = presence::removeSession)
 
     private val engine = SyncEngine(api, store, encryption, clock, io, decoder, messages)
