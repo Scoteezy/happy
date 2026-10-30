@@ -97,6 +97,9 @@ class ChatHeaderView(context: Context) : ManualLayout(context), ThemeAware {
         titleControl.addView(titleLabel)
         titleControl.addView(subtitleLabel)
         titleControl.addView(changesLabel)
+        // Native's 44pt capsule clips enlarged text to its rounded inside;
+        // the tablet's plain title deliberately remains unclipped.
+        titleControl.clipToOutline = true
         titleControl.isClickable = true
         titleControl.isFocusable = true
         titleControl.visibility = GONE

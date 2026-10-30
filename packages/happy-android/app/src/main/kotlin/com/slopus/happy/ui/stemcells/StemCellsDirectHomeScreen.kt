@@ -5,6 +5,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import com.slopus.happy.R
+import com.slopus.happy.direct.DirectAccount
 import com.slopus.happy.layout.HomeDockLayout
 import com.slopus.happy.layout.HomeScreenLayout
 import com.slopus.happy.layout.Palette
@@ -34,9 +35,10 @@ import com.slopus.happy.ui.view.px
 class StemCellsDirectHomeScreen(
     context: Context,
     val session: StemCellsSession,
-    private val computerName: String,
+    private var computerName: String,
 ) : Screen(context), BackInterceptor {
     val header = HomeHeaderView(context)
+    private val accountPicture = DirectHomeAccountPicture(session.accountId, scope) { header.accountPicture = it }
     val stemCells = StemCellsHomeView(context)
     var open: ((StemCellsRow) -> Unit)? = null
     var newWork: ((StemCellCreation, Boolean) -> Unit)? = null
@@ -44,6 +46,16 @@ class StemCellsDirectHomeScreen(
     var openSearch: (() -> Unit)? = null
     private var hold: StemCellsHoldOverlay? = null
     private var carry: StemCellsReorderOverlay? = null
+
+    /** Account observation may arrive while settings or a conversation covers this home. */
+    fun updateAccount(account: DirectAccount?) {
+        if (account != null && account.id != session.accountId) return
+        if (account != null) {
+            computerName = account.name
+            header.title = account.name
+        }
+        accountPicture.update(account)
+    }
 
     override fun createView(): View = Root(context)
 
@@ -100,6 +112,7 @@ class StemCellsDirectHomeScreen(
     override val interceptsBack: Boolean get() = carry != null || hold != null || stemCells.pickerOpen || stemCells.sidebar.isEditing
 
     override fun onDestroy() {
+        accountPicture.close()
         hold?.close(animated = false)
         carry?.cancel(animated = false)
         stemCells.close()

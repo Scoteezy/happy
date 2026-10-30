@@ -137,7 +137,7 @@ class ShellHarnessApplication : HappyApplication() {
                                 val node = patch["node"] as? kotlinx.serialization.json.JsonObject
                                 (node?.get("name") as? kotlinx.serialization.json.JsonPrimitive)?.content?.let { namePreferences.edit().putString(credentials.address, it).apply() }
                             }
-                            return response
+                            return if (method == "GET") PictureShellFixture.response(credentials.address, path, response) else response
                         }
                     }
                 }
@@ -180,6 +180,12 @@ class ShellHarnessActivity : ComponentActivity() {
             }
             if (intent.getBooleanExtra("relayTasks", false)) RelayTasksShellFixture.seed(this@ShellHarnessActivity, graph,
                 offline = intent.getBooleanExtra("relayTroubleshoot", false), withoutSessions = intent.getBooleanExtra("relayWithoutSessions", false))
+            intent.getStringExtra("pictureScenario")?.let { kind ->
+                check(kind in setOf("photo", "thumbhash", "none"))
+                val computer = graph.direct.add(DirectDeviceCredentials(PictureShellFixture.PREFIX + kind,
+                    1234, "fixture-picture-$kind", CanonicalBase64Url.encode(ByteArray(32) { 9 })))
+                graph.direct.rename(computer.id, "Picture fixture $kind")
+            }
             startActivity(Intent(this@ShellHarnessActivity, MainActivity::class.java))
             finish()
         }

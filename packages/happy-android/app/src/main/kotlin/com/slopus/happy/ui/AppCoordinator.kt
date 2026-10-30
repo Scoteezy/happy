@@ -101,7 +101,7 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
                 (knownComputers - current).forEach(StemCellsSession::forget)
                 knownComputers = current
                 (stack.all.firstOrNull() as? StemCellsDirectHomeScreen)?.let { home ->
-                    state.accounts.firstOrNull { it.id == home.session.accountId }?.let { home.header.title = it.name }
+                    home.updateAccount(state.accounts.firstOrNull { it.id == home.session.accountId })
                 }
             }
         }
@@ -239,6 +239,7 @@ class AppCoordinator(private val activity: ComponentActivity, private val graph:
         }
         val screen: Screen = when {
             direct != null -> StemCellsDirectHomeScreen(activity, direct, graph.direct.state.value.active?.name ?: "Happy Agent").also { home ->
+                home.updateAccount(graph.direct.state.value.accounts.firstOrNull { it.id == direct.accountId })
                 home.openSettings = { home.push(StemCellsSettingsScreen(activity, settingsHost, direct.accountId)) }
             }
             token != null -> HomeScreen(activity, graph)

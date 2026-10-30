@@ -282,6 +282,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
         header.plainControl.setOnClickListener { openInfo() }
         applyTabletBranch()
         list.onScroll = ::scrolled
+        // Android dismisses through its IME; native's list uses interactive dismissal.
+        list.onDragBegan = { composer.card.blur() }
         list.onAction = ::perform
         list.onOlderAction = ::olderAction
         placeholder.onAction = ::olderAction
@@ -1110,6 +1112,8 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
 
     private inner class Root(context: Context) : ManualLayout(context), ThemeAware {
         init {
+            isFocusable = true
+            isFocusableInTouchMode = true
             addView(list)
             addView(placeholder)
             addView(scrim)

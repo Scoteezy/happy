@@ -88,6 +88,10 @@ class DiffPermissionCapture(private val app: Application, private val graph: App
                     put("row", row?.row ?: -1); put("fraction", row?.fraction ?: 0.0)
                     put("copied", copied)
                     put("answers", JsonArray(answers.toList()))
+                    val editor = views.filterIsInstance<android.widget.EditText>().firstOrNull()
+                    put("draft", editor?.text?.toString()); put("editorFocused", editor?.hasFocus() == true)
+                    put("imeVisible", androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)
+                        ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true)
                     putJsonArray("rows") {
                         plans.forEachIndexed { sectionIndex, plan ->
                             (plan.body as? DiffSectionPlan.Body.Files)?.plans?.forEachIndexed { fileIndex, filePlan ->
@@ -119,6 +123,8 @@ class DiffPermissionCapture(private val app: Application, private val graph: App
                             })
                         }
                         views.filterIsInstance<DiffFileHeaderView>().forEach { target("file-header", it, it.width / d / 2.0, it.height / d / 2.0) }
+                        editor?.let { target("editor", it, it.width / d / 2.0, it.height / d / 2.0) }
+                        views.filterIsInstance<ChatListView>().forEach { target("transcript", it, it.width / d / 2.0, it.height / d / 2.0) }
                         views.filterIsInstance<DiffSectionView>().forEach { section ->
                             val plan = section.plan ?: return@forEach
                             (plan.body as? DiffSectionPlan.Body.Files)?.plans?.forEachIndexed { fileIndex, file ->
@@ -166,6 +172,10 @@ class DiffPermissionCapture(private val app: Application, private val graph: App
                 put("path", "/fixture/diff"); put("host", "fixture.local"); put("machineId", "fixture-task-relay-machine")
                 putJsonObject("summary") { put("text", "Diff and permissions"); put("updatedAt", now) }
             })
+            for (index in 1L..30L) server.addMessage(SESSION, index, buildJsonObject {
+                put("role", "user")
+                putJsonObject("content") { put("type", "text"); put("text", "Synthetic reading row $index — drag the transcript to dismiss the keyboard.") }
+            }, now + index)
             val request = buildJsonObject {
                 put("tool", "ExitPlanMode"); put("createdAt", now)
                 putJsonObject("arguments") { put("plan", "Synthetic permission list: scroll to Deny.") }

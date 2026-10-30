@@ -47,6 +47,8 @@ import kotlin.math.roundToInt
 class ChatListView(context: Context) : RecyclerView(context), ThemeAware {
     /** `distanceFromNewest`, how far the reader is back from the newest message; `distanceFromOldest`, how much is left before the oldest row. */
     var onScroll: ((distanceFromNewest: Double, distanceFromOldest: Double) -> Unit)? = null
+    /** An actual transcript drag, not a programmatic/accessibility scroll or an inner scroller. */
+    var onDragBegan: (() -> Unit)? = null
     /** A tap or long press on a row's target; [frame] is the target's, in this view. */
     var onAction: ((ChatRowAction, Rect, Boolean) -> Unit)? = null
 
@@ -84,6 +86,9 @@ class ChatListView(context: Context) : RecyclerView(context), ThemeAware {
         }
         addOnScrollListener(object : OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) = reportScroll()
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                if (newState == SCROLL_STATE_DRAGGING) onDragBegan?.invoke()
+            }
         })
     }
 

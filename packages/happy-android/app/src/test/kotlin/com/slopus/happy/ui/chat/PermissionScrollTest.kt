@@ -118,7 +118,9 @@ class PermissionScrollTest {
         val list = ChatListView(activity)
         activity.setContentView(list)
         var answered = false
+        var outerDrags = 0
         list.onAction = { action, _, _ -> if (action is ChatRowAction.Permission) answered = true }
+        list.onDragBegan = { outerDrags++ }
         list.submit(ChatRowPlan("footer", Size(393, 0), emptyList()), listOf(plan()))
         repeat(3) {
             shadowOf(Looper.getMainLooper()).idle()
@@ -139,5 +141,6 @@ class PermissionScrollTest {
         }
         assertTrue("Inner permission list must receive the drag", scroll.scrollY > 0)
         assertFalse("A drag must not answer a permission", answered)
+        assertEquals("Inner permission scrolling must not dismiss the transcript's IME", 0, outerDrags)
     }
 }

@@ -14,6 +14,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
@@ -219,6 +220,15 @@ class HomeHeaderView(context: Context) : ManualLayout(context), ThemeAware {
             requestLayout()
         }
 
+    /** Original account pixels; null restores the normal mark. Owned by this header only. */
+    var accountPicture: Bitmap? = null
+        set(value) {
+            if (field === value) return
+            field = value
+            logo.picture = value
+            showsAccountAvatar = value != null
+        }
+
     var title: CharSequence
         get() = titleLabel.text
         set(value) { titleLabel.text = value; requestLayout() }
@@ -416,6 +426,10 @@ private class LogoView(context: Context) : View(context), ThemeAware {
     var mode = Mode.Logo
         set(value) { field = value; invalidate() }
 
+    var picture: Bitmap? = null
+        set(value) { field = value; invalidate() }
+    private val pictureClip = android.graphics.Path()
+
     private val mark = BitmapFactory.decodeResource(resources, R.drawable.happy_logo)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val person = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_account_circle)!!.mutate()
@@ -423,6 +437,19 @@ private class LogoView(context: Context) : View(context), ThemeAware {
     override fun applyTheme() = invalidate()
 
     override fun onDraw(canvas: Canvas) {
+        picture?.let { image ->
+            val scale = maxOf(width / image.width.toFloat(), height / image.height.toFloat())
+            val w = image.width * scale
+            val h = image.height * scale
+            pictureClip.reset()
+            pictureClip.addOval(0f, 0f, width.toFloat(), height.toFloat(), android.graphics.Path.Direction.CW)
+            val saved = canvas.save()
+            canvas.clipPath(pictureClip)
+            paint.colorFilter = null
+            canvas.drawBitmap(image, null, android.graphics.RectF((width - w) / 2, (height - h) / 2, (width + w) / 2, (height + h) / 2), paint)
+            canvas.restoreToCount(saved)
+            return
+        }
         when (mode) {
             Mode.Logo -> {
                 paint.colorFilter = PorterDuffColorFilter(Theme.color(Palette.headerTint), PorterDuff.Mode.SRC_IN)
