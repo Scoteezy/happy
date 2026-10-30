@@ -936,7 +936,7 @@ class ChatScreen(context: Context, private val graph: AppGraph, override val ses
                 mermaidHeights = mermaidHeights + (action.row to row + (action.index to kept))
                 requestPlans()
             }
-            is ChatRowAction.OpenMessage -> push(MessageDetailScreen(context, graph, sessionId, action.id))
+            is ChatRowAction.OpenMessage -> push(MessageDetailScreen(context, graph, sessionId, action.id, focusFile = action.file))
             is ChatRowAction.OpenFile -> push(com.slopus.happy.ui.details.SessionFileScreen(context, graph, sessionId, action.path))
             // Stem Cells only.
             is ChatRowAction.OpenMedia, is ChatRowAction.OpenArtifact -> Unit

@@ -127,6 +127,7 @@ class MeasuredText(
     val env: ChatTextEnv,
     val maxLines: Int = 0,
     private val alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL,
+    private val ellipsize: android.text.TextUtils.TruncateAt = android.text.TextUtils.TruncateAt.END,
 ) {
     private class Entry(val width: Double, val layout: StaticLayout, val size: Size)
 
@@ -137,7 +138,7 @@ class MeasuredText(
     @Synchronized
     private fun entry(width: Double): Entry {
         layouts.firstOrNull { it.width == width }?.let { return it }
-        val layout = TextLayouts.build(text, style, width, env, 0, maxLines, alignment)
+        val layout = TextLayouts.build(text, style, width, env, 0, maxLines, alignment, ellipsize)
         val size = if (text.isEmpty()) Size(0.0, 0.0) else TextLayouts.size(layout, env)
         val single = if (maxLines == 1 && text.isNotEmpty()) {
             // A single line reports its whole width, as a label's does; the layout clamps it.

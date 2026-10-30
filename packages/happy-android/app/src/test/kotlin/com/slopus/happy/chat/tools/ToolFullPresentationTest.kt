@@ -46,6 +46,22 @@ class ToolFullPresentationTest {
 
     private fun terminal(tool: ToolCall) = (full(tool).main as ToolFullPresentation.Main.Terminal).terminal
 
+    @Test fun patchesAndTurnDiffsHaveTheirOwnFullViews() {
+        for (name in listOf("CodexPatch", "GeminiPatch", "apply_patch")) {
+            val patch = full(tool(name, """{"changes":{"/repo/a.ts":{"kind":{"type":"add"},"diff":"x"}}}""", result = "\"Done\""))
+            val files = (patch.main as ToolFullPresentation.Main.Patch).files!!
+            assertEquals("a.ts", files.single().path)
+            assertEquals(PatchInput.Pair("", "x"), files.single().diff)
+            assertEquals(ToolFullPresentation.Outcome.Output("Done"), patch.outcome)
+        }
+        assertEquals(ToolFullPresentation.Main.Patch(null), full(tool("apply_patch", """{"input":"*** Begin Patch"}""")).main)
+        for (name in listOf("CodexDiff", "GeminiDiff")) {
+            assertEquals(ToolFullPresentation.Main.UnifiedDiff(null), full(tool(name)).main)
+            val input = """{"unified_diff":"@@ -1 +1 @@\n-a\n+b","path":"x.py"}"""
+            assertEquals(ToolFullPresentation.Main.UnifiedDiff(ToolUnifiedDiff.of(Json.parseToJsonElement(input))), full(tool(name, input)).main)
+        }
+    }
+
     @Test fun theTitleIsTheKnownToolsUnlessTheProviderNamedTheCall() {
         assertEquals("src/a.swift", full(tool("Read", """{"file_path":"/repo/src/a.swift"}""")).title)
         assertEquals("Read the config", full(tool("Read", """{"file_path":"/repo/src/a.swift"}""", title = "Read the config")).title)

@@ -36,7 +36,10 @@ sealed interface ChatDrawItem {
     /** A running tool's timer, counting from [since] (ms). */
     class Elapsed(val since: Long, val frame: Rect, val env: ChatTextEnv) : ChatDrawItem
     /** One DiffChunk of tool [toolId]'s view, drawn by its own view in [frame]. */
-    class Diff(val plan: com.slopus.happy.ui.diff.DiffChunkPlan, val frame: Rect, val toolId: String, val chunk: Int) : ChatDrawItem
+    class Diff(val plan: com.slopus.happy.ui.diff.DiffChunkPlan, val frame: Rect, val toolId: String, val chunk: Int,
+        val radius: Double = 0.0, val bottomCornersOnly: Boolean = false) : ChatDrawItem
+    class DiffHeader(val plan: com.slopus.happy.ui.diff.DiffHeaderPlan, val path: String, val frame: Rect,
+        val opens: ChatRowAction? = null) : ChatDrawItem
     /** A ring breathing around the permission button whose answer is on its way. */
     class Pulse(val box: ChatBox) : ChatDrawItem
     /** A markdown image block's picture, loaded once it is on screen; [label] is what TalkBack reads. */
@@ -78,7 +81,7 @@ sealed interface ChatRowAction {
      */
     data class MarkdownSelectable(val paragraph: String, val markdown: String) : ChatRowAction
     data class ToggleTool(val id: String) : ChatRowAction
-    data class OpenMessage(val id: String) : ChatRowAction
+    data class OpenMessage(val id: String, val file: String? = null) : ChatRowAction
     /** An edit tool's file, in the file viewer. */
     data class OpenFile(val path: String) : ChatRowAction
     data class OpenLink(val url: String) : ChatRowAction

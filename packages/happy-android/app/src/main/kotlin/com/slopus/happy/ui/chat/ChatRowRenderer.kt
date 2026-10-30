@@ -144,6 +144,7 @@ data class ChatRowInput(
  * draw. Runs off the main thread.
  */
 class ChatRowRenderer(private val resources: Resources) {
+    private val patches by lazy { ChatPatchRenderer(resources, this) }
     private val toolText = object : ToolText {
         override fun string(id: Int, vararg args: Any): String = resources.getString(id, *args)
         override fun plural(id: Int, count: Int, vararg args: Any): String = resources.getQuantityString(id, count, *args)
@@ -461,9 +462,8 @@ class ChatRowRenderer(private val resources: Resources) {
             ToolViewKind.CodexBash -> codexBashView(message, style)
             ToolViewKind.GeminiExecute -> geminiExecuteView(tool.input.obj?.get("toolCall").obj?.get("title").str, env)
             ToolViewKind.File -> fileView(tool.input, env)
-            // Patches and unified diffs still show their raw input.
-            ToolViewKind.CodexPatch, ToolViewKind.CodexDiff ->
-                if (truthy(tool.input)) section(resources.getString(R.string.tool_view_input), codeView(pretty(tool.input), env), env) else null
+            ToolViewKind.CodexPatch -> patches.patch(message, input, flush)
+            ToolViewKind.CodexDiff -> patches.unified(message, input, flush)
         }
     }
 
@@ -667,20 +667,21 @@ class ChatRowRenderer(private val resources: Resources) {
     }
 
     /** ToolSectionView fullWidth: flush under the card's header and out to its edges. In a compact row's box, a plain section. */
-    private fun fullWidthSection(piece: ChatPiece, flush: Boolean, env: ChatTextEnv): ChatStackEntry {
+    internal fun fullWidthSection(piece: ChatPiece, flush: Boolean, env: ChatTextEnv): ChatStackEntry {
         if (!flush) return section(null, piece, env)
         val m = ToolCardLayout.Metrics
         return ChatStackEntry(piece, marginTop = -m.contentPaddingTop, marginBottom = 12.0, padding = LayoutInsets(0.0, -m.contentPaddingH, 0.0, -m.contentPaddingH))
     }
 
     /** One DiffChunk: diff [index] of tool [toolId], planned once per width it is measured at; null when it draws nothing. */
-    internal fun diffPiece(source: DiffChunkSource, index: Int, toolId: String, env: ChatTextEnv, showLineNumbers: Boolean, expanded: Set<Int>): ChatPiece? {
+    internal fun diffPiece(source: DiffChunkSource, index: Int, toolId: String, env: ChatTextEnv, showLineNumbers: Boolean, expanded: Set<Int>,
+        radius: Double = 0.0, bottomCornersOnly: Boolean = false): ChatPiece? {
         if (source.document().files.isEmpty()) return null
         val plans = ArrayList<Pair<Double, DiffChunkPlan>>(2)
         fun plan(width: Double): DiffChunkPlan = plans.firstOrNull { it.first == width }?.second
             ?: DiffChunkPlan(source, width, env, diffWords, showLineNumbers, expanded).also { plans += width to it }
         return ChatPiece(Measurable { plan(it).size }) { frame ->
-            listOf(ChatDrawItem.Diff(plan(frame.width), frame, toolId, index)) to emptyList()
+            listOf(ChatDrawItem.Diff(plan(frame.width), frame, toolId, index, radius, bottomCornersOnly)) to emptyList()
         }
     }
 

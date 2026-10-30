@@ -60,6 +60,7 @@ data class MessageDetailInput(
     val diffExpanded: Map<Int, Set<Int>>,
     val maxContentWidth: Double,
     val env: ChatTextEnv,
+    val focusFile: String? = null,
 )
 
 /**
@@ -69,6 +70,7 @@ data class MessageDetailInput(
  * Ported from happy-ios Chat/MessageDetail/MessageDetailRenderer.swift.
  */
 class MessageDetailRenderer(private val resources: Resources, private val rows: ChatRowRenderer) {
+    private val patches = ChatPatchRenderer(resources, rows)
     val toolText = object : ToolText {
         override fun string(id: Int, vararg args: Any): String = resources.getString(id, *args)
         override fun plural(id: Int, count: Int, vararg args: Any): String = resources.getQuantityString(id, count, *args)
@@ -109,6 +111,8 @@ class MessageDetailRenderer(private val resources: Resources, private val rows: 
             }
             ToolFullPresentation.Main.Task -> rows.taskView(call, env)?.let { entries += it }
             is ToolFullPresentation.Main.Diff -> diffs(main.kind, main.chunks, main.replaceAll, call.id, input)?.let { entries += it }
+            is ToolFullPresentation.Main.Patch -> entries += patches.fullPatch(main.files, call, input)
+            is ToolFullPresentation.Main.UnifiedDiff -> patches.fullUnified(main.diff, call.id, input)?.let { entries += it }
             is ToolFullPresentation.Main.Generic -> entries += sections(main.generic, env)
         }
         when (val outcome = presentation.outcome) {

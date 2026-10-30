@@ -54,6 +54,7 @@ class MessageDetailScreen internal constructor(
     private val graph: AppGraph,
     override val sessionId: String,
     private val messageId: String,
+    private val focusFile: String? = null,
     /** Optional preparation boundary for deterministic async/lifecycle tests. */
     private val preparePlan: ((MessageDetailInput, Double) -> ChatRowPlan)? = null,
 ) : BarScreen(context), SessionRoute {
@@ -147,6 +148,7 @@ class MessageDetailScreen internal constructor(
             diffExpanded = diffExpanded,
             maxContentWidth = ChatScreenLayout.Metrics.regularMaxContentWidth,
             env = TextLayouts.Env(Theme.density, Theme.textScale),
+            focusFile = focusFile,
         )
         if (lastInput == input to width) return
         lastInput = input to width

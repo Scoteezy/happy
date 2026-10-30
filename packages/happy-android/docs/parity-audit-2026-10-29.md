@@ -8,6 +8,77 @@ update was made during this audit. Paths below are package-relative unless
 prefixed otherwise. This is a prioritized inventory, not a claim that every
 old partial checklist item has received a fresh device test.
 
+## Completion audit after reading-position milestone (2026-10-30)
+
+Current delivered checkpoint: `5edabd274` (implementation `55be0e4ed`), normal
+fast-forward pushed to `android-views-port`. Frozen iOS remains the tree above.
+This is behavioral/native-platform parity, not Swift implementation identity.
+The ordinary Android debug APK builds with both Tailcat ABIs; the installed
+isolated APK exercises real screens against synthetic transports. Genuine
+unsigned production also builds and passes isolation checks. There is **no
+local-build blocker**, but neither complete parity nor live-service readiness
+is established. The unsigned production APK is not a signed distribution.
+
+### Remaining user-visible gaps confirmed in current source
+
+| Behavior | Current evidence / boundary |
+| --- | --- |
+| Changes/diff reading place and code selection | `ui/diff/DiffFilesList.kt:649` replans/rebinds without a line anchor; `DiffViews.kt` has taps for context expansion but no line-selection/copy path. Native `DiffFilesListView.swift:128,606` enables selection and restores `DiffReadingPlace`. Same-size font invalidation also needs a focused regression, not an assumption that existing measurements refresh. |
+| Codex patch/unified-diff presentation | `ui/chat/ChatRowRenderer.kt:464` explicitly falls back to raw Input. Native `ChatToolRenderer.swift:250` and `MessageDetailRenderer.swift:89` have dedicated patch/diff presentations. |
+| Permission overflow | `ChatRowRenderer.kt:772` uses the uncapped layout default and emits inline buttons; no vertical permission scroller. Native `ChatToolRenderer.swift:679` passes the window cap and wraps tall lists in a vertical scroller. Android's pure cap geometry exists but is not connected. |
+| Tablet grouped sidebar | `ui/tablet/TabletSidebarView.kt:162` explicitly substitutes flat rows. Native `TabletSidebarViewController.swift:302` mounts its grouped hierarchy. |
+| Guest invitation/chat | Android `connect/DeepLinks.kt:27` accepts Direct and account/terminal pairing only; no guest vault/client/UI is present. Frozen native `HappyApp/AppDelegate.swift:82` opens `HappyGuestUI` for validated HTTPS bot invitations. Local implementation/fixtures need no live account; real redemption would need separate authority. |
+| Native-version update request/banner binding | Android has a `HomeBanners.nativeUpdate` display slot but no `/v1/version` request/status owner. Native `HomeScreens.swift:152` refreshes `NativeUpdateCheck` on startup/foreground. This is a server-version response contract, not necessarily Play in-app updates; native itself notes today's server response does not activate the banner. A synthetic contract test can be local. |
+| Direct Home account picture | Native `StemCellsDirectHomeViewController.swift:78` decodes account bytes/thumbhash and sets the header image. Android `HomeHeaderView.kt:218` chooses only a logo/account glyph; Direct Home has no equivalent image binding. This should not be generalized to a missing avatar everywhere. |
+| Drag-to-dismiss chat keyboard | Native `ChatUltraListAdapter.swift:274` enables interactive dismissal. Android `ChatListView` preserves IME scroll anchors but has no list-drag dismissal integration. Appropriate Android gesture/accessibility behavior matters, not copying UIKit animation internals. |
+
+This is a source-confirmed list, not new device reproduction of every item or
+an exhaustive re-audit. Background work-group lifecycle/folding and broad
+motion coverage remain a re-audit queue: Android passes `foreground = true`
+at `ChatScreen.kt:825`, but the current native ownership/lifecycle path must
+be traced before calling its observable behavior wrong. Edit/MultiEdit/Write
+file navigation is **already implemented** (`ChatRowRenderer.kt:332`,
+`ChatScreen.kt:940`); the old message-detail checklist sentence is stale.
+Previously closed Task actions/creation, Bot faces, dock pictures, troubleshooting,
+imported-server confirmation and message reading should not be reopened from
+old checklist prose. Likewise proposals and inline Stories are integrated;
+native's chat title routes to details, not inline rename.
+
+### Existing behavior lacking some verification
+
+- Fresh Direct detail rename → header → Home round trip; existing rename
+  implementation and earlier fake detail evidence are not an absent feature.
+- Remaining relay empty/offline state recordings, current rig/activity cases,
+  offline media playback, and broader current tablet/motion regressions.
+- Second-device approval can first be exercised with a synthetic peer; real
+  cross-device/Keystore migration and RN in-place upgrade remain separate.
+- Existing Direct/Stories/proposals/account switching evidence is labeled
+  real-MainActivity/fake transport, not successful real-daemon/service proof.
+
+### Checks requiring new authority or external facilities
+
+Successful real Tailcat pairing/tunnel requires an authorized disposable peer;
+real OAuth/service accounts, FCM/push configuration, voice allowance/service,
+billing sandbox, real-account RN upgrade and physical-device checks are not
+authorized here. QR/Play-services camera behavior, physical haptics/performance
+and spoken TalkBack are unverified. Signing, store validation and release are
+outside this task. These block those claims, **not** local parity work or APK
+assembly. No real service/account/device should be used to make the audit green.
+
+### Implementation differences / deferrable enhancements
+
+Android's synchronous `AgentInputCardView.textContentHeight` and dock label
+measurement differ from Swift's height cache/worker/warmup. No responsiveness
+or geometry defect has yet been measured. Before any shared-composer refactor,
+first establish a measured regression blocking actual use. Separate composer
+benchmark/cache/warmup work is deferred while concrete behavior gaps remain.
+If such a regression arises, use bounded long-draft/layout/IME/width/font
+diagnosis and propose the smallest relevant fix. Matching every native
+cache/queue is not completion work on its own. Native Views, Android dialogs,
+platform photo picker without library permission, and Android material in
+place of Liquid Glass are intentional platform adaptations, not missing
+features. These optional internals do not block a usable Android build.
+
 ## Relay Task Home rows: verified milestone
 
 The Task Home row implementation has passed focused/full tests and isolated

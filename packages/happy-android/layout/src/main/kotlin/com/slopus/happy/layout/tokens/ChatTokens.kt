@@ -179,6 +179,8 @@ object ChatTextStyles {
     val fullEmptyTitle = TextStyle(FontFace.SystemSemiBold, 16)
     val fullEmptySubtitle = TextStyle(FontFace.System, 14)
     val multiEditNumber = TextStyle(FontFace.SystemSemiBold, 14)
+    /** CodexPatchView move destination; the frozen iOS system font. */
+    val patchMovePath = TextStyle(FontFace.System, 12)
     val multiEditBadge = TextStyle(FontFace.SystemSemiBold, 12)
     val terminalEmptyOutput = TextStyle(FontFace.MenloItalic, 13, 18)
     val detailMessage = TextStyle(FontFace.Regular, 16, 24)

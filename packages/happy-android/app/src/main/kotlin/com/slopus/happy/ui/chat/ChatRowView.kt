@@ -89,7 +89,7 @@ internal class ChatPlanPainter {
                     val eased = (1 - kotlin.math.cos(Math.PI * p)) / 2
                     drawBox(canvas, item.box.copy(alpha = 0.18 + (0.52 - 0.18) * eased), d)
                 }
-                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff, is ChatDrawItem.Mermaid, is ChatDrawItem.WebImage, is ChatDrawItem.Attachment, is ChatDrawItem.Media, is ChatDrawItem.Story -> Unit
+                is ChatDrawItem.Scroller, is ChatDrawItem.Spinner, is ChatDrawItem.Diff, is ChatDrawItem.DiffHeader, is ChatDrawItem.Mermaid, is ChatDrawItem.WebImage, is ChatDrawItem.Attachment, is ChatDrawItem.Media, is ChatDrawItem.Story -> Unit
             }
         }
     }
@@ -163,6 +163,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     private val scrollers = ArrayList<Pair<HorizontalScrollView, ChatDrawItem.Scroller>>()
     private val spinners = ArrayList<Pair<ProgressBar, ChatDrawItem.Spinner>>()
     private val diffs = ArrayList<Pair<DiffChunkView, ChatDrawItem.Diff>>()
+    private val diffHeaders = ArrayList<Pair<com.slopus.happy.ui.diff.DiffFileHeaderView, ChatDrawItem.DiffHeader>>()
     private val mermaids = ArrayList<Pair<ChatMermaidView, ChatDrawItem.Mermaid>>()
     private val images = ArrayList<Pair<ChatWebImageView, ChatDrawItem.WebImage>>()
     private val attachments = ArrayList<Pair<ChatAttachmentView, ChatDrawItem.Attachment>>()
@@ -209,6 +210,8 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
         scrollers.clear()
         for ((view, _) in spinners) removeView(view)
         spinners.clear()
+        for ((view, _) in diffHeaders) removeView(view)
+        diffHeaders.clear()
         // Diff views are kept, by position, so an opened diff keeps its scroll.
         val spareDiffs = diffs.map { it.first }.toMutableList()
         diffs.clear()
@@ -255,7 +258,20 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
                     val view = if (spareDiffs.isNotEmpty()) spareDiffs.removeAt(0) else DiffChunkView(context).also { addView(it) }
                     view.onShowMore = { file -> onAction?.invoke(ChatRowAction.DiffShowMore(item.toolId, item.chunk, file), item.frame, false) }
                     view.apply(item.plan)
+                    view.clipRadius = item.radius
+                    view.clipBottomCornersOnly = item.bottomCornersOnly
                     diffs += view to item
+                }
+                is ChatDrawItem.DiffHeader -> {
+                    val view = com.slopus.happy.ui.diff.DiffFileHeaderView(context, drawsBackground = false)
+                    view.apply(item.plan, item.path)
+                    // The parent's header hit includes the move destination and chevron.
+                    view.isClickable = item.opens != null
+                    view.isFocusable = item.opens != null
+                    view.importantForAccessibility = if (item.opens == null) IMPORTANT_FOR_ACCESSIBILITY_NO else IMPORTANT_FOR_ACCESSIBILITY_YES
+                    item.opens?.let { action -> view.setOnClickListener { onAction?.invoke(action, item.frame, false) } }
+                    addView(view)
+                    diffHeaders += view to item
                 }
                 is ChatDrawItem.Mermaid -> {
                     val view = spareMermaids.firstOrNull { it.diagram == item.diagram }?.also { spareMermaids.remove(it) }
@@ -333,6 +349,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
         for ((view, item) in scrollers) view.setFrame(item.frame)
         for ((view, item) in diffs) view.setFrame(item.frame)
+        for ((view, item) in diffHeaders) view.setFrame(item.frame)
         for ((view, item) in mermaids) view.setFrame(item.frame)
         for ((view, item) in images) view.setFrame(item.frame)
         for ((view, item) in attachments) view.setFrame(item.frame)
@@ -355,6 +372,7 @@ class ChatRowView(context: Context) : ViewGroup(context), ThemeAware {
     override fun applyTheme() {
         for ((view, item) in spinners) view.indeterminateTintList = ColorStateList.valueOf(Theme.color(item.tint))
         for ((view, _) in diffs) view.applyTheme()
+        for ((view, _) in diffHeaders) Theme.applyTree(view)
         for ((view, _) in mermaids) view.applyTheme()
         for ((view, _) in attachments) view.applyTheme()
         for ((view, _) in media) view.applyTheme()

@@ -41,7 +41,7 @@ import kotlin.math.roundToInt
 @RunWith(AndroidJUnit4::class)
 class MessageDetailScreenTest {
     /** Signed-out preview seams use the actual store/feed/renderer, without any network or credentials. */
-    private class Fixture {
+    private class Fixture(private val toolArgs: String? = null, private val focusFile: String? = null) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val graph: AppGraph
         var beforePlan: (MessageDetailInput) -> Unit = {}
@@ -59,15 +59,22 @@ class MessageDetailScreenTest {
                 graph.store.upsertSessions(listOf(SessionRecord("reading-session", 1, 1, 1, false, 1,
                     """{"path":"/synthetic/reading","host":"fixture"}""", 1, null, 0, "", null)))
                 val text = (1..140).joinToString("\n") { "Reading line $it — a synthetic message with enough words to wrap as the text size changes." }
+                val raw = if (toolArgs == null) {
+                    """{"role":"user","content":{"type":"text","text":${JsonPrimitive(text)}}}"""
+                } else {
+                    """{"role":"agent","content":{"type":"session","data":{"id":"patch-envelope","time":1,"role":"agent","turn":"patch-turn","ev":{"t":"tool-call-start","call":"patch-call","name":"CodexPatch","title":"Update files","description":"Synthetic patch","args":$toolArgs}}}}"""
+                }
+                check(com.slopus.happy.chat.ChatNormalizer.normalize("reading-message", null, 1,
+                    kotlinx.serialization.json.Json.parseToJsonElement(raw)) != null) { "Invalid fixture wire message" }
                 graph.store.applyNewestPage("reading-session", listOf(MessageRecord("reading-session", 1, "reading-message", null,
-                    """{"role":"user","content":{"type":"text","text":${JsonPrimitive(text)}}}""", 1, 1)), false)
+                    raw, 1, 1)), false)
                 // Routes use the reducer's stable UI id, not the raw server record id.
                 val messageId = runBlocking {
                     ChatFeed(StoreChatMessagesSource(graph.store), StoreChatSessionSource(graph.store), NoLivePresence)
                         .state("reading-session").first { it.snapshot.loaded }.snapshot.rows.single().message.id
                 }
                 val renderer = MessageDetailRenderer(context.resources, ChatRowRenderer(context.resources))
-                screen = MessageDetailScreen(context, graph, "reading-session", messageId) { input, width ->
+                screen = MessageDetailScreen(context, graph, "reading-session", messageId, focusFile = focusFile) { input, width ->
                     beforePlan(input)
                     renderer.plan(input, width).also { afterPlan(input) }
                 }
@@ -75,7 +82,7 @@ class MessageDetailScreenTest {
                 scroll = descendants(screen.view).filterIsInstance<MessageDetailScrollView>().single()
                 await { scroll.canvas.plan != null && scroll.visibility == View.VISIBLE }
                 layout()
-                assertTrue(frames().size >= 3)
+                if (toolArgs == null) assertTrue(frames().size >= 3)
             } catch (failure: Throwable) {
                 close()
                 throw failure
@@ -143,6 +150,28 @@ class MessageDetailScreenTest {
             assertEquals(place.top(fixture.frames())!!.roundToInt(), fixture.scroll.scrollY)
         } finally {
             release.countDown()
+            fixture.close()
+        }
+    }
+
+    @Test fun actualStoreFeedScreenPreservesFocusedFileIndexWhenExpanding() {
+        // A continuous add block may extend 200 rows beyond the 80-row cap.
+        val lines = (1..350).joinToString("\n") { "val line$it = $it" }
+        val input = """{"changes":{"a.kt":{"type":"add","content":"first"},"b.kt":{"type":"add","content":${JsonPrimitive(lines)}}}}"""
+        val fixture = Fixture(input, "b.kt")
+        try {
+            val plan = fixture.scroll.canvas.plan!!
+            assertEquals(listOf("b.kt"), plan.items.filterIsInstance<ChatDrawItem.DiffHeader>().map { it.path })
+            val diff = plan.items.filterIsInstance<ChatDrawItem.Diff>().single()
+            assertEquals(1, diff.chunk)
+            assertTrue(diff.plan.files.single().hiddenCount > 0)
+            fixture.scroll.canvas.onAction!!.invoke(ChatRowAction.DiffShowMore(plan.id, diff.chunk, 0), diff.frame, false)
+            fixture.await { fixture.scroll.canvas.plan !== plan }
+            val expanded = fixture.scroll.canvas.plan!!.items.filterIsInstance<ChatDrawItem.Diff>().single()
+            assertEquals(1, expanded.chunk)
+            assertEquals(0, expanded.plan.files.single().hiddenCount)
+            assertTrue(expanded.frame.height > diff.frame.height)
+        } finally {
             fixture.close()
         }
     }

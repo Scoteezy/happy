@@ -58,6 +58,15 @@ class ToolLogicTest {
     }
 
     @Test
+    fun patchLabelsUseNativeMapOrderAndEmptyDiffsStayClosed() {
+        assertEquals("Edited: a.ts +1", toolActivityLabel(tool("apply_patch", """{"changes":{"z.ts":{"type":"update"},"a.ts":{"type":"add"}}}"""), text))
+        assertEquals(listOf("a.ts", "z.ts"), patchChanges(json("""{"changes":{"z.ts":{},"a.ts":{}}}"""))!!.keys.toList())
+        assertFalse(ToolViewKind.CodexDiff.hasContent(message(tool("CodexDiff", """{"unified_diff":""}"""))))
+        assertFalse(ToolViewKind.CodexDiff.hasContent(message(tool("GeminiDiff", "{}"))))
+        assertTrue(ToolViewKind.CodexDiff.hasContent(message(tool("CodexDiff", """{"unified_diff":"@@ -1 +1 @@\n-a\n+b"}"""))))
+    }
+
+    @Test
     fun knownToolTitlesAreRelativeToTheSession() {
         val p = presentTool(message(tool("Edit", """{"file_path":"/repo/src/a.kt","old_string":"a","new_string":"b"}""")), text, false, null, "/repo")!!
         assertEquals("src/a.kt", p.title)

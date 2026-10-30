@@ -29,6 +29,22 @@ import kotlin.math.roundToInt
  * again with that file opened and measures the row again.
  */
 class DiffChunkView(context: Context) : ViewGroup(context), ThemeAware {
+    var clipRadius: Double = 0.0
+    var clipBottomCornersOnly: Boolean = false
+    private val clipPath = android.graphics.Path()
+
+    override fun dispatchDraw(canvas: Canvas) {
+        if (clipRadius <= 0) return super.dispatchDraw(canvas)
+        val radius = dp(clipRadius)
+        val top = if (clipBottomCornersOnly) 0f else radius
+        clipPath.reset()
+        clipPath.addRoundRect(0f, 0f, width.toFloat(), height.toFloat(),
+            floatArrayOf(top, top, top, top, radius, radius, radius, radius), android.graphics.Path.Direction.CW)
+        val saved = canvas.save()
+        canvas.clipPath(clipPath)
+        super.dispatchDraw(canvas)
+        canvas.restoreToCount(saved)
+    }
     /** "Show N more lines" on file `index`. */
     var onShowMore: ((Int) -> Unit)? = null
 

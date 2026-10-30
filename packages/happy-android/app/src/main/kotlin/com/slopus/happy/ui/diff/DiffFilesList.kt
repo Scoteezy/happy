@@ -70,8 +70,9 @@ interface DiffSectionWords : DiffWords {
     fun tapToExpand(count: Int): String
 
     companion object {
-        fun of(context: Context): DiffSectionWords {
-            val resources = context.resources
+        fun of(context: Context): DiffSectionWords = of(context.resources)
+
+        fun of(resources: android.content.res.Resources): DiffSectionWords {
             return object : DiffSectionWords {
                 override fun showMoreLines(count: Int) = resources.getQuantityString(R.plurals.diff_show_more_lines, count, count)
                 override fun unchangedLines(count: Int) = resources.getString(R.string.diff_unchanged_lines, count)
@@ -306,7 +307,7 @@ class DiffSectionMeasurer(private val words: DiffSectionWords) {
 }
 
 /** components/diff/DiffFileHeader.tsx: chevron, file icon, path, change badge and counts on `hunkBg`. Tapping it toggles the file. */
-class DiffFileHeaderView(context: Context) : ViewGroup(context), ThemeAware {
+class DiffFileHeaderView(context: Context, private val drawsBackground: Boolean = true) : ViewGroup(context), ThemeAware {
     private val chevron = IconView(context, null, DiffFileHeaderLayout.Metrics.chevronSize, Palette.textSecondary)
     private val icon = FileIconView(context)
     private val dir = Label(context, DiffTextStyles.headerDir, Palette.textSecondary, maxLines = 1).apply { ellipsize = TextUtils.TruncateAt.START }
@@ -348,7 +349,7 @@ class DiffFileHeaderView(context: Context) : ViewGroup(context), ThemeAware {
     }
 
     override fun applyTheme() {
-        setBackgroundColor(Theme.color(DiffPalette.hunkBackground))
+        setBackgroundColor(if (drawsBackground) Theme.color(DiffPalette.hunkBackground) else android.graphics.Color.TRANSPARENT)
         invalidate()
     }
 

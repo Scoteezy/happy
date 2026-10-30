@@ -124,6 +124,8 @@ data class ToolFullPresentation(
         data object Task : Main
         /** EditViewFull (line numbers always on), WriteView (the setting's), MultiEditViewFull ("Edit N of M"). */
         data class Diff(val kind: ToolViewKind, val chunks: List<ToolDiffChunk>, val replaceAll: List<Boolean>) : Main
+        data class Patch(val files: List<ToolPatchFile>?) : Main
+        data class UnifiedDiff(val diff: ToolUnifiedDiff?) : Main
         /** ToolFullView's fallback: description, input, output, error. */
         data class Generic(val generic: ToolFullGeneric) : Main
     }
@@ -155,6 +157,8 @@ data class ToolFullPresentation(
             }
             val main = when {
                 name in TASK_NAMES -> Main.Task
+                name in setOf("CodexPatch", "GeminiPatch", "apply_patch") -> Main.Patch(patchViewFiles(tool.input, root))
+                name in setOf("CodexDiff", "GeminiDiff") -> Main.UnifiedDiff(ToolUnifiedDiff.of(tool.input))
                 DIFF_NAMES[name] != null -> {
                     val kind = DIFF_NAMES.getValue(name)
                     val replaceAll = if (kind == ToolViewKind.MultiEdit) {

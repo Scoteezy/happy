@@ -46,7 +46,7 @@ fun ToolViewKind.hasContent(message: ChatMessage.ToolCallMessage): Boolean {
         ToolViewKind.Todo -> !input?.get("todos").arr.isNullOrEmpty() || !message.tool.result.obj?.get("newTodos").arr.isNullOrEmpty()
         ToolViewKind.Task -> message.children.any { it is ChatMessage.ToolCallMessage && KnownTools[it.tool.name]?.hidden != true }
         ToolViewKind.MultiEdit -> !input?.get("edits").arr.isNullOrEmpty()
-        ToolViewKind.CodexDiff -> input?.get("unified_diff").str != null
+        ToolViewKind.CodexDiff -> !input?.get("unified_diff").str.isNullOrEmpty()
         ToolViewKind.GeminiExecute -> !input?.get("toolCall").obj?.get("title").str.isNullOrEmpty()
         else -> true
     }

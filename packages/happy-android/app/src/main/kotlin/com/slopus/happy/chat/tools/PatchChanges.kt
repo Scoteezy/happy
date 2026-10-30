@@ -5,6 +5,8 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import com.slopus.happy.diff.DiffStats
+import com.slopus.happy.diff.FileChangeKind
 
 // utils/codexPatchEntry.ts: what changed in each file of a Codex, Gemini or
 // Happy Agent patch, whatever shape the provider sent it in.
@@ -49,7 +51,7 @@ sealed interface PatchInput {
     data class Pair(val oldText: String, val newText: String) : PatchInput
 }
 
-/** `getPatchChanges`: file path → change, in the provider's order; null when the input has none. */
+/** ChatPatch.changes: maps sort by path; lists/envelopes retain provider order. */
 fun patchChanges(input: JsonElement?): LinkedHashMap<String, PatchEntry>? {
     val o = input.obj ?: return null
     o["changes"].arr?.let { return changeList(it) }
@@ -69,14 +71,14 @@ fun patchChanges(input: JsonElement?): LinkedHashMap<String, PatchEntry>? {
 
 private fun changeMap(changes: JsonObject): LinkedHashMap<String, PatchEntry>? {
     if (changes.isEmpty() || changes.values.any { it.obj == null }) return null
-    return changes.entries.associateTo(LinkedHashMap()) { (path, value) -> path to PatchEntry.read(value.obj!!) }
+    return changes.toSortedMap().entries.associateTo(LinkedHashMap()) { (path, value) -> path to PatchEntry.read(value.obj!!) }
 }
 
 private fun changeList(changes: List<JsonElement>): LinkedHashMap<String, PatchEntry>? {
     val out = LinkedHashMap<String, PatchEntry>()
     for (change in changes) {
         val o = change.obj ?: continue
-        val path = o["path"].str ?: continue
+        val path = o["path"].str?.takeIf { it.isNotEmpty() } ?: continue
         val entry = PatchEntry.read(o)
         val type = entry.kindType
         out[path] = entry.copy(
@@ -222,4 +224,51 @@ fun patchKindLabel(change: PatchEntry): String? = when (change.kindType) {
     "delete" -> "delete"
     "update" -> if (change.movePath != null) "move" else "edit"
     else -> null
+}
+
+/** HappyCore/ChatDisplay/ChatPatch.swift: the patch header and its diff. */
+data class ToolPatchFile(
+    val file: String,
+    val path: String,
+    val movePath: String?,
+    val kind: FileChangeKind,
+    val diff: PatchInput?,
+) {
+    val fileName: String get() = file.substringAfterLast('/')
+    val stats: DiffStats.Counts get() = when (val input = diff) {
+        is PatchInput.Patch -> DiffStats.countPatch(input.patch)
+        is PatchInput.Pair -> DiffStats.countContents(input.oldText, input.newText)
+        null -> DiffStats.Counts(0, 0)
+    }
+}
+
+fun patchViewFiles(input: JsonElement?, root: String?): List<ToolPatchFile>? {
+    val changes = patchChanges(input) ?: return null
+    return changes.map { (file, entry) ->
+        val diff = when (val value = patchInput(entry)) {
+            is PatchInput.Patch -> PatchInput.Patch(materializeUnifiedDiffPatch(value.patch, file, entry.kindType))
+            is PatchInput.Pair -> value.takeIf { it.oldText.isNotEmpty() || it.newText.isNotEmpty() }
+            null -> null
+        }
+        val move = entry.movePath?.takeIf { it.isNotEmpty() }
+        ToolPatchFile(file, resolvePath(file, root), move?.let { resolvePath(it, root) }, when {
+            move != null -> FileChangeKind.Renamed
+            entry.kindType == "add" -> FileChangeKind.Added
+            entry.kindType == "delete" -> FileChangeKind.Deleted
+            else -> FileChangeKind.Modified
+        }, diff)
+    }
+}
+
+fun patchFallbackText(input: JsonElement?): String? =
+    input.obj?.get("patch").str ?: input.obj?.get("input").str ?: ToolFullPresentation.resultText(input)
+
+data class ToolUnifiedDiff(val patch: String, val fileName: String?) {
+    companion object {
+        fun of(input: JsonElement?): ToolUnifiedDiff? {
+            val o = input.obj ?: return null
+            val patch = o["unified_diff"].str?.takeIf { it.isNotEmpty() } ?: return null
+            return ToolUnifiedDiff(patch, o["path"].str ?: o["filePath"].str ?: unifiedDiffFileName(patch))
+        }
+    }
 }

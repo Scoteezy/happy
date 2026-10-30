@@ -21,15 +21,16 @@ class ShellHarnessApplication : HappyApplication() {
     private var relayNamespace: String? = null
     private var relay: TaskRelayRuntime? = null
     private var messageReadingCapture: MessageReadingCapture? = null
+    private var codexPatchCapture: CodexPatchCapture? = null
     private var graphCreated = false
     private val relayCloseLock = Mutex()
 
-    fun enableTaskRelay(botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false, messageReading: Boolean = false) {
+    fun enableTaskRelay(botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false, importServer: Boolean = false, messageReading: Boolean = false, patchScenario: String? = null) {
         check(packageName == "com.slopus.happy.dev.shellharness")
         check(!graphCreated) { "Force-stop the isolated harness before changing fixture modes" }
         super.getSharedPreferences("task-relay-mode", MODE_PRIVATE).edit().putBoolean("enabled", true)
             .putBoolean("botFaces", botFaces).putBoolean("failFirstAvatar", failFirstAvatar).putBoolean("dockPictures", dockPictures)
-            .putBoolean("importServer", importServer).putBoolean("messageReading", messageReading).commit()
+            .putBoolean("importServer", importServer).putBoolean("messageReading", messageReading).putString("patchScenario", patchScenario).commit()
     }
 
     fun useOfflineShellFixture() {
@@ -54,6 +55,7 @@ class ShellHarnessApplication : HappyApplication() {
         android.util.Log.i("TaskRelayFixture", "close requested relayPresent=${relay != null}")
         relayCloseLock.withLock {
             messageReadingCapture?.close(); messageReadingCapture = null
+            codexPatchCapture?.close(); codexPatchCapture = null
             relay?.close(); relay = null
         }
     }
@@ -72,9 +74,10 @@ class ShellHarnessApplication : HappyApplication() {
             relayNamespace = "task-relay-${java.util.UUID.randomUUID()}"
             val mode = super.getSharedPreferences("task-relay-mode", MODE_PRIVATE)
             return TaskRelayRuntime(this, mode.getBoolean("botFaces", false), mode.getBoolean("failFirstAvatar", false),
-                mode.getBoolean("dockPictures", false), mode.getBoolean("importServer", false), mode.getBoolean("messageReading", false))
+                mode.getBoolean("dockPictures", false), mode.getBoolean("importServer", false), mode.getBoolean("messageReading", false), mode.getString("patchScenario", null))
                 .also { relay = it }.graph.also { graph ->
                     if (mode.getBoolean("messageReading", false)) messageReadingCapture = MessageReadingCapture(this, graph)
+                    mode.getString("patchScenario", null)?.let { codexPatchCapture = CodexPatchCapture(this, graph, it) }
                 }
         }
         val fixtureScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
