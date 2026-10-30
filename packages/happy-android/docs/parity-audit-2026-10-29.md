@@ -10,7 +10,7 @@ old partial checklist item has received a fresh device test.
 
 ## Completion audit after reading-position milestone (2026-10-30)
 
-Current focused-verified implementation: `dbb6542cf` (patch/diff slice below).
+Current focused-verified implementation: `fdae45057` (diff/permission slice below).
 Last broad-verified implementation: `55be0e4ed` (documentation `5edabd274`),
 with 2041 tests and unsigned production verification. Those broad results
 are reused history, **not** a new full-suite/production run for this slice.
@@ -29,8 +29,6 @@ is established. The unsigned production APK is not a signed distribution.
 
 | Behavior | Current evidence / boundary |
 | --- | --- |
-| Changes/diff reading place and code selection | `ui/diff/DiffFilesList.kt:649` replans/rebinds without a line anchor; `DiffViews.kt` has taps for context expansion but no line-selection/copy path. Native `DiffFilesListView.swift:128,606` enables selection and restores `DiffReadingPlace`. Same-size font invalidation also needs a focused regression, not an assumption that existing measurements refresh. |
-| Permission overflow | `ChatRowRenderer.kt:772` uses the uncapped layout default and emits inline buttons; no vertical permission scroller. Native `ChatToolRenderer.swift:679` passes the window cap and wraps tall lists in a vertical scroller. Android's pure cap geometry exists but is not connected. |
 | Tablet grouped sidebar | `ui/tablet/TabletSidebarView.kt:162` explicitly substitutes flat rows. Native `TabletSidebarViewController.swift:302` mounts its grouped hierarchy. |
 | Guest invitation/chat | Android `connect/DeepLinks.kt:27` accepts Direct and account/terminal pairing only; no guest vault/client/UI is present. Frozen native `HappyApp/AppDelegate.swift:82` opens `HappyGuestUI` for validated HTTPS bot invitations. Local implementation/fixtures need no live account; real redemption would need separate authority. |
 | Native-version update request/banner binding | Android has a `HomeBanners.nativeUpdate` display slot but no `/v1/version` request/status owner. Native `HomeScreens.swift:152` refreshes `NativeUpdateCheck` on startup/foreground. This is a server-version response contract, not necessarily Play in-app updates; native itself notes today's server response does not activate the banner. A synthetic contract test can be local. |
@@ -51,6 +49,10 @@ native's chat title routes to details, not inline rename.
 
 ### Existing behavior lacking some verification
 
+- The font3 diff/permission stress replay visibly clips/overlaps the chat
+  header and worktree strip. Compare their current font caps/layouts with
+  frozen native source in the next UI pass; the permission footer itself
+  scrolls and dispatches correctly. This is not a claim of all-font UI parity.
 - Fresh Direct detail rename → header → Home round trip; existing rename
   implementation and earlier fake detail evidence are not an absent feature.
 - Remaining relay empty/offline state recordings, current rig/activity cases,
@@ -83,6 +85,66 @@ cache/queue is not completion work on its own. Native Views, Android dialogs,
 platform photo picker without library permission, and Android material in
 place of Liquid Glass are intentional platform adaptations, not missing
 features. These optional internals do not block a usable Android build.
+
+## Changes reader / permission overflow (2026-10-30)
+
+Source `fdae450573f89039a5b262b146fdedec9528d4e3` adds native
+`KeptPlace`/`ScrollPlace`/`DiffReadingPlace`, actual list anchoring on font
+changes, whole displayed-line Copy, capped vertical permission lists and
+same-bounds chat font invalidation. Same-file font restoration reads the
+latest scroll when asynchronous work applies; width-only changes keep the
+offset. Reset and obsolete text environments cannot install stale plans.
+Copy dismisses on reuse/detach and cannot copy an old plan. Chat tool diffs
+remain nonselectable. The diff chunk's self-recursive theme traversal is fixed.
+Permission child hits are translated through the actual inner scroll offset;
+busy/answered states disable actions, same-row updates retain offset and
+recycled owners start at zero. Inner drags prevent the outer RecyclerView
+from intercepting them, and never submit a permission answer.
+
+Focused coverage across the group is **58 app tests / 12 suites + 130 layout
+tests / 25 suites**, not a new full-suite run. The last scoped six interaction
+and real-screen tests pass in **1m03s**, with isolated APK assembly. The actual
+graph regression loads encrypted Git replies, expands 281 diff rows and
+checks same-size font1→3→1 permission inline→scrolling→inline presentation.
+The test uses the real window cap, not its manually sized content frame.
+Owned build PIDs 86952/86983 exited. Capture APK (built before the source
+commit): **114085235 bytes**, SHA-256
+`636fa1df058de89e59d3721355072db7ab384c58f50a8a45c6f8491d8a1aa6ed`,
+with an empty billing key and the isolated `.shellharness` application ID.
+
+Final evidence is `.context/evidence/diff-permission/android-third/`:
+actual MainActivity Changes, real swipes, system font1→1.35→1, platform Copy,
+Back to actual chat, system font3, inner permission drag and Deny. Row **79**
+is kept within **0.133524dp / 0.100143dp**. The clipboard receives the entire
+synthetic line including its hidden horizontal tail. The permission viewport
+is **259.8095dp**, content **463.61905dp**, final offset **203.80952dp**;
+the encrypted RPC opens to exactly
+`{"id":"fixture-permission","approved":false}`. Eight UI XMLs parse.
+The movie is **47.852100s**, SHA-256
+`9ada8e0050faa07bf50efa8937e15b80ac38e91f230ca8ee688e33e989c1d66e`.
+Its contact sheet was personally inspected. Original font1 restoration,
+account/scope/server shutdown and owned emulator PID87792 exit all pass.
+
+Earlier attempts are diagnostic, not passing final evidence: the first fake
+RPC handler omitted chat's background Git-status commands and threw inside
+its socket callback; it now serves those commands and safely refuses unknown
+synthetic reads, with a regression. Scripted navigation explicitly waits for
+the RPC connection after HTTP sync. The second replay passed anchoring/Copy
+but exposed outer-chat drag interception, which the final implementation and
+new actual-RecyclerView gesture test fix. Both attempts cleaned up resources.
+Test-only corrections used `PermissionAnswer.requestId`, the `net` package's
+connection status and the actual window-height cap. None required a live peer.
+
+Frozen native `DiffFilesListView.swift`, `DiffListLayout.swift`, `KeptPlace.swift`
+and `ChatToolRenderer.swift` remain the comparison. No native rebuild/capture,
+five-module suite or unsigned production gate was repeated. Ordinary-debug
+assembly at this source passes in **1m35s**; package/manifest/dex/assets exclude
+all fixture/testing components and permissive network configuration. Both
+native ABIs and 16KB ZIP alignment pass. APK: **112910972 bytes**, SHA-256
+`5a6d02f974e05b2e4d8c6c8664b1817ca9cc6eb8793c954795b1a4d6c178a437`.
+Owned workers 90390/90552 exited; no build, device or media process is retained.
+Last broad-verified source remains `55be0e4ed`, not this checkpoint. No live-service, release,
+physical-device or spoken TalkBack claim is made.
 
 ## Codex patch / unified-diff presentation (2026-10-30)
 
@@ -884,9 +946,10 @@ is implied.
 | Imported-account server confirmation | Native `HappyUI/Screens/AccountServerScreens.swift`, `Navigation/AppCoordinator.swift:282` | Closed for read-only import, pending gate, native form/confirmation, durable activation and immutable account routing: focused/full regressions, final Android/native evidence and ordinary/unsigned-production isolation pass above. Real RN upgrade remains unverified. |
 | Message-detail reading position | Native `HappyUI/Chat/MessageDetail/MessageDetailViewController.swift:294` | Closed above: actual screen integration, stale/destroy/race tests, system font changes on Android/native, full tests and ordinary/unsigned-production isolation pass. |
 
-Other historical partials remain a **re-audit queue**, not newly confirmed
-missing features: diff selection/reading anchor, permission overflow,
-background work-group folding, interactive keyboard dismissal, guest links,
+Diff selection/reading anchor and permission overflow are now implemented and
+verified in the focused milestone above. Other historical partials remain a
+**re-audit queue**, not newly confirmed missing features: background work-group
+folding, interactive keyboard dismissal, guest links,
 update checks, account-header picture, tablet grouped presentation and
 motion. Keep their limitations in
 `ios-parity.md`; inspect the actual current call sites before implementing.
