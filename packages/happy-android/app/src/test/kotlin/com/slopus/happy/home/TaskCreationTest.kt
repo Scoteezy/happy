@@ -1,9 +1,15 @@
 package com.slopus.happy.home
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.net.Uri
+import android.view.ViewGroup
+import androidx.activity.ComponentActivity
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.attachments.AttachmentNotice
 import com.slopus.happy.model.*
 import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.machineMetadata
@@ -11,6 +17,7 @@ import com.slopus.happy.sync.*
 import com.slopus.happy.ui.home.HomeDockController
 import com.slopus.happy.ui.home.HomeDockFocusView
 import com.slopus.happy.ui.home.HomeDockView
+import com.slopus.happy.ui.composer.AgentInputCardView
 import com.slopus.happy.ui.theme.Theme
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,13 +26,16 @@ import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowAlertDialog
+import java.io.File
 import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class TaskCreationTest {
-    private class Fixture(scope: CoroutineScope, tasks: JsonElement? = JsonPrimitive(true)) {
-        val context = ApplicationProvider.getApplicationContext<Context>()
+    private class Fixture(scope: CoroutineScope, tasks: JsonElement? = JsonPrimitive(true), val context: Context = ApplicationProvider.getApplicationContext<Context>()) {
         val drafts = NewSessionDraftStore(context.getSharedPreferences(UUID.randomUUID().toString(), Context.MODE_PRIVATE))
         var machines = listOf(machine("rig", machineMetadata {
             put("machineKind", "rig")
@@ -42,6 +52,7 @@ class TaskCreationTest {
         }))
         val spawns = mutableListOf<SpawnSessionOptions>()
         val sent = mutableListOf<Pair<String, String>>()
+        val sentImages = mutableListOf<List<AttachmentPreview>>()
         val killed = mutableListOf<String>()
         var spawn: suspend () -> SpawnSessionResult = { SpawnSessionResult.Success("session-${spawns.size}") }
         var send: suspend () -> FirstSend = { FirstSend(true) }
@@ -63,7 +74,7 @@ class TaskCreationTest {
         val sender = object : FirstMessageSender {
             override suspend fun pinModes(sessionId: String, modes: Map<AgentModeField, String?>) = error("Rig modes travel in spawn")
             override suspend fun send(sessionId: String, text: String, attachments: List<AttachmentPreview>, isCurrent: () -> Boolean): FirstSend {
-                assertTrue(isCurrent()); sent += sessionId to text; return send()
+                assertTrue(isCurrent()); sent += sessionId to text; sentImages += attachments.toList(); return send()
             }
         }
         val starter = SessionStarter(
@@ -310,5 +321,184 @@ class TaskCreationTest {
         assertEquals(HomeDockKind.Task, controller.kind)
         assertEquals(StartResult.Refused(StartRefusal.TasksUnsupported), f.start())
         assertEquals(1, f.spawns.size)
+    }
+
+    @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun pictureOnlyTaskPassesNormalizedImageAndClearsOnlyAfterSuccess() = runTest {
+        val f = Fixture(this)
+        val (dock, opened) = pictureDock(f)
+        assertFalse(dock.canSubmit)
+        val picture = addPicture(dock)
+        assertTrue(dock.canSubmit)
+        dock.setKind(HomeDockKind.Task)
+        assertEquals(listOf(picture), dock.cardConfiguration().attachments.map { it.file })
+        assertEquals("Add image", dock.cardConfiguration().addAccessibilityLabel)
+        f.send = {
+            val attachment = f.sentImages.last().single()
+            assertEquals("image/jpeg", attachment.mimeType)
+            assertTrue(picture.isFile)
+            assertArrayEquals(byteArrayOf(-1, -40), picture.readBytes().take(2).toByteArray())
+            FirstSend(true)
+        }
+        assertTrue(dock.submit())
+        assertEquals(listOf("session-1" to ""), f.sent)
+        assertEquals(listOf("session-1"), opened)
+        assertEquals(HappyAgentSpawnTarget.Task(), f.spawns.single().happyAgentTarget)
+        assertFalse(picture.exists())
+        assertTrue(dock.images.images.isEmpty())
+        assertFalse(dock.canSubmit)
+        assertEquals(HomeDockKind.Session, dock.kind)
+    }
+
+    @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun botPreservesSessionPicturesAndPromptAcrossKindSwitches() = runTest {
+        val f = Fixture(this)
+        val (dock, _) = pictureDock(f)
+        val picture = addPicture(dock)
+        dock.setPrompt("Keep this prompt")
+        dock.setKind(HomeDockKind.Bot)
+        assertFalse(dock.canSubmit)
+        assertFalse(dock.cardConfiguration().showsAdd)
+        assertTrue(dock.cardConfiguration().attachments.isEmpty())
+        dock.setBotName("Fixture Bot")
+        assertTrue(dock.submit())
+        assertTrue(f.sent.isEmpty())
+        assertEquals("Keep this prompt", dock.prompt)
+        assertTrue(picture.isFile)
+        assertEquals(listOf(picture), dock.cardConfiguration().attachments.map { it.file })
+        dock.setKind(HomeDockKind.Task)
+        assertEquals(listOf(picture), dock.cardConfiguration().attachments.map { it.file })
+        dock.images.remove(dock.images.images.single().id)
+        assertFalse(picture.exists())
+        dock.setPrompt("")
+        assertFalse(dock.canSubmit)
+    }
+
+    @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun ordinarySessionAlsoAcceptsAPictureWithoutText() = runTest {
+        val f = Fixture(this)
+        val (dock, opened) = pictureDock(f)
+        val picture = addPicture(dock)
+        assertEquals(HomeDockKind.Session, dock.kind)
+        assertTrue(dock.submit())
+        assertNull("A session must not become a task", f.spawns.single().happyAgentTarget)
+        assertEquals(listOf("session-1" to ""), f.sent)
+        assertEquals(1, f.sentImages.single().size)
+        assertEquals(listOf("session-1"), opened)
+        assertFalse(picture.exists())
+    }
+
+    @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun startingRefusesPictureControlsAndStopKeepsTheSelection() = runTest {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            val f = Fixture(this, context = activity.get())
+            val (dock, _) = pictureDock(f)
+            val picture = addPicture(dock)
+            val id = dock.images.images.single().id
+            dock.setKind(HomeDockKind.Task)
+            val focus = HomeDockFocusView(f.context, dock)
+            activity.get().setContentView(focus)
+            fun findCard(parent: ViewGroup): AgentInputCardView? {
+                for (index in 0 until parent.childCount) {
+                    val child = parent.getChildAt(index)
+                    if (child is AgentInputCardView) return child
+                    if (child is ViewGroup) findCard(child)?.let { return it }
+                }
+                return null
+            }
+            val card = requireNotNull(findCard(focus))
+            val gate = CompletableDeferred<Unit>()
+            f.ready = { gate.await(); true }
+            val submitting = async { dock.submit() }
+            runCurrent()
+            assertTrue(dock.isStarting)
+            card.onRemoveAttachment?.invoke(id)
+            card.onReceiveImages?.invoke(listOf(Uri.fromFile(picture)))
+            card.onAdd?.invoke()
+            assertNull(ShadowAlertDialog.getLatestAlertDialog())
+            assertEquals(listOf(id), dock.images.images.map { it.id })
+            dock.cancelStart()
+            assertFalse(submitting.await())
+            runCurrent()
+            assertEquals(listOf("session-1"), f.killed)
+            assertTrue(picture.isFile)
+            card.onRemoveAttachment?.invoke(id)
+            assertTrue(dock.images.images.isEmpty())
+            assertFalse(picture.exists())
+        } finally { activity.pause().stop().destroy() }
+    }
+
+    @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun refusedFirstPictureSendKeepsSelectionAndRetriesSameTask() = runTest {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            val f = Fixture(this, context = activity.get())
+            val (dock, opened) = pictureDock(f)
+            val picture = addPicture(dock)
+            dock.setKind(HomeDockKind.Task)
+            f.send = { FirstSend(false, listOf(AttachmentNotice.NotSupported)) }
+            assertFalse(dock.submit())
+            assertTrue(picture.isFile)
+            assertEquals(HomeDockKind.Task, dock.kind)
+            assertTrue(opened.isEmpty())
+            ShadowAlertDialog.getLatestAlertDialog().dismiss()
+            f.send = { FirstSend(true) }
+            assertTrue(dock.submit())
+            assertEquals(1, f.spawns.size)
+            assertEquals(listOf("session-1", "session-1"), f.sent.map { it.first })
+            assertEquals(f.sentImages.first(), f.sentImages.last())
+            assertFalse(picture.exists())
+        } finally { activity.pause().stop().destroy() }
+    }
+
+    @Test @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun destroyingHomeRemovesOnlyItsOwnPictureStaging() = runTest {
+        val ownedJob = SupervisorJob(backgroundScope.coroutineContext[Job])
+        val owned = CoroutineScope(ownedJob + StandardTestDispatcher(testScheduler))
+        val (dock, _) = pictureDock(Fixture(owned), owned)
+        val (other, _) = pictureDock(Fixture(this))
+        val picture = addPicture(dock)
+        val otherPicture = addPicture(other)
+        owned.cancel()
+        ownedJob.join()
+        assertFalse(picture.exists())
+        assertTrue(otherPicture.isFile)
+        assertTrue(dock.images.images.isEmpty())
+        assertEquals(1, other.images.images.size)
+    }
+
+    private fun TestScope.pictureDock(f: Fixture, ownerScope: CoroutineScope = backgroundScope): Pair<HomeDockController, MutableList<String>> {
+        Theme.install(f.context)
+        val services = NewSessionServices(f.drafts, MutableStateFlow<HomeSnapshot?>(HomeSnapshot(emptyList(), f.machines)),
+            MutableStateFlow(Settings()), f.actions, f.starter, NewSessionLabels(), f.context::getString,
+            ownerScope, StandardTestDispatcher(testScheduler))
+        runCurrent()
+        val opened = mutableListOf<String>()
+        return HomeDockController(f.context, HomeDockView(f.context), services, ownerScope,
+            object : HomeDockController.Host {
+                override val canPresent = true
+                override fun present(focus: HomeDockFocusView) = Unit
+                override fun dismiss(focus: HomeDockFocusView) = Unit
+                override fun openSession(id: String) { opened += id }
+            }) to opened
+    }
+
+    private suspend fun TestScope.addPicture(dock: HomeDockController): File {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val source = File.createTempFile("dock-picture-", ".png", context.cacheDir)
+        val bitmap = Bitmap.createBitmap(32, 16, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+        source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        bitmap.recycle()
+        try {
+            dock.images.receive(listOf(Uri.fromFile(source)))
+            // Normalization deliberately stays on the real IO dispatcher.
+            repeat(300) {
+                runCurrent()
+                dock.images.images.singleOrNull()?.let { return it.image.file }
+                withContext(Dispatchers.Default) { delay(10) }
+            }
+            error("Picture normalization did not finish")
+        } finally { source.delete() }
     }
 }

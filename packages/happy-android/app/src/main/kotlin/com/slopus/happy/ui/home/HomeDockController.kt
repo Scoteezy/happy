@@ -3,6 +3,8 @@ package com.slopus.happy.ui.home
 import android.content.Context
 import android.provider.Settings
 import com.slopus.happy.R
+import com.slopus.happy.attachments.AttachmentNotice
+import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.chat.AgentInputPrimaryAction
 import com.slopus.happy.chat.ComposerChipSet
 import com.slopus.happy.home.NewSessionServices
@@ -22,8 +24,12 @@ import com.slopus.happy.model.resolveStartProgress
 import com.slopus.happy.model.sanitizeBotName
 import com.slopus.happy.ui.components.Alerts
 import com.slopus.happy.ui.composer.AgentInputCardView
+import com.slopus.happy.ui.composer.AgentInputAttachmentPreview
 import com.slopus.happy.ui.composer.AgentInputPrimaryStyle
+import com.slopus.happy.ui.composer.ComposerImagePicker
+import com.slopus.happy.text.plural
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -63,6 +69,9 @@ class HomeDockController(
 
     private val starter = services.starter
 
+    /** Home's pictures survive focus dismissal and Bot mode, as the prompt does. */
+    val images = ComposerImagePicker(context, scope)
+
     /** What was typed in the composer: home's own, kept while home is. */
     var prompt = ""
         private set
@@ -78,6 +87,8 @@ class HomeDockController(
     val options: NewSessionOptions? get() = services.options.value
 
     init {
+        images.onChange = ::render
+        scope.coroutineContext[Job]?.invokeOnCompletion { images.close() }
         restingView.entryButton.setOnClickListener { openFocus() }
         restingView.sendButton.setOnClickListener { scope.launch { submit() } }
         scope.launch {
@@ -121,11 +132,11 @@ class HomeDockController(
         }
     }
 
-    /** A bot needs a name the daemon takes; a session, a prompt. */
+    /** A bot needs a name the daemon takes; a session or task, a prompt or picture. */
     val canSubmit: Boolean
         get() {
             if (isStarting) return false
-            return if (createsBot) isValidBotName(services.bot.value.name) else prompt.isNotBlank()
+            return if (createsBot) isValidBotName(services.bot.value.name) else prompt.isNotBlank() || images.images.isNotEmpty()
         }
 
     fun setPrompt(text: String) {
@@ -219,18 +230,21 @@ class HomeDockController(
             return true
         }
         val text = prompt.trim()
-        if (text.isEmpty()) return false
+        val picked = images.images.map { it.preview }
+        if (text.isEmpty() && picked.isEmpty()) return false
         services.setInput(text)
         val task = createsTask
-        val result = start(null, createsTask = task) ?: return false
+        val result = start(null, createsTask = task, attachments = picked) ?: return false
         if (task) services.setCreatesTask(false)
         prompt = ""
+        // The outbox owns copies before start succeeds; a failed start keeps these.
+        images.clear()
         open(result.sessionId)
         return true
     }
 
     /** Runs a start, retaining any picture retry for the opened session. Send is busy meanwhile. */
-    private suspend fun start(bot: BotRequest?, createsTask: Boolean = false): StartResult.Started? {
+    private suspend fun start(bot: BotRequest?, createsTask: Boolean = false, attachments: List<AttachmentPreview> = emptyList()): StartResult.Started? {
         if (launching) return null
         launching = true
         val startedDraft = services.draft.value.copy(input = "", updatedAt = 0)
@@ -240,14 +254,14 @@ class HomeDockController(
             services.bot.value == startedBot && services.createsTask.value == startedTask
         render()
         val result = try {
-            starter.start(bot = bot, createsTask = createsTask, isCurrentTarget = ::current, confirmDirectory = ::confirmDirectoryCreation)
+            starter.start(bot = bot, createsTask = createsTask, attachments = attachments, isCurrentTarget = ::current, confirmDirectory = ::confirmDirectoryCreation)
         } finally {
             launching = false
         }
         render()
         if (!current()) return null
         return when (result) {
-            is StartResult.Started -> result
+            is StartResult.Started -> result.also { it.notices.forEach(::showAttachmentNotice) }
             is StartResult.Refused -> {
                 showError(result.refusal.message)
                 null
@@ -257,7 +271,7 @@ class HomeDockController(
                 null
             }
             is StartResult.NotSent -> {
-                Alerts.show(context, context.getString(R.string.image_upload_not_supported_title), context.getString(R.string.image_upload_not_supported_message))
+                result.notices.forEach(::showAttachmentNotice)
                 null
             }
             StartResult.Abandoned -> null
@@ -300,6 +314,12 @@ class HomeDockController(
     }
 
     private fun showError(message: String) = Alerts.show(context, context.getString(R.string.common_error), message)
+
+    private fun showAttachmentNotice(notice: AttachmentNotice) = when (notice) {
+        AttachmentNotice.NotSupported -> Alerts.show(context, context.getString(R.string.image_upload_not_supported_title), context.getString(R.string.image_upload_not_supported_message))
+        is AttachmentNotice.UploadFailed -> Alerts.show(context, context.getString(R.string.image_upload_upload_failed_title),
+            context.resources.plural(R.plurals.image_upload_upload_failed_message, notice.count, notice.count))
+    }
 
     private suspend fun confirmDirectoryCreation(directory: String): Boolean = Alerts.confirm(
         context,
@@ -362,6 +382,8 @@ class HomeDockController(
             return AgentInputCardView.Configuration(
                 placeholder = context.getString(R.string.home_dock_task_placeholder),
                 showsAdd = true,
+                addAccessibilityLabel = context.getString(R.string.home_dock_add_image),
+                attachments = images.images.map { AgentInputAttachmentPreview(it.id, it.image.file) },
                 primaryAction = action,
                 isPrimaryBusy = primary == StartButton.Busy,
                 primaryAccessibilityLabel = if (primary == StartButton.Stop) stopLabel else context.getString(R.string.home_dock_create_task),
@@ -407,6 +429,8 @@ class HomeDockController(
         return AgentInputCardView.Configuration(
             placeholder = options?.let { promptPlaceholder(it) } ?: "",
             showsAdd = true,
+            addAccessibilityLabel = context.getString(R.string.home_dock_add_image),
+            attachments = images.images.map { AgentInputAttachmentPreview(it.id, it.image.file) },
             permission = permission,
             model = model,
             effort = effort,

@@ -298,7 +298,7 @@ class FakeHappyServer(
     // Attachments (attachmentRoutes.ts): local storage by default, S3 presigned when [presignedStorageUrl] is set.
 
     /** Stored encrypted blobs by ref. */
-    val attachments = mutableMapOf<String, ByteArray>()
+    val attachments = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
     /** The base URL the server names in the URLs it hands out (resolveBaseUrl); this server's own by default. */
     var attachmentBaseUrl: String? = null

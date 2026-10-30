@@ -185,7 +185,15 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
             controller.createsBot
         }
         card.onRefuse = { refuse() }
-        card.onAdd = { Alerts.show(context, context.getString(R.string.home_dock_add_image), NOT_PORTED) }
+        card.onAdd = {
+            if (controller.isStarting || controller.createsBot) refuseComposer() else controller.images.attach()
+        }
+        card.onRemoveAttachment = { id ->
+            if (controller.isStarting || controller.createsBot) refuseComposer() else controller.images.remove(id)
+        }
+        card.onReceiveImages = { uris ->
+            if (controller.isStarting || controller.createsBot) refuseComposer() else controller.images.receive(uris)
+        }
         card.onSelect = { chip, key ->
             if (!controller.isStarting) {
                 when (chip) {
@@ -619,7 +627,6 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
         /** The native menu trigger's value: the platform's body font, as iOS's UIButton menu draws it. */
         val ROW_VALUE = TextStyle(FontFace.System, 17)
         const val HARNESS_HELP_URL = "https://happy.engineering/docs/quick-start/"
-        const val NOT_PORTED = "Not available in this Android build yet."
     }
 }
 

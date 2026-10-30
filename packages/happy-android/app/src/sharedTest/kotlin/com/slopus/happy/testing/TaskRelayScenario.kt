@@ -3,6 +3,7 @@ package com.slopus.happy.testing
 import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.crypto.decryptBlob
 import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.model.isRigV1
 import com.slopus.happy.net.HappyJson
 import com.slopus.happy.sync.ApiSession
 import kotlinx.serialization.json.*
@@ -10,7 +11,7 @@ import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** Encrypted protocol fixture shared by JVM tests and ONLY the shell-harness APK. */
-class TaskRelayScenario(machineMetadata: JsonObject, private val bots: Boolean = false, private val failFirstAvatar: Boolean = false) : AutoCloseable {
+class TaskRelayScenario(machineMetadata: JsonObject, private val bots: Boolean = false, private val failFirstAvatar: Boolean = false, private val pictures: Boolean = false) : AutoCloseable {
     val server = FakeHappyServer(AccountEncryption.generateDataKey(), UUID.randomUUID().toString(), System.currentTimeMillis())
     val machineId = "fixture-task-relay-machine"
     val created = CopyOnWriteArrayList<String>()
@@ -38,6 +39,7 @@ class TaskRelayScenario(machineMetadata: JsonObject, private val bots: Boolean =
                     put("path", "/fixture/Tasks/created")
                     put("host", "fixture.local")
                     put("machineId", machineId)
+                    put("rigMetadataVersion", 1)
                     putJsonObject("client") { put("id", "rig"); put("name", "Happy Agent"); put("version", "1") }
                     if (bots) putJsonObject("bot") {
                         put("id", id); put("name", target.getValue("name")); put("username", "fixturebot")
@@ -49,14 +51,15 @@ class TaskRelayScenario(machineMetadata: JsonObject, private val bots: Boolean =
                         put("abort", false); put("modelSelection", false); put("reasoningSelection", false)
                         put("permissionModeSelection", false); put("resume", false); put("shell", false); put("steering", false)
                         putJsonObject("attachments") {
-                            put("enabled", false); put("maxBytes", 0); putJsonArray("mediaTypes") {}
+                            put("enabled", pictures); put("maxBytes", if (pictures) 10 * 1024 * 1024 else 0)
+                            putJsonArray("mediaTypes") { if (pictures) add("image/jpeg") }
                         }
                         putJsonObject("files") {
                             put("browse", false); put("read", false); put("search", false); put("write", false)
                         }
                         putJsonArray("rpcMethods") { add("killSession"); add("leaveTask"); if (bots) add("setAvatar") }
                     }
-                }.also { check(SessionMetadata.parse(it.toString()) != null) { "Fixture must satisfy the real metadata schema" } })
+                }.also { check(SessionMetadata.parse(it.toString()).isRigV1()) { "Fixture must satisfy the latest Happy Agent metadata schema" } })
                 created += id
                 if (bots) server.rpc["$id:setAvatar"] = { encrypted -> wear(id, encrypted) }
                 val record = HappyJson.encodeToJsonElement(ApiSession.serializer(), server.session(id)!!).jsonObject
@@ -69,6 +72,19 @@ class TaskRelayScenario(machineMetadata: JsonObject, private val bots: Boolean =
 
     fun start(): TaskRelayScenario { server.start(); return this }
     override fun close() = server.close()
+
+    private fun fileEvent(record: JsonObject): JsonObject? =
+        ((record["content"] as? JsonObject)?.get("data") as? JsonObject)?.get("ev")?.let { it as? JsonObject }
+            ?.takeIf { it["t"] == JsonPrimitive("file") }
+
+    fun pictureEvents(id: String): List<JsonObject> = server.sentRecords(id).mapNotNull { fileEvent(it.second) }
+
+    fun pictureBytes(id: String, event: JsonObject): ByteArray? {
+        val ref = event["ref"]?.jsonPrimitive?.content ?: return null
+        if (!ref.startsWith("sessions/$id/attachments/")) return null
+        val sealed = server.attachments[ref] ?: return null
+        return decryptBlob(sealed, AccountEncryption.blobKeyForDataKey(server.dataKey(id)))
+    }
 
     private fun wear(id: String, encrypted: JsonElement): JsonElement {
         val payload = server.openRpc(id, encrypted).jsonObject
@@ -113,8 +129,18 @@ class TaskRelayScenario(machineMetadata: JsonObject, private val bots: Boolean =
         put("allAvatarsValidPng256", avatarPngs.size == avatarPayloads.size)
         putJsonArray("created") {
             created.forEach { id -> addJsonObject {
+                val records = server.sentRecords(id).map { it.second }
+                val files = records.mapNotNull(::fileEvent)
                 put("sessionId", id)
-                put("firstMessages", JsonArray(server.sentRecords(id).map { it.second }))
+                put("firstMessages", JsonArray(records))
+                put("pictureEvents", files.size)
+                put("picturesBeforeText", records.drop(files.size).none { fileEvent(it) != null })
+                put("picturesValidJpeg", files.all { event ->
+                    val bytes = pictureBytes(id, event)
+                    bytes != null && bytes.size >= 4 && bytes[0] == (-1).toByte() && bytes[1] == (-40).toByte() &&
+                        bytes[bytes.lastIndex - 1] == (-1).toByte() && bytes.last() == (-39).toByte() &&
+                        event["size"]?.jsonPrimitive?.long == bytes.size.toLong()
+                })
             } }
         }
     }

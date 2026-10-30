@@ -111,6 +111,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
          * has no panel).
          */
         val desktop: AgentInputDesktopConfiguration? = null,
+        val addAccessibilityLabel: String? = null,
     )
 
     var configuration = Configuration()
@@ -306,6 +307,7 @@ class AgentInputCardView(context: Context, private val metrics: MobileComposerMe
         val isDesktop = config.desktop != null
         if (previous == null || isDesktop != (previous.desktop != null)) applyPanel()
         addButton.visibility = if (config.showsAdd && !config.zenMode && !isDesktop) VISIBLE else GONE
+        addButton.contentDescription = config.addAccessibilityLabel ?: context.getString(com.slopus.happy.R.string.composer_add_photo)
         // The glyph turns blue while pictures are attached.
         addButton.iconView.tint = if (config.attachments.isEmpty()) Palette.text else Palette.radioActive
         attachmentStrip.attachments = config.attachments

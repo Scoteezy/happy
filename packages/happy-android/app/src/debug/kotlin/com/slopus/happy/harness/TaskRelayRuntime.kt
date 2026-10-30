@@ -22,7 +22,7 @@ import kotlinx.serialization.json.*
 import java.io.File
 
 /** Only the isolated APK can instantiate this; no production graph/transport hooks. */
-class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false) {
+class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val scenario: TaskRelayScenario
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -34,7 +34,7 @@ class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, 
         val fixture = Json.parseToJsonElement(context.assets.open("harness/relay-task-home.json").bufferedReader().use { it.readText() }).jsonObject
         // MockWebServer's bind is explicitly 127.0.0.1:0 and completes before
         // constructing the unchanged real transport/account graph.
-        scenario = runBlocking(Dispatchers.IO) { TaskRelayScenario(fixture.getValue("machine").jsonObject, botFaces, failFirstAvatar).start() }
+        scenario = runBlocking(Dispatchers.IO) { TaskRelayScenario(fixture.getValue("machine").jsonObject, botFaces, failFirstAvatar, pictures = dockPictures).start() }
         graph = try {
             AppGraph(context, "android/task-relay-fixture", scenario.server.url,
                 secureStoreKeys = SoftwareKeys(), databaseName = null,
@@ -151,7 +151,7 @@ class TaskRelayHarnessActivity : ComponentActivity() {
             lifecycleScope.launch { app.closeTaskRelay(); finishAndRemoveTask() }
             return
         }
-        app.enableTaskRelay(intent.getBooleanExtra("botFaces", false), intent.getBooleanExtra("failFirstAvatar", false))
+        app.enableTaskRelay(intent.getBooleanExtra("botFaces", false), intent.getBooleanExtra("failFirstAvatar", false), intent.getBooleanExtra("dockPictures", false))
         val graph = app.graph
         lifecycleScope.launch {
             withTimeout(30_000) { graph.account.filterNotNull().first() }

@@ -3,6 +3,7 @@ package com.slopus.happy.sync
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.home.LiveFirstMessageSender
 import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.model.isRigV1
 import com.slopus.happy.model.task
 import com.slopus.happy.testing.TaskRelayScenario
 import kotlinx.coroutines.runBlocking
@@ -33,6 +34,8 @@ class TaskRelayScenarioTest {
             assertEquals(fixture.created.single(), result.sessionId)
             assertTrue(h.account.sender.ensureSessionReady(result.sessionId))
             val metadata = SessionMetadata.parse(h.store.session(result.sessionId)!!.metadataJson)!!
+            assertTrue(metadata.isRigV1())
+            assertFalse(metadata.capabilities!!.attachmentsEnabled)
             assertNotNull(metadata.task)
             assertEquals(fixture.machineId, metadata.machineId)
             val sent = LiveFirstMessageSender({ h.account }).send(result.sessionId, "Fixture task prompt", emptyList()) { true }

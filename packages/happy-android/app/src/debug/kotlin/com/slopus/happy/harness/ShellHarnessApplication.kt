@@ -23,11 +23,11 @@ class ShellHarnessApplication : HappyApplication() {
     private var graphCreated = false
     private val relayCloseLock = Mutex()
 
-    fun enableTaskRelay(botFaces: Boolean = false, failFirstAvatar: Boolean = false) {
+    fun enableTaskRelay(botFaces: Boolean = false, failFirstAvatar: Boolean = false, dockPictures: Boolean = false) {
         check(packageName == "com.slopus.happy.dev.shellharness")
         check(!graphCreated) { "Force-stop the isolated harness before changing fixture modes" }
         super.getSharedPreferences("task-relay-mode", MODE_PRIVATE).edit().putBoolean("enabled", true)
-            .putBoolean("botFaces", botFaces).putBoolean("failFirstAvatar", failFirstAvatar).commit()
+            .putBoolean("botFaces", botFaces).putBoolean("failFirstAvatar", failFirstAvatar).putBoolean("dockPictures", dockPictures).commit()
     }
 
     fun useOfflineShellFixture() {
@@ -66,7 +66,7 @@ class ShellHarnessApplication : HappyApplication() {
             // account. This process owns a new disposable namespace and keys.
             relayNamespace = "task-relay-${java.util.UUID.randomUUID()}"
             val mode = super.getSharedPreferences("task-relay-mode", MODE_PRIVATE)
-            return TaskRelayRuntime(this, mode.getBoolean("botFaces", false), mode.getBoolean("failFirstAvatar", false)).also { relay = it }.graph
+            return TaskRelayRuntime(this, mode.getBoolean("botFaces", false), mode.getBoolean("failFirstAvatar", false), mode.getBoolean("dockPictures", false)).also { relay = it }.graph
         }
         val fixtureScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
         val fixture = assets.open("harness/stem-cells-computer.json").bufferedReader().use { it.readText() }
