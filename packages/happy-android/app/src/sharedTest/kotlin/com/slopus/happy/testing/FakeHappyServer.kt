@@ -203,6 +203,15 @@ class FakeHappyServer(
         if (request.headers["Authorization"] != "Bearer $token") return json(401, """{"error":"Unauthorized"}""")
 
         return when {
+            path.startsWith("/v1/sessions/") && path.endsWith("/avatar/request-download") && request.method == "POST" -> {
+                val id = path.removePrefix("/v1/sessions/").removeSuffix("/avatar/request-download")
+                val ref = (session(id)?.avatar as? JsonObject)?.get("ref")?.jsonPrimitive?.content
+                if (ref == null || !ref.startsWith("sessions/$id/attachments/")) json(404, """{"error":"Avatar not found"}""")
+                else json(200, buildJsonObject {
+                    put("ref", ref)
+                    put("downloadUrl", "$url/v1/sessions/$id/attachments/${ref.substringAfterLast('/')}")
+                }.toString())
+            }
             path.startsWith("/v1/sessions/") && "/attachments/" in path -> attachmentRoute(request)
             path == "/v2/sessions" -> {
                 val limit = query("limit")?.toInt() ?: 50
@@ -417,6 +426,11 @@ class FakeHappyServer(
 
     /** Every handshake auth payload, in order. */
     val socketAuths = CopyOnWriteArrayList<JsonObject>()
+    /** Fixture diagnostics only: no payloads, credentials or exception messages. */
+    val socketFailures = CopyOnWriteArrayList<String>()
+    val rpcAckSent = CopyOnWriteArrayList<Boolean>()
+
+    fun heartbeat() { sockets.forEach { it.send(EngineIoPacket.Ping.encode()) } }
 
     /** Every event the clients emitted (name, first argument), in order. */
     val socketEvents = LinkedBlockingQueue<Pair<String, JsonElement?>>()
@@ -528,7 +542,8 @@ class FakeHappyServer(
                     socketEvents += message.name to payload
                     val ack = synchronized(this@FakeHappyServer) { answer(message.name, payload) }
                     if (message.ackId != null && ack != null) {
-                        webSocket.send(EngineIoPacket.Message(SocketIoPacket.Ack(message.ackId!!, listOf(ack)).encode()).encode())
+                        val sent = webSocket.send(EngineIoPacket.Message(SocketIoPacket.Ack(message.ackId!!, listOf(ack)).encode()).encode())
+                        if (message.name == "rpc-call") rpcAckSent += sent
                     }
                 }
                 SocketIoPacket.Disconnect -> sockets.remove(webSocket)
@@ -542,6 +557,7 @@ class FakeHappyServer(
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            socketFailures += t.javaClass.simpleName + ": " + t.stackTrace.take(4).joinToString(" | ")
             sockets.remove(webSocket)
         }
     }

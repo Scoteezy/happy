@@ -19,6 +19,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -120,8 +123,32 @@ class AccountSync(
     )
 
     /** Sending and the stored outbox (sync.ts sendMessage, flushOutbox). */
-    private val attachmentApi = AttachmentApi(okHttp, serverUrl)
+    private val attachmentServerUrl = serverUrl()
+    private val attachmentApi = AttachmentApi(okHttp) { attachmentServerUrl }
     private val blobKeys = SessionBlobKeys(store, encryption)
+
+    /** A picture encrypted with this account's session blob key. Recheck ownership between every suspension. */
+    suspend fun uploadSessionBlob(sessionId: String, name: String, bytes: ByteArray, allowBackground: Boolean = false, isCurrent: () -> Boolean = { true }): String = withContext(io) {
+        fun guard() {
+            if (!job.isActive || !isCurrent()) throw CancellationException("Attachment account changed")
+        }
+        guard()
+        // Background refusal is a retryable upload failure, not Stop: the bot already exists.
+        if (!allowBackground && !foreground.value) throw MissingAttachmentException("The app is in the background")
+        currentCoroutineContext().ensureActive()
+        val key = blobKeys.blobKey(sessionId) ?: throw MissingAttachmentException("no blob key for the session")
+        guard()
+        val sealed = encryptBlob(bytes, key)
+        currentCoroutineContext().ensureActive()
+        guard()
+        val upload = attachmentApi.requestUpload(token, sessionId, name, sealed.size.toLong())
+        currentCoroutineContext().ensureActive()
+        guard()
+        attachmentApi.uploadBlob(upload, sealed, token)
+        currentCoroutineContext().ensureActive()
+        guard()
+        upload.ref
+    }
 
     val sender = MessageSender(
         api, store, decoder, messages, composer,
@@ -132,12 +159,7 @@ class AccountSync(
         clock = clock,
         files = outboxFiles,
         uploadAttachment = { sessionId, name, bytes ->
-            // encryptBlob under the session's blob key, then request-upload and PUT (sync.ts uploadAttachmentsForSession).
-            val key = blobKeys.blobKey(sessionId) ?: throw MissingAttachmentException("no blob key for the session")
-            val sealed = encryptBlob(bytes, key)
-            val upload = attachmentApi.requestUpload(token, sessionId, name, sealed.size.toLong())
-            attachmentApi.uploadBlob(upload, sealed, token)
-            upload.ref
+            uploadSessionBlob(sessionId, name, bytes, allowBackground = true)
         },
     )
 

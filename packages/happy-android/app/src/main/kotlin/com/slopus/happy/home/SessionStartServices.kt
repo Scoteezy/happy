@@ -70,6 +70,7 @@ data class SessionStartOperation(
     val sender: FirstMessageSender,
     val awaitSession: suspend (String) -> Boolean,
     val owner: Any? = Unit,
+    val faces: BotFaceWearer? = null,
     val isCurrent: () -> Boolean = { true },
 )
 

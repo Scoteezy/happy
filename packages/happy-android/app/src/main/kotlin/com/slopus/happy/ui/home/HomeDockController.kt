@@ -6,6 +6,9 @@ import com.slopus.happy.R
 import com.slopus.happy.chat.AgentInputPrimaryAction
 import com.slopus.happy.chat.ComposerChipSet
 import com.slopus.happy.home.NewSessionServices
+import com.slopus.happy.home.BotFaceFailure
+import com.slopus.happy.home.BotFaceLeg
+import com.slopus.happy.home.BotFaceRetry
 import com.slopus.happy.home.StartResult
 import com.slopus.happy.layout.HomeDockFade
 import com.slopus.happy.model.BotRequest
@@ -68,6 +71,9 @@ class HomeDockController(
     private var launching = false
 
     private var focus: HomeDockFocusView? = null
+    private data class FaceOffer(val name: String, val failure: BotFaceFailure, val retry: BotFaceRetry)
+    private val faceOffers = ArrayDeque<FaceOffer>()
+    private var offeringFace = false
 
     val options: NewSessionOptions? get() = services.options.value
 
@@ -180,6 +186,7 @@ class HomeDockController(
         focus = null
         updateVisibility(HomeDockFade.Origin.Focus)
         render()
+        showFaceOffers()
     }
 
     /** Back with the composer open: it closes, or, while a session starts, refuses. */
@@ -199,27 +206,31 @@ class HomeDockController(
         if (!canSubmit) return false
         if (createsBot) {
             val bot = services.bot.value
-            val sessionId = start(BotRequest(bot.name.trim(), bot.faceSeed)) ?: return false
+            val result = start(BotRequest(bot.name.trim(), bot.faceSeed)) ?: return false
             // The next bot starts from a clean name and fresh faces; the
             // composer goes back to offering a session, the ordinary case.
             services.botCreated(bot)
             services.setCreatesBot(false)
-            open(sessionId)
+            if (result.faceFailure != null && result.faceRetry != null) {
+                faceOffers.addLast(FaceOffer(bot.name.trim(), result.faceFailure, result.faceRetry))
+            }
+            open(result.sessionId)
+            showFaceOffers()
             return true
         }
         val text = prompt.trim()
         if (text.isEmpty()) return false
         services.setInput(text)
         val task = createsTask
-        val sessionId = start(null, createsTask = task) ?: return false
+        val result = start(null, createsTask = task) ?: return false
         if (task) services.setCreatesTask(false)
         prompt = ""
-        open(sessionId)
+        open(result.sessionId)
         return true
     }
 
-    /** Runs a start; the session's id once it is open. One at a time: Send is busy meanwhile. */
-    private suspend fun start(bot: BotRequest?, createsTask: Boolean = false): String? {
+    /** Runs a start, retaining any picture retry for the opened session. Send is busy meanwhile. */
+    private suspend fun start(bot: BotRequest?, createsTask: Boolean = false): StartResult.Started? {
         if (launching) return null
         launching = true
         val startedDraft = services.draft.value.copy(input = "", updatedAt = 0)
@@ -236,7 +247,7 @@ class HomeDockController(
         render()
         if (!current()) return null
         return when (result) {
-            is StartResult.Started -> result.sessionId
+            is StartResult.Started -> result
             is StartResult.Refused -> {
                 showError(result.refusal.message)
                 null
@@ -256,6 +267,30 @@ class HomeDockController(
     private fun open(sessionId: String) {
         render()
         host.openSession(sessionId)
+    }
+
+    /** After focus closes, offer only the picture again on the already-open bot. */
+    private fun showFaceOffers() {
+        if (focus != null || offeringFace || faceOffers.isEmpty()) return
+        offeringFace = true
+        scope.launch {
+            try {
+                while (faceOffers.isNotEmpty()) {
+                    val offer = faceOffers.removeFirst()
+                    var failure: BotFaceFailure? = offer.failure
+                    while (failure != null && offer.retry.isCurrent()) {
+                        val message = context.getString(
+                            if (failure.leg == BotFaceLeg.Uploading) R.string.home_dock_bot_face_upload_failed else R.string.home_dock_bot_face_failed,
+                            offer.name,
+                        )
+                        val retry = Alerts.confirm(context, context.getString(R.string.home_dock_bot_face_failed_title), message,
+                            confirmTitle = context.getString(R.string.home_dock_bot_try_again), cancelTitle = context.getString(R.string.home_dock_bot_not_now))
+                        if (!retry || !offer.retry.isCurrent()) break
+                        failure = offer.retry.attempt()
+                    }
+                }
+            } finally { offeringFace = false }
+        }
     }
 
     /** Stop: the composer back now, the session put down unwatched. */

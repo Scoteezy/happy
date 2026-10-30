@@ -82,6 +82,8 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
     private val backdrop = View(context)
     private val dock = Dock(context)
     private val rows = Row.entries.map { HomeDockRowView(context) }
+    private val facePicker = BotFacePickerView(context)
+    private val facesBlocker = View(context)
     private val header = Dock(context)
     private val kindControl = SegmentedControl(context, listOf(context.getString(R.string.home_dock_kind_session), context.getString(R.string.home_dock_kind_bot)))
     private val lede = Label(context, TextStyles.homeDockLede, Palette.textSecondary, alignment = Layout.Alignment.ALIGN_CENTER)
@@ -135,6 +137,13 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
             row.onRefuse = { refuse() }
             dock.addView(row)
         }
+        facePicker.onPick = controller.services::pickBotFace
+        facePicker.onRoll = controller.services::rollBotFaces
+        facePicker.onRefuse = { refuse(); AgentInputCardView.shake(facePicker) }
+        facesBlocker.setOnClickListener { facePicker.onRefuse?.invoke() }
+        facesBlocker.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        dock.addView(facePicker)
+        dock.addView(facesBlocker)
 
         kindControl.contentDescription = context.getString(R.string.home_dock_bot_kind)
         kindControl.onChange = { index ->
@@ -260,6 +269,10 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
         }
 
         val hasHarness = options?.hasHarness == true
+        facePicker.visibility = if (createsBot) VISIBLE else GONE
+        facePicker.refusing = starting
+        facePicker.configure(controller.services.bot.value.seeds, controller.services.bot.value.slot)
+        facesBlocker.visibility = if (createsBot && starting) VISIBLE else GONE
         val values = mapOf(
             Row.Machine to (options?.machine?.name ?: context.getString(R.string.home_dock_select_machine)),
             Row.Project to (options?.project?.name ?: context.getString(R.string.home_dock_picker_project)),
@@ -534,6 +547,7 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
                 triggerLine = TextLayouts.lineHeight(ROW_VALUE, env),
                 progress = if (showsProgress) progressLabel.measurable else null,
                 hint = if (showsProgress && progressHint.visibility == VISIBLE) progressHint.measurable else null,
+                faces = if (facePicker.visibility == VISIBLE) facePicker.text else null,
             ),
         )
 
@@ -545,6 +559,14 @@ class HomeDockFocusView(context: Context, private val controller: HomeDockContro
             row.apply(frame)
             row.translationY = dp(offset)
             row.alpha = alpha.toFloat()
+        }
+        layout.facePicker?.let { frame ->
+            val (alpha, offset) = motion.row(shownRows.size)
+            facePicker.setFrame(frame)
+            facePicker.translationY = dp(offset)
+            facePicker.alpha = alpha.toFloat()
+            layout.faces?.let { facesBlocker.setFrame(it) }
+            facesBlocker.translationY = dp(offset)
         }
 
         // Session | Bot holds the top of the screen, off the keyboard, and reveals with the first row.

@@ -47,6 +47,7 @@ class TaskCreationTest {
         var send: suspend () -> FirstSend = { FirstSend(true) }
         var ready: suspend () -> Boolean = { true }
         var owner: Any = Any()
+        var faces = BotFaceWearer { _, _ -> null }
         private var ids = 0
         val actions = object : MachineActions {
             override suspend fun spawnSession(options: SpawnSessionOptions): SpawnSessionResult { spawns += options; return spawn() }
@@ -71,7 +72,7 @@ class TaskCreationTest {
             scope = scope, requestId = { "request-${++ids}" },
             bindOperation = {
                 val started = owner
-                SessionStartOperation(actions, sessions, sender, { ready() }, started) { owner === started }
+                SessionStartOperation(actions, sessions, sender, { ready() }, started, faces) { owner === started }
             },
         )
         init {
@@ -87,6 +88,44 @@ class TaskCreationTest {
         assertEquals(listOf(HomeDockKind.Session, HomeDockKind.Task), HomeDockKind.offered(false, true))
         assertEquals(HomeDockKind.entries, HomeDockKind.offered(true, true))
         assertEquals(HomeDockKind.Bot, HomeDockKind.current(true, true))
+    }
+
+    @Test fun botFaceFailureOpensBotAndRetryKeepsOriginalSessionAfterDraftReset() = runTest {
+        val f = Fixture(this)
+        val worn = mutableListOf<Pair<String, String>>()
+        f.faces = BotFaceWearer { id, seed ->
+            worn += id to seed
+            if (worn.size == 1) BotFaceFailure(BotFaceLeg.Uploading, "fixture") else null
+        }
+        val result = f.starter.start(bot = BotRequest("Fixture Bot", "happy"), confirmDirectory = { false }) as StartResult.Started
+        assertEquals(HappyAgentSpawnTarget.Bot("Fixture Bot"), f.spawns.single().happyAgentTarget)
+        assertEquals(BotFaceLeg.Uploading, result.faceFailure?.leg)
+        assertTrue(f.sent.isEmpty())
+        assertEquals("  Fix the redirect\n", f.drafts.draft.value.input)
+        f.drafts.change { it.copy(input = "Next task") }
+        assertNull(result.faceRetry!!.attempt())
+        assertEquals(listOf(result.sessionId to "happy", result.sessionId to "happy"), worn)
+        assertEquals(1, f.spawns.size)
+        f.owner = Any()
+        try { result.faceRetry.attempt(); fail("Retry must stay on original account") } catch (_: CancellationException) {}
+        assertEquals(2, worn.size)
+    }
+
+    @Test fun stoppingDuringFaceUploadDoesNotWearOrOpenBot() = runTest {
+        val f = Fixture(this)
+        val painting = CompletableDeferred<Unit>()
+        var wore = false
+        f.faces = LiveBotFaceWearer(paint = { painting.await(); byteArrayOf(1) }, upload = { _, _ -> "ref" },
+            setAvatar = { _, _, _, _ -> wore = true }, isCurrent = { true })
+        val started = async { f.starter.start(bot = BotRequest("Fixture Bot", "happy"), confirmDirectory = { false }) }
+        runCurrent()
+        assertEquals(StartPhase.Avatar, f.starter.phase.value)
+        f.starter.cancel()
+        painting.complete(Unit)
+        assertEquals(StartResult.Abandoned, started.await())
+        runCurrent()
+        assertFalse(wore)
+        assertEquals(listOf("session-1"), f.killed)
     }
 
     @Test fun tasksRequireStrictAdvertisedCapability() = runTest {

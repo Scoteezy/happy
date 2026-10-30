@@ -72,6 +72,7 @@ sealed interface StartResult {
         val notices: List<AttachmentNotice> = emptyList(),
         /** A bot that came without its face: offerBotFaceRetry. */
         val faceFailure: BotFaceFailure? = null,
+        val faceRetry: BotFaceRetry? = null,
     ) : StartResult
     data class Refused(val refusal: StartRefusal) : StartResult
     /** The machine, git or the server said no; [message] in their words. */
@@ -376,7 +377,7 @@ class SessionStarter(
             // A face that cannot be painted or delivered is no reason to lose the bot: it opens without one.
             prepared.bot?.let { bot ->
                 phaseState.value = StartPhase.Avatar
-                faceFailure = faces.wear(sessionId, bot.faceSeed)
+                faceFailure = (prepared.operation.faces ?: faces).wear(sessionId, bot.faceSeed)
                 phaseState.value = StartPhase.Opening
             }
             // A bot takes no first message: the prompt typed for a session stays in the draft.
@@ -409,7 +410,10 @@ class SessionStarter(
         forget(prepared, sessionId)
         // Only what was consumed is cleared: text typed meanwhile stays.
         if (prepared.bot == null) drafts.change { current -> if (current.input == draft.input) current.copy(input = "") else current }
-        return StartResult.Started(sessionId, notices, faceFailure)
+        val retry = prepared.bot?.takeIf { faceFailure != null }?.let {
+            BotFaceRetry(sessionId, it.faceSeed, prepared.operation.faces ?: faces, prepared.operation.isCurrent)
+        }
+        return StartResult.Started(sessionId, notices, faceFailure, retry)
     }
 
     /** The worktree, if one is asked for, then the spawn. */

@@ -8,6 +8,8 @@ import androidx.lifecycle.lifecycleScope
 import com.slopus.happy.AppGraph
 import com.slopus.happy.MainActivity
 import com.slopus.happy.home.HomeServices
+import com.slopus.happy.home.BotFacePainter
+import com.slopus.happy.model.StartPhase
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.task
@@ -20,18 +22,19 @@ import kotlinx.serialization.json.*
 import java.io.File
 
 /** Only the isolated APK can instantiate this; no production graph/transport hooks. */
-class TaskRelayRuntime(private val context: Context) {
+class TaskRelayRuntime(private val context: Context, botFaces: Boolean = false, failFirstAvatar: Boolean = false) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val scenario: TaskRelayScenario
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
     val graph: AppGraph
+    @Volatile private var expectedFacePng: ByteArray? = null
 
     init {
         check(context.packageName == "com.slopus.happy.dev.shellharness")
         val fixture = Json.parseToJsonElement(context.assets.open("harness/relay-task-home.json").bufferedReader().use { it.readText() }).jsonObject
         // MockWebServer's bind is explicitly 127.0.0.1:0 and completes before
         // constructing the unchanged real transport/account graph.
-        scenario = runBlocking(Dispatchers.IO) { TaskRelayScenario(fixture.getValue("machine").jsonObject).start() }
+        scenario = runBlocking(Dispatchers.IO) { TaskRelayScenario(fixture.getValue("machine").jsonObject, botFaces, failFirstAvatar).start() }
         graph = try {
             AppGraph(context, "android/task-relay-fixture", scenario.server.url,
                 secureStoreKeys = SoftwareKeys(), databaseName = null,
@@ -48,10 +51,24 @@ class TaskRelayRuntime(private val context: Context) {
             throw failure
         }
         scope.launch {
+            while (isActive) {
+                delay(scenario.server.pingIntervalMs)
+                scenario.server.heartbeat()
+            }
+        }
+        scope.launch {
             graph.account.filterNotNull().first()
             graph.settings.change { it.copy(sessionListGrouping = SessionListGrouping.Project) }
             val home = HomeServices.of(graph)
             val composer = home.newSession(context)
+            if (botFaces) launch {
+                composer.starter.phase.collect { phase ->
+                    if (phase == StartPhase.Avatar) {
+                        val selected = composer.bot.value.faceSeed
+                        expectedFacePng = BotFacePainter.of(context).png(selected)
+                    }
+                }
+            }
             val evidence = File(context.filesDir, "task-relay-evidence.json")
             while (isActive) {
                 val protocol = scenario.evidence()
@@ -61,12 +78,22 @@ class TaskRelayRuntime(private val context: Context) {
                         put("sessionId", id)
                         put("storedTask", stored?.let { SessionMetadata.parse(it.metadataJson)?.task != null } == true)
                         put("homeTask", home.session(id)?.metadata?.task != null)
+                        put("storedBot", stored?.let { SessionMetadata.parse(it.metadataJson)?.bot != null } == true)
+                        put("homeBot", home.session(id)?.metadata?.bot != null)
+                        put("homeAvatarLoaded", home.session(id)?.avatar != null)
                     }
                 }
                 val report = JsonObject(protocol + mapOf(
                     "rows" to JsonArray(rows),
                     "draftEmpty" to JsonPrimitive(composer.draft.value.input.isEmpty()),
                     "taskModeReset" to JsonPrimitive(!composer.createsTask.value),
+                    "botModeReset" to JsonPrimitive(!composer.bot.value.creating),
+                    "botNameReset" to JsonPrimitive(composer.bot.value.name.isEmpty()),
+                    "selectedFaceUploaded" to JsonPrimitive(expectedFacePng?.let { expected -> scenario.avatarPngs.lastOrNull()?.contentEquals(expected) } == true),
+                    "startPhase" to JsonPrimitive(composer.starter.phase.value?.name),
+                    "socketConnections" to JsonPrimitive(scenario.server.socketAuths.size),
+                    "rpcAckSent" to JsonArray(scenario.server.rpcAckSent.map(::JsonPrimitive)),
+                    "socketFailures" to JsonArray(scenario.server.socketFailures.map(::JsonPrimitive)),
                     "accountBoundToCurrentLoopback" to JsonPrimitive(graph.auth.registry.value.active?.serverUrl == scenario.server.url),
                 ))
                 val temporary = File(context.filesDir, "task-relay-evidence.tmp")
@@ -79,13 +106,21 @@ class TaskRelayRuntime(private val context: Context) {
 
     suspend fun close() {
         if (!closed.compareAndSet(false, true)) return
+        suspend fun stage(name: String) = withContext(Dispatchers.IO + NonCancellable) {
+            android.util.Log.i("TaskRelayFixture", "close:$name")
+            File(context.filesDir, "task-relay-closing.json").writeText(buildJsonObject { put("stage", name) }.toString())
+        }
+        stage("stopping-fixture-scope")
         scope.coroutineContext[Job]?.cancelAndJoin()
         try {
+            stage("logging-out-fixture")
             graph.setForeground(false)
             graph.logout().join()
         } finally {
+            stage("closing-loopback-server")
             withContext(Dispatchers.IO + NonCancellable) { scenario.close() }
         }
+        stage("closed")
         withContext(Dispatchers.IO) {
             File(context.filesDir, "task-relay-closed.json").writeText(buildJsonObject {
                 put("relayClosed", true)
@@ -98,15 +133,25 @@ class TaskRelayRuntime(private val context: Context) {
 
 /** Launch this after force-stop. MainActivity thereafter restores only a NEW fixture. */
 class TaskRelayHarnessActivity : ComponentActivity() {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        android.util.Log.i("TaskRelayFixture", "newIntent shutdown=${intent.getBooleanExtra("shutdown", false)}")
+        // adb may deliver to an existing top instance instead of recreating it.
+        if (intent.getBooleanExtra("shutdown", false)) {
+            lifecycleScope.launch { (application as ShellHarnessApplication).closeTaskRelay(); finishAndRemoveTask() }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        android.util.Log.i("TaskRelayFixture", "create shutdown=${intent.getBooleanExtra("shutdown", false)}")
         check(packageName == "com.slopus.happy.dev.shellharness")
         val app = application as ShellHarnessApplication
         if (intent.getBooleanExtra("shutdown", false)) {
             lifecycleScope.launch { app.closeTaskRelay(); finishAndRemoveTask() }
             return
         }
-        app.enableTaskRelay()
+        app.enableTaskRelay(intent.getBooleanExtra("botFaces", false), intent.getBooleanExtra("failFirstAvatar", false))
         val graph = app.graph
         lifecycleScope.launch {
             withTimeout(30_000) { graph.account.filterNotNull().first() }

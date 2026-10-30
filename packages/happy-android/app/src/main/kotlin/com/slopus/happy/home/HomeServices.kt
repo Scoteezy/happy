@@ -117,7 +117,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
     private fun makeNewSession(context: Context): NewSessionServices {
         val drafts = NewSessionDraftStore(context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE))
         val machineActions = LiveMachineActions { graph.account.value?.machineOps }
-        val starter = makeStarter(drafts, machineActions)
+        val starter = makeStarter(context, drafts, machineActions)
         val labels = NewSessionLabels(
             selectMachine = context.getString(R.string.home_dock_select_machine),
             project = context.getString(R.string.home_dock_picker_project),
@@ -133,7 +133,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
         return NewSessionServices(drafts, snapshots, graph.settings.settings, machineActions, starter, labels, context::getString, scope)
     }
 
-    private fun makeStarter(drafts: NewSessionDraftStore, machineActions: MachineActions) = SessionStarter(
+    private fun makeStarter(context: Context, drafts: NewSessionDraftStore, machineActions: MachineActions) = SessionStarter(
         machines = { snapshots.value?.machines.orEmpty() },
         sessions = { snapshots.value?.sessions.orEmpty() },
         settings = { graph.settings.settings.value },
@@ -153,6 +153,12 @@ class HomeServices private constructor(private val graph: AppGraph) {
                 awaitSession = { id -> if (current()) owner!!.sender.ensureSessionReady(id) else false },
                 owner = owner,
                 isCurrent = ::current,
+                faces = LiveBotFaceWearer(
+                    paint = BotFacePainter.of(context)::png,
+                    upload = { id, bytes -> owner!!.uploadSessionBlob(id, "face.png", bytes, isCurrent = ::current) },
+                    setAvatar = { id, ref, size, mime -> owner!!.sessionOps.setAvatar(id, ref, size, mime) },
+                    isCurrent = ::current,
+                ),
             )
         },
     )
@@ -169,7 +175,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
         pendingChatStarts?.takeIf { it.first === account }?.let { return it.second }
         pendingChatStarts?.second?.close()
         val drafts = NewSessionDraftStore(context.applicationContext.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE))
-        val starts = ChatPendingStarts(account, graph.store, makeStarter(drafts, LiveMachineActions { graph.account.value?.machineOps }))
+        val starts = ChatPendingStarts(account, graph.store, makeStarter(context.applicationContext, drafts, LiveMachineActions { graph.account.value?.machineOps }))
         pendingChatStarts = account to starts
         startsState.value = starts
         starts

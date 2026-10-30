@@ -141,6 +141,9 @@ data class HomeDockFocusLayout(
     val progressDot: Rect?,
     val progressLabel: Rect?,
     val progressHint: Rect?,
+    val faces: Rect? = null,
+    val facePicker: Rect? = null,
+    val facePickerLayout: BotFacePickerLayout? = null,
 ) {
     object Metrics {
         const val configPaddingHorizontal = 24.0
@@ -171,6 +174,9 @@ data class HomeDockFocusLayout(
         const val progressPaddingHorizontal = 16.0
         const val progressGap = 6.0
         const val progressDot = 6.0
+        const val facesPaddingHorizontal = 6.0
+        const val facesPaddingTop = 6.0
+        const val facesPaddingBottom = 4.0
     }
 
     class Input(
@@ -187,6 +193,7 @@ data class HomeDockFocusLayout(
         val progress: Measurable? = null,
         /** "To interrupt press stop", while Stop can stop it. */
         val hint: Measurable? = null,
+        val faces: BotFacePickerLayout.Text? = null,
     )
 
     data class Row(
@@ -247,7 +254,10 @@ data class HomeDockFocusLayout(
             // RN's row is its 42, the icon's box or the trigger's sizing copy;
             // the menu's own label is centred in it.
             val rowHeight = maxOf(m.rowMinHeight, m.iconBox, input.triggerLine)
-            val total = values.size * rowHeight + max(0, values.size - 1) * m.rowSpacing
+            val picker = input.faces?.let { BotFacePickerLayout(rowWidth - 2 * m.facesPaddingHorizontal, it) }
+            val facesHeight = picker?.let { m.facesPaddingTop + it.size.height + m.facesPaddingBottom }
+            val lines = values.size + if (picker != null) 1 else 0
+            val total = values.size * rowHeight + (facesHeight ?: 0.0) + max(0, lines - 1) * m.rowSpacing
             var y = composer.minY - m.configPaddingBottom - total
             val rows = values.map { value ->
                 val frame = Rect(rowX, y, rowWidth, rowHeight)
@@ -259,7 +269,9 @@ data class HomeDockFocusLayout(
                     value = Rect(triggerX, frame.midY - value.height / 2, min(value.width, valueLane), value.height),
                 )
             }
-            return HomeDockFocusLayout(rows, composer, progress, progressDot, progressLabel, progressHint)
+            val faces = facesHeight?.let { Rect(rowX, y, rowWidth, it) }
+            val facePicker = picker?.let { Rect(rowX + m.facesPaddingHorizontal, y + m.facesPaddingTop, it.size.width, it.size.height) }
+            return HomeDockFocusLayout(rows, composer, progress, progressDot, progressLabel, progressHint, faces, facePicker, picker)
         }
 
         /**
