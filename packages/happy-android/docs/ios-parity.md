@@ -11,6 +11,47 @@ emulator. Evidence (screenshots, screen recordings) is kept out of git under
 `.context/evidence/<feature>/` at the repository root; the path is listed per
 item once it exists.
 
+## Imported-account server verification (2026-10-30)
+
+- Source `38bc22c63` imports RN's Android MMKV server configuration read-only
+  and off main. Unknown or damaged configuration keeps the account pending,
+  with no exposed credentials or authenticated consumers. The initially empty
+  native-style server form validates, asks Continue, and persists the exact
+  pending account's host before activation. Cancel and failed saves stay
+  offline. Known confirmed accounts retain their binding across switching,
+  restart and later RN changes; the global onboarding candidate is not used
+  to infer an imported account's host.
+- Authenticated clients now capture credentials and confirmed host from the
+  same account snapshot. Actual-graph regression tests hold old sync and push
+  work across account activation, including waits before URL construction,
+  in-flight HTTP, device/Expo token acquisition, retries and inactive logout.
+  Two independent synthetic servers assert no crossed credentials. Pending
+  restore, replacement, failed persistence and confirmed restart also pass.
+- `.context/evidence/relay-import-server/android-final/android-import-server.mp4`
+  (**85.557889s**) shows the actual form, empty/invalid errors, confirmation,
+  Cancel, forced save failure and successful retry to Home. Both recording
+  servers remain at zero HTTP/socket authentication through Cancel and failure.
+  After confirmation, only the selected server receives requests: 9
+  authenticated HTTP requests and 1 socket authentication, with no auth probe.
+  RN source bytes stay unchanged and the selected host is durable. Eight UI
+  XML files parse; fixture teardown and owned emulator exit are verified.
+- The unchanged native reference passed one UI test (**14.862s**), with six
+  screenshots and `native/ios-import-server.mp4` (**24.921667s**): initially
+  empty, required/invalid errors, Continue alert, Cancel and confirmed root.
+  Native networking is offline and keys/registry are in memory. The Android
+  save-failure case is additional Android evidence, not a recorded native case.
+  Actual video contact sheets and final form/Home screenshots were personally
+  inspected. Both movies retain their original timing and launch/runner waits.
+- Final focused auth/harness checks passed **63 tests / 7 suites**. Full fresh
+  five-module tests passed **2026 tests / 313 suites**, zero failures/errors/
+  skips, in **2m54s**. Ordinary debug and genuine unsigned production
+  (**4m45s**, R8/lint included) APKs pass fixture/probe/network-policy isolation,
+  both JNI ABI checks and 16KB ZIP / 16KiB ELF LOAD alignment. Production is
+  non-debuggable and unsigned. Exact hashes, earlier test-only corrections,
+  parser-source references and stricter damaged-metadata handling are in the
+  audit. A real RN upgrade, live services and store validation are unverified;
+  the purchase test covers the graph gate, not RevenueCat SDK networking.
+
 ## Home Session/Task picture verification (2026-10-30)
 
 - Source `ed23b11b1` wires Home-owned image staging into Session and Task:
@@ -788,7 +829,7 @@ Rules carried over from iOS (see `AGENTS.md`):
 - [x] Custom server screen (`onboarding/03-server.png`, confirm `04-server-confirm.png`, custom `05-server-custom.png`, in `onboarding-flow.mp4`); onboarding settings: server, Direct connection toggle, "Log out and start over" with its confirmation (`home/03-onboarding-settings.png`)
 - [~] Link Your Computer (`home/02-link.png`: checklist ticks kept in local settings, Scan enabled once both are ticked, paste link, approve the terminal, busy until the computer arrives or 10 s, inline failure line). Offline checklist now seen on the emulator; both it and the list banner open the implemented troubleshooting guide, machine links and AI copy. See the troubleshooting verification section above for focused/full/native/device evidence and its limits. Terminal selection in the new guide is device verified (Copy excludes `$ `); the older checklist's terminal lines remain display-only.
 - [~] Connect a terminal by QR or URL; `happy://terminal` deep links (the links are done, see Deep links; scanning needs Play services' code scanner, not checked on the emulator)
-- [ ] Server confirmation for imported accounts
+- [x] Server confirmation for imported accounts: read-only/off-main RN import, pending account gate, empty form/validation/Continue, durable host before activation, retry after failed save, restart and immutable per-account request routing. Focused/full tests and actual Android/native evidence are recorded above; real RN in-place upgrade remains unverified.
 
 ### Home
 

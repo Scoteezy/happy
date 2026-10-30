@@ -536,6 +536,128 @@ encrypted image displayed in chat and empty next draft; native includes the
 real picker selection, all modes and removal. Media processing used at most
 two encoding threads, after builds and devices stopped.
 
+## Imported-account server confirmation and routing (2026-10-30)
+
+Implementation source is `38bc22c63861dc857156d6097f63b22e03ce7504`.
+The frozen iOS tree remains `9426578dd1e80b0eb92d75104c8d35a707d8fc93`;
+no production iOS code changed. The reference is
+`HappyUI/Screens/AccountServerScreens.swift`, `Navigation/AppCoordinator.swift`
+and `HappyCore/AccountController.swift` with `Accounts/RNServerConfigImporter.swift`.
+
+Android now reads RN's `files/mmkv/server-config` and `.crc` off main without
+initializing MMKV or rewriting the files. Missing/deleted/empty custom host
+uses RN's default, never the native global candidate or a previous shared
+slot's host. Unknown damaged data becomes a persisted `PendingServer` state:
+no exposed credentials, AccountSync or automatic fallback to Direct. An
+explicit Direct selection still works. Restore/save failures stay offline
+and retryable. The existing `ServerFormView`/pure layout starts empty, uses
+the native validation and Continue copy, guards the exact pending identity
+and current credential, and saves the registry before publishing `SignedIn`.
+Known confirmed accounts retain their host through shared/own slot changes,
+restart and later RN noise. A missing legacy confirmation bit stays compatible;
+an explicit null or malformed bit cannot silently coerce to confirmed.
+
+The Android file location and decoder were checked against pinned
+`react-native-mmkv` 3.3.3: Java `MmkvPlatformContextModule` supplies
+`filesDir/mmkv`, and `NativeMmkv.ts` passes it unchanged. Tencent submodule
+`f77545297d3e034066607954288a3710c80e5b4f` defines a 112-byte `MMKVMetaInfo`:
+CRC at 0, version at 4, IV at 12–27, actual size at 28 and flags at 104.
+IEEE CRC32 covers actual data after its four-byte header. Reads are bounded
+to 8 MiB per file, including growth during reading; strict UTF-8/varints,
+metadata size, CRC and append/delete map replay are tested. The decoder is
+deliberately stricter than frozen iOS for orphan checksum files, partial
+metadata, reserved version 5+, and nonzero IV/flags: these require explicit
+confirmation. This is pinned-source/byte-fixture verification, not proof of
+a real in-place RN upgrade or exact parser parity for damaged metadata.
+
+Account routing is immutable: `AuthenticatedHttp` captures the confirmed
+host and token from one `SignedIn` snapshot, without a graph-wide mutable
+authenticated client or token-to-host registry. AccountSync, push foreground/
+FCM registration, retries/logout, attachments, project/session avatars,
+connect and terminal approval bind at entry. Voice snapshots before microphone
+or paywall awaits; its existing default-versus-custom service rule is retained.
+Purchase identity uses that account's host. Inactive logout captures stored
+credentials and host under the account lock. Old work cannot pick up a new
+global onboarding candidate after activation changes.
+
+Actual `AppGraph` tests use two independent loopback servers with distinct
+synthetic keys and JWT subjects. Pending form tests exercise sync/foreground,
+profile, attachment lookup, notification ownership, connect, voice usage/start,
+push and the purchase gate, with both servers at zero requests. Save failure,
+Cancel/retry, replacement, pending restart despite changed RN data, confirmed
+restart, and known-account switching pass. Interleaving tests hold old sync
+calls before URL construction and inside awaited HTTP work, deliberately
+outside the cancelled owner's scope so cancellation cannot hide a wrong
+binding. Old push registration spans device/Expo awaits; DELETE retry and
+inactive-account logout also retain their old host. Every credential-bearing
+HTTP request and socket authentication is checked against its origin identity.
+No tokens are emitted in the sanitized evidence.
+
+Initial form/graph focused verification passed 63 tests / 9 suites after
+two test-only corrections: draining Robolectric's dialog Handler and allowing
+`AtomicFile.readFully()` to have already removed a stale `.new` file. The
+routing batch passed 192 tests / 31 suites, and the subsequent voice/logout
+batch passed 149 / 21. At the exact source checkpoint, final auth tests and
+isolated APK assembly passed in 2m: **63 tests / 7 suites**, no failures,
+errors or skips, including known-confirmed A→B→A switching.
+
+Evidence is under `.context/evidence/relay-import-server/`.
+`app-shellharness-final.apk` is **113,814,599 bytes**, SHA-256
+`7888441d96f00ebeed43acf02868657a21c028828d14aceeb717d77cbfa7386e`.
+The installed `.shellharness` APK uses namespaced synthetic credentials and
+has an empty RevenueCat Google key. `android-final/android-import-server.mp4`
+is **85.557889s**. The real MainActivity flow covers empty/required/invalid,
+platform confirmation, Cancel, a reversible directory at the fixture's
+AtomicFile `.new` path to force save failure, and successful retry to Home.
+Before confirmation, after Cancel and after failed persistence, both hosts
+have zero HTTP requests and socket authentications. Final evidence records
+selected HTTP 10 / authenticated HTTP 9 / socket authentications 1, auth
+probes 0, unrelated HTTP/socket 0, persisted selected host and unchanged RN
+bytes. All eight XML snapshots parse. `closed.json` records relay, scope and
+account stopped; owned happy36 PID 51899 exited. Transient UIAutomation null
+root was retried; the first cleanup-file read preceded creation and produced
+a jq parse error before the final successful teardown check. Neither changed
+the app or the assertions. The earlier `android-first` prototype remains for
+diagnostics and is superseded by this post-routing capture.
+
+The native scratch host uses the real AppCoordinator/AccountController,
+synthetic in-memory keys/registry and offline HTTP/socket implementations.
+One UI test passed in **14.862s**, exporting six screenshots for empty,
+required, invalid, Continue alert, Cancel and confirmed root. The unmodified
+**24.921667s** movie is `native/ios-import-server.mp4`. Normal animations and
+frozen source remain unchanged. The dedicated reference simulator shut down
+before Android work. The Android failed-save case is not claimed as native
+device evidence. Real-account/Keystore upgrade, real service traffic and
+successful daemon access are not implied. Purchases exercise the actual graph
+gate with an unconfigured SDK, not RevenueCat network behavior.
+
+Fresh ordinary-debug full verification at the same source passed in
+**2m54s**, with all five test tasks rerun: **2026 tests / 313 suites**, zero
+failures/errors/skips. App 1379/196, layout 601/109, crypto 36/5, icons 6/2,
+ElevenLabs 4/1. Owned Gradle/Kotlin PIDs 52815/52933 exited.
+`app-ordinary-debug-38bc22c63.apk`: **112,878,204 bytes**, SHA-256
+`dc5b58badad59f8a33c934d89003cf671b138618ae02cc4a38f303bea21a5507`.
+Genuine no-harness unsigned production assembly passed in **4m45s**, including
+R8, lint and release keep checks; owned PIDs 53412/53457 exited.
+`app-release-38bc22c63-unsigned.apk`: **96,417,728 bytes**, SHA-256
+`419d957f45b97c5c7a02a0758ecbc82c2e90a3f24b2c4535d345cdea412a14b0`.
+Actual APK manifest/DEX/assets and production mapping exclude fixture/testing/
+probe/mockwebserver code, import-fixture strings and permissive fixture network
+policy. Production is `com.ex3ndr.happy`, non-debuggable and unsigned. Both
+APKs contain arm64-v8a/x86_64 Tailcat JNI and pass 16KB ZIP alignment and all
+four ELF LOAD segments per ABI at 16KiB. All work was sequential and CPU
+capped. No signing, production install, publication or store validation occurred.
+
+Final Android confirmation/save-error/Home screenshots and both actual movie
+contact sheets were personally inspected: the form's native copy/layout,
+platform confirmation, persistence-error retry and post-confirmation root
+are visible. Movies are untrimmed and retain original animation timing and
+runner waits. Contact extraction used at most two media threads, sequentially
+after builds and devices had stopped. Android movie SHA-256 is
+`24c51143dcc2752d9c282a7b4c6e69353416a8c7a3d83bfa67b226104c250f65`;
+native movie SHA-256 is
+`1ba851feec2eb7720936376506d9f010c3e2e6454423ad38b5b72acf98b17791`.
+
 ## Confirmed missing behavior
 
 | Area | Native reference | Android gap |
@@ -546,7 +668,7 @@ two encoding threads, after builds and devices stopped.
 | Dock Bot faces | Native `HomeDockScreens.swift:463,732`, `Home/SessionStarter.swift:470` | Picker, off-main painter, encrypted upload, account-bound wearer and picture-only retry are connected and verified above. No live-machine claim. |
 | Dock pictures | Native `HomeDockScreens.swift:193,732,768` | Closed for Session/Task selection, previews, retention/removal, picture-only creation, encrypted first-send/outbox retry and owner cleanup: focused/full tests, actual Android picker-to-chat replay, native comparison and ordinary/unsigned-production isolation pass above. No live-machine claim. |
 | Relay troubleshooting | Native `HappyUI/Screens/HomeScreens.swift:650` | Closed for the guide, account-owned feed, both Home routes, AI copy, machine navigation and terminal selection: focused/full tests, native comparison, isolated device replay and ordinary/unsigned-production isolation checks pass above. No live connectivity/repair claim. |
-| Imported-account server confirmation | Native `HappyUI/Screens/AccountServerScreens.swift`, `Navigation/AppCoordinator.swift:282` | No equivalent confirmation route found in Android auth/coordinator. |
+| Imported-account server confirmation | Native `HappyUI/Screens/AccountServerScreens.swift`, `Navigation/AppCoordinator.swift:282` | Closed for read-only import, pending gate, native form/confirmation, durable activation and immutable account routing: focused/full regressions, final Android/native evidence and ordinary/unsigned-production isolation pass above. Real RN upgrade remains unverified. |
 | Message-detail reading position | Native `HappyUI/Chat/MessageDetail/MessageDetailViewController.swift:294` | Android's pure `MessageDetailReadingPlace` exists but is not wired to the message screen's text-size changes. |
 
 Other historical partials remain a **re-audit queue**, not newly confirmed
